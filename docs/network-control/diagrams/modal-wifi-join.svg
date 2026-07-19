@@ -13,7 +13,7 @@
           </div>
           <div>
             <div style="font-size:10px;color:#6c7086;text-transform:uppercase;margin-bottom:4px;">Security</div>
-            <div style="background:#313244;border:1px solid #45475a;border-radius:6px;padding:8px;">WPA / WPA2 / WPA3 (Personal) ▾</div>
+            <div style="background:#313244;border:1px solid #45475a;border-radius:6px;padding:8px;">WPA / WPA2 / WPA3 ▾</div>
           </div>
           <div>
             <div style="font-size:10px;color:#6c7086;text-transform:uppercase;margin-bottom:4px;">Network key</div>
