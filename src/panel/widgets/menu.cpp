@@ -752,6 +752,30 @@ void WfMenuCategoryButton::on_click()
     menu->set_category(category);
 }
 
+/** Inject session/graphics env into Gio launch context — never edit .desktop files. */
+static void inject_launch_env(const Glib::RefPtr<Gio::AppLaunchContext>& ctx)
+{
+    if (!ctx)
+    {
+        return;
+    }
+    try
+    {
+        auto env = wf_shell::session_env_for_app_launch(nullptr);
+        for (const auto& kv : env)
+        {
+            if (!kv.second.empty())
+            {
+                ctx->setenv(kv.first, kv.second);
+            }
+        }
+    } catch (const std::exception& e)
+    {
+        std::cerr << "wf-panel: launch env inject failed: " << e.what() << "\n";
+    } catch (...)
+    {}
+}
+
 WfMenuItem::WfMenuItem(WayfireMenu *_menu, Glib::RefPtr<Gio::DesktopAppInfo> app) :
     Gtk::FlowBoxChild(), menu(_menu), app_info(app)
 {
@@ -867,12 +891,8 @@ WfMenuItem::WfMenuItem(WayfireMenu *_menu, Glib::RefPtr<Gio::DesktopAppInfo> app
         signals.push_back(action_obj->signal_activate().connect(
             [this, action] (Glib::VariantBase vb)
         {
-            try
-            {
-                wf_shell::ensure_session_env(true);
-            } catch (...)
-            {}
             auto ctx = Gdk::Display::get_default()->get_app_launch_context();
+            inject_launch_env(ctx);
             app_info->launch_action(action, ctx);
             menu->hide_menu();
         }));
@@ -906,16 +926,19 @@ WfMenuItem::~WfMenuItem()
 void WfMenuItem::on_click()
 {
     std::cerr << "DEBUG: WfMenuItem::on_click() called, app=" << app_info->get_name() << std::endl;
-    /* Re-run preflight so children always inherit a complete session env. */
-    try
-    {
-        wf_shell::ensure_session_env(true);
-    } catch (...)
-    {}
+    /*
+     * Inject session + graphics env into the Gio launch context (not .desktop
+     * files). Required for JVM apps (IntelliJ) that need DISPLAY/XWayland.
+     */
     auto ctx = Gdk::Display::get_default()->get_app_launch_context();
+    inject_launch_env(ctx);
     try
     {
-        app_info->launch(std::vector<Glib::RefPtr<Gio::File>>(), ctx);
+        bool ok = app_info->launch(std::vector<Glib::RefPtr<Gio::File>>(), ctx);
+        if (!ok)
+        {
+            std::cerr << "ERROR: launch returned false for " << app_info->get_name() << std::endl;
+        }
     } catch (std::exception& e)
     {
         std::cerr << "ERROR: launch failed: " << e.what() << std::endl;

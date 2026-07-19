@@ -80,15 +80,27 @@ void WfLauncherButton::launch()
     if (app_info)
     {
         std::cerr << "DEBUG: WfLauncherButton::launch() called, app=" << app_info->get_name() << std::endl;
-        try
-        {
-            wf_shell::ensure_session_env(true);
-        } catch (...)
-        {}
         auto ctx = Gdk::Display::get_default()->get_app_launch_context();
         try
         {
-            app_info->launch(std::vector<Glib::RefPtr<Gio::File>>(), ctx);
+            auto env = wf_shell::session_env_for_app_launch(nullptr);
+            for (const auto& kv : env)
+            {
+                if (!kv.second.empty())
+                {
+                    ctx->setenv(kv.first, kv.second);
+                }
+            }
+        } catch (...)
+        {}
+        try
+        {
+            bool ok = app_info->launch(std::vector<Glib::RefPtr<Gio::File>>(), ctx);
+            if (!ok)
+            {
+                std::cerr << "ERROR: launch returned false for "
+                          << app_info->get_name() << std::endl;
+            }
         } catch (std::exception& e)
         {
             std::cerr << "ERROR: launch failed: " << e.what() << std::endl;

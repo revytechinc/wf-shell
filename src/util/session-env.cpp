@@ -76,6 +76,7 @@ const std::vector<std::string>& session_env_managed_keys()
         "XDG_SESSION_TYPE",
         "DISPLAY",
         "GDK_BACKEND",
+        "_JAVA_AWT_WM_NONREPARENTING",
         "PULSE_RUNTIME_PATH",
         "PULSE_SERVER",
     };
@@ -179,6 +180,127 @@ std::string dbus_address_from_socket_path(const std::string& socket_path)
         return {};
     }
     return "unix:path=" + socket_path;
+}
+
+std::string pick_x11_display(const std::vector<std::string>& basenames)
+{
+    std::vector<int> nums;
+    for (const auto& b : basenames)
+    {
+        if (b.size() >= 2 && b[0] == 'X')
+        {
+            bool digits = true;
+            for (size_t i = 1; i < b.size(); ++i)
+            {
+                if (b[i] < '0' || b[i] > '9')
+                {
+                    digits = false;
+                    break;
+                }
+            }
+            if (digits)
+            {
+                nums.push_back(std::atoi(b.c_str() + 1));
+            }
+        }
+    }
+    if (nums.empty())
+    {
+        return {};
+    }
+    std::sort(nums.begin(), nums.end());
+    /* Prefer :0 */
+    if (std::find(nums.begin(), nums.end(), 0) != nums.end())
+    {
+        return ":0";
+    }
+    return ":" + std::to_string(nums.front());
+}
+
+std::map<std::string, std::string> graphics_toolkit_env_extras(
+    const std::map<std::string, std::string>& env)
+{
+    std::map<std::string, std::string> out;
+    auto has = [&] (const char *k) {
+        auto it = env.find(k);
+        return it != env.end() && !it->second.empty();
+    };
+    const bool has_disp = has("DISPLAY");
+    const bool has_wl   = has("WAYLAND_DISPLAY");
+    if (!has_disp && !has_wl)
+    {
+        return out;
+    }
+    /*
+     * Java AWT (IntelliJ, etc.) on FreeBSD/Wayland uses XWayland.
+     * Without DISPLAY they print "Unable to detect graphics environment"
+     * and exit — looks like "click does nothing" from the panel.
+     * Do not edit .desktop files; inject via launch context / setenv.
+     */
+    if (has_disp || has_wl)
+    {
+        out["_JAVA_AWT_WM_NONREPARENTING"] = "1";
+    }
+    if (has_wl && !has("GDK_BACKEND"))
+    {
+        /* Prefer wayland for GTK; JVM still uses DISPLAY/X11 when set. */
+        out["GDK_BACKEND"] = "wayland";
+    }
+    if (has_disp && !has("GDK_BACKEND") && !has_wl)
+    {
+        out["GDK_BACKEND"] = "x11";
+    }
+    return out;
+}
+
+std::map<std::string, std::string> session_env_for_app_launch(SessionEnvHooks *hooks_in)
+{
+    SessionEnvHooks local;
+    SessionEnvHooks *hooks = hooks_in;
+    if (!hooks)
+    {
+        local = default_session_env_hooks();
+        hooks = &local;
+    }
+
+    /* Ensure process env is filled first */
+    ensure_session_env(true, hooks);
+
+    auto snap = snapshot_session_env(*hooks);
+    /* Also pull any managed key that might have been set outside snapshot timing */
+    for (const auto& k : session_env_managed_keys())
+    {
+        if (snap.count(k))
+        {
+            continue;
+        }
+        const char *v = hooks->get_env ? hooks->get_env(k.c_str()) : nullptr;
+        if (v && v[0])
+        {
+            snap[k] = v;
+        }
+    }
+
+    auto extras = graphics_toolkit_env_extras(snap);
+    for (const auto& e : extras)
+    {
+        if (!snap.count(e.first) || snap[e.first].empty())
+        {
+            snap[e.first] = e.second;
+            /* Apply to process too so plain spawn inherits */
+            if (hooks->set_env)
+            {
+                hooks->set_env(e.first.c_str(), e.second.c_str(), 0);
+            }
+        }
+    }
+
+    /* Always force toolkit extras into the export map (launch context) */
+    for (const auto& e : extras)
+    {
+        snap[e.first] = e.second;
+    }
+    return snap;
 }
 
 SessionEnvHooks default_session_env_hooks()
@@ -480,18 +602,41 @@ SessionEnvReport discover_session_env(const std::map<std::string, std::string>& 
         }
     }
 
-    /* ── DISPLAY (XWayland) ───────────────────────────────────────────── */
+    /* ── DISPLAY (XWayland / X11) ─────────────────────────────────────── */
     if (str_empty(view, "DISPLAY"))
     {
-        for (const char *d : {":0", ":1"})
+        std::string picked;
+        if (is_dir("/tmp/.X11-unix"))
         {
-            std::string sock = "/tmp/.X11-unix/X";
-            sock += (d + 1); /* skip ':' */
-            if (exists(sock) || is_sock(sock))
+            picked = pick_x11_display(list("/tmp/.X11-unix"));
+        }
+        if (picked.empty())
+        {
+            for (const char *d : {":0", ":1"})
             {
-                add_fix(r, "DISPLAY", d, "discovered:x11-socket");
-                break;
+                std::string sock = std::string("/tmp/.X11-unix/X") + (d + 1);
+                if (exists(sock) || is_sock(sock))
+                {
+                    picked = d;
+                    break;
+                }
             }
+        }
+        if (!picked.empty())
+        {
+            add_fix(r, "DISPLAY", picked, "discovered:x11-socket");
+            view["DISPLAY"] = picked;
+        }
+    }
+
+    /* JVM / AWT on Wayland+XWayland (IntelliJ, etc.) — never edit .desktop */
+    {
+        const bool has_disp = !str_empty(view, "DISPLAY");
+        const bool has_wl   = !str_empty(view, "WAYLAND_DISPLAY") || !wl.empty();
+        if ((has_disp || has_wl) && str_empty(view, "_JAVA_AWT_WM_NONREPARENTING"))
+        {
+            add_fix(r, "_JAVA_AWT_WM_NONREPARENTING", "1",
+                "default:java-awt-xwayland");
         }
     }
 

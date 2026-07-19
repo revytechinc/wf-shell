@@ -102,4 +102,26 @@ std::string pick_wayland_display(const std::vector<std::string>& basenames);
  */
 std::string dbus_address_from_socket_path(const std::string& socket_path);
 
+/**
+ * Pick DISPLAY value from X11 socket basenames under /tmp/.X11-unix
+ * (e.g. "X0", "X1" → ":0", ":1"). Prefers :0.
+ */
+std::string pick_x11_display(const std::vector<std::string>& basenames);
+
+/**
+ * After ensure_session_env (or given a live snapshot), build the full map of
+ * env vars that should be injected into child app launches (Gio AppLaunchContext).
+ * Includes discovered fixes + recommended Java/AWT helpers for XWayland.
+ * Does not edit any .desktop files.
+ */
+std::map<std::string, std::string> session_env_for_app_launch(
+    SessionEnvHooks *hooks = nullptr);
+
+/**
+ * Recommended extras for GUI toolkits / JVM when a display is available.
+ * Pure: based on whether DISPLAY / WAYLAND_DISPLAY are present in @env.
+ */
+std::map<std::string, std::string> graphics_toolkit_env_extras(
+    const std::map<std::string, std::string>& env);
+
 } // namespace wf_shell

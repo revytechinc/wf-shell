@@ -13,9 +13,12 @@ using wf_shell::SessionEnvReport;
 using wf_shell::apply_session_env;
 using wf_shell::dbus_address_from_socket_path;
 using wf_shell::discover_session_env;
+using wf_shell::graphics_toolkit_env_extras;
 using wf_shell::merge_safe_path;
 using wf_shell::pick_wayland_display;
+using wf_shell::pick_x11_display;
 using wf_shell::session_env_critical_keys;
+using wf_shell::session_env_for_app_launch;
 using wf_shell::session_env_managed_keys;
 
 /* ── pure helpers ───────────────────────────────────────────────────────── */
@@ -86,6 +89,37 @@ TEST(SessionEnvDbus, AddressFromPath)
     EXPECT_TRUE(dbus_address_from_socket_path("").empty());
 }
 
+TEST(SessionEnvX11, PreferDisplay0)
+{
+    EXPECT_EQ(pick_x11_display({"X1", "X0", "X0_"}), ":0");
+}
+
+TEST(SessionEnvX11, FirstWhenNoZero)
+{
+    EXPECT_EQ(pick_x11_display({"X2", "X5"}), ":2");
+}
+
+TEST(SessionEnvX11, EmptyWhenNone)
+{
+    EXPECT_TRUE(pick_x11_display({"foo", "bar"}).empty());
+}
+
+TEST(SessionEnvGraphicsExtras, JavaAwtWhenDisplayPresent)
+{
+    std::map<std::string, std::string> env = {
+        {"DISPLAY", ":0"},
+        {"WAYLAND_DISPLAY", "wayland-1"},
+    };
+    auto x = graphics_toolkit_env_extras(env);
+    EXPECT_EQ(x["_JAVA_AWT_WM_NONREPARENTING"], "1");
+}
+
+TEST(SessionEnvGraphicsExtras, EmptyWithoutDisplay)
+{
+    auto x = graphics_toolkit_env_extras({});
+    EXPECT_TRUE(x.empty());
+}
+
 /* ── discovery with mock FS ─────────────────────────────────────────────── */
 
 class SessionEnvDiscovery : public ::testing::Test
@@ -144,13 +178,16 @@ TEST_F(SessionEnvDiscovery, DiscoversFreeBSDRuntimeAndWaylandAndDbus)
 
     dirs.insert("/var/run/xdg/mlapointe");
     dirs.insert("/var/run/xdg/mlapointe/pulse");
+    dirs.insert("/tmp/.X11-unix");
     socks.insert("/var/run/xdg/mlapointe/wayland-1");
     socks.insert("/tmp/dbus-qTerm9A3Gz");
     socks.insert("/var/run/xdg/mlapointe/pulse/native");
+    socks.insert("/tmp/.X11-unix/X0");
     listings["/var/run/xdg/mlapointe"] = {
         "wayland-1", "wayland-1.lock", "pulse", "dbus-1",
     };
     listings["/tmp"] = {"dbus-qTerm9A3Gz", "other"};
+    listings["/tmp/.X11-unix"] = {"X0", "X0_"};
 
     auto report = discover_session_env(current, hooks);
     ASSERT_FALSE(report.actions.empty());
@@ -164,6 +201,8 @@ TEST_F(SessionEnvDiscovery, DiscoversFreeBSDRuntimeAndWaylandAndDbus)
     EXPECT_EQ(fixes["XDG_RUNTIME_DIR"], "/var/run/xdg/mlapointe");
     EXPECT_EQ(fixes["WAYLAND_DISPLAY"], "wayland-1");
     EXPECT_EQ(fixes["DBUS_SESSION_BUS_ADDRESS"], "unix:path=/tmp/dbus-qTerm9A3Gz");
+    EXPECT_EQ(fixes["DISPLAY"], ":0");
+    EXPECT_EQ(fixes["_JAVA_AWT_WM_NONREPARENTING"], "1");
     EXPECT_NE(fixes["PATH"].find("/sbin"), std::string::npos);
     EXPECT_EQ(fixes["XDG_CONFIG_HOME"], "/home/mlapointe/.config");
     EXPECT_EQ(fixes["XDG_DATA_HOME"], "/home/mlapointe/.local/share");
@@ -172,6 +211,48 @@ TEST_F(SessionEnvDiscovery, DiscoversFreeBSDRuntimeAndWaylandAndDbus)
     EXPECT_EQ(fixes["PULSE_RUNTIME_PATH"], "/var/run/xdg/mlapointe/pulse");
     EXPECT_EQ(fixes["PULSE_SERVER"], "unix:/var/run/xdg/mlapointe/pulse/native");
     EXPECT_TRUE(report.critical_ok);
+}
+
+TEST_F(SessionEnvDiscovery, IntelliJStyleEnvHasDisplayAndJavaAwt)
+{
+    /*
+     * Red: no DISPLAY → JVM "Unable to detect graphics environment".
+     * Green: discovery supplies DISPLAY=:0 and _JAVA_AWT_WM_NONREPARENTING
+     * without touching any .desktop file.
+     */
+    std::map<std::string, std::string> current = {
+        {"HOME", "/home/mlapointe"},
+        {"USER", "mlapointe"},
+        {"XDG_RUNTIME_DIR", "/var/run/xdg/mlapointe"},
+        {"WAYLAND_DISPLAY", "wayland-1"},
+    };
+    dirs.insert("/var/run/xdg/mlapointe");
+    dirs.insert("/tmp/.X11-unix");
+    socks.insert("/tmp/.X11-unix/X0");
+    listings["/tmp/.X11-unix"] = {"X0"};
+
+    auto report = discover_session_env(current, hooks);
+    std::map<std::string, std::string> fixes;
+    for (const auto& a : report.actions)
+    {
+        fixes[a.name] = a.value;
+    }
+    EXPECT_EQ(fixes["DISPLAY"], ":0");
+    EXPECT_EQ(fixes["_JAVA_AWT_WM_NONREPARENTING"], "1");
+
+    apply_session_env(report, hooks, false);
+    EXPECT_EQ(store["DISPLAY"], ":0");
+    EXPECT_EQ(store["_JAVA_AWT_WM_NONREPARENTING"], "1");
+
+    /* Export map used by Gio AppLaunchContext::setenv — includes both */
+    store["DISPLAY"] = ":0";
+    store["WAYLAND_DISPLAY"] = "wayland-1";
+    store["XDG_RUNTIME_DIR"] = "/var/run/xdg/mlapointe";
+    store["HOME"] = "/home/mlapointe";
+    auto launch_map = session_env_for_app_launch(&hooks);
+    EXPECT_EQ(launch_map["DISPLAY"], ":0");
+    EXPECT_EQ(launch_map["_JAVA_AWT_WM_NONREPARENTING"], "1");
+    EXPECT_FALSE(launch_map["XDG_RUNTIME_DIR"].empty());
 }
 
 TEST_F(SessionEnvDiscovery, ApplyOnlyFillsMissing)
