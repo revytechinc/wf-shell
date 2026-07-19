@@ -108,6 +108,24 @@ bool wifi_ssid_is_saved(const std::string& wlan, const std::string& ssid);
 /** All SSIDs currently configured in wpa_supplicant for this wlan. */
 std::vector<std::string> wifi_saved_ssids(const std::string& wlan);
 
+/**
+ * Remove all wpa_supplicant network blocks for SSID and save_config.
+ * If currently associated to that SSID, disconnects.
+ */
+WifiPowerResult wifi_forget_network(const std::string& wlan,
+    const std::string& ssid);
+
+/**
+ * Update PSK for an existing saved SSID (or add if missing).
+ * security: open | wpa | wep | sae. Persists via save_config.
+ */
+WifiPowerResult wifi_change_password(const std::string& wlan,
+    const std::string& ssid, const std::string& security,
+    const std::string& key);
+
+/** Disconnect current association (stays up; does not forget). */
+WifiPowerResult wifi_disconnect(const std::string& wlan);
+
 /** True if wpa_cli can talk to the iface control socket. */
 bool wifi_wpa_ready(const std::string& wlan);
 

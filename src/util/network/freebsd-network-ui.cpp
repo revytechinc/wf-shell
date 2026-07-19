@@ -144,7 +144,7 @@ FreeBSDApRow::FreeBSDApRow(std::string wlan, wf_net::WifiScanEntry entry,
         badge_.set_text("Saved");
         badge_.add_css_class("ap-saved-badge");
         badge_.set_halign(Gtk::Align::END);
-        set_tooltip_text("Password saved — click to connect");
+        set_tooltip_text("Password saved — click to connect · right-click to manage");
     }
 
     append(icon_);
@@ -170,6 +170,81 @@ FreeBSDApRow::FreeBSDApRow(std::string wlan, wf_net::WifiScanEntry entry,
             activated_.emit(entry_);
         }));
     add_controller(click);
+
+    /* Manage menu for known (saved) and currently connected networks. */
+    if (saved_ || connected_)
+    {
+        menu_box_.set_spacing(2);
+        btn_connect_.set_label("Connect");
+        btn_disconnect_.set_label("Disconnect");
+        btn_change_pw_.set_label("Change password…");
+        btn_forget_.set_label("Forget network");
+        btn_forget_.add_css_class("destructive-action");
+        for (auto *b : {&btn_connect_, &btn_disconnect_, &btn_change_pw_,
+            &btn_forget_})
+        {
+            b->set_halign(Gtk::Align::FILL);
+            menu_box_.append(*b);
+        }
+        menu_.set_parent(*this);
+        menu_.set_child(menu_box_);
+        menu_.set_has_arrow(false);
+
+        btn_connect_.set_visible(!connected_ && saved_);
+        btn_disconnect_.set_visible(connected_);
+        btn_change_pw_.set_visible(entry_.security != "open");
+        btn_forget_.set_visible(true);
+
+        signals_.push_back(btn_connect_.signal_clicked().connect([this] () {
+            menu_.popdown();
+            connect_req_.emit(entry_);
+        }));
+        signals_.push_back(btn_disconnect_.signal_clicked().connect([this] () {
+            menu_.popdown();
+            disconnect_req_.emit(entry_);
+        }));
+        signals_.push_back(btn_change_pw_.signal_clicked().connect([this] () {
+            menu_.popdown();
+            change_password_req_.emit(entry_);
+        }));
+        signals_.push_back(btn_forget_.signal_clicked().connect([this] () {
+            menu_.popdown();
+            forget_req_.emit(entry_);
+        }));
+
+        auto rclick = Gtk::GestureClick::create();
+        rclick->set_button(3);
+        signals_.push_back(rclick->signal_pressed().connect(
+            [this, rclick] (int, double x, double y) {
+                rclick->set_state(Gtk::EventSequenceState::CLAIMED);
+                show_manage_menu(x, y);
+            }));
+        add_controller(rclick);
+    }
+}
+
+FreeBSDApRow::~FreeBSDApRow()
+{
+    for (auto& s : signals_)
+    {
+        s.disconnect();
+    }
+    menu_.popdown();
+    menu_.unparent();
+}
+
+void FreeBSDApRow::show_manage_menu(double x, double y)
+{
+    btn_connect_.set_visible(!connected_ && saved_);
+    btn_disconnect_.set_visible(connected_);
+    btn_change_pw_.set_visible(entry_.security != "open");
+    Gdk::Rectangle r;
+    r.set_x(static_cast<int>(x));
+    r.set_y(static_cast<int>(y));
+    r.set_width(1);
+    r.set_height(1);
+    menu_.set_pointing_to(r);
+    menu_.popup();
 }
 
 /* ─── FreeBSDIfaceRow ────────────────────────────────────────────────────── */
@@ -767,6 +842,17 @@ void FreeBSDIfaceRow::rebuild_ap_list(const std::vector<wf_net::WifiScanEntry>& 
             row->signal_activated().connect(
                 [this] (const wf_net::WifiScanEntry& e) { do_join(e); });
         }
+        if (saved_ap || is_cur)
+        {
+            row->signal_connect_req().connect(
+                [this] (const wf_net::WifiScanEntry& e) { do_join(e); });
+            row->signal_disconnect_req().connect(
+                [this] (const wf_net::WifiScanEntry& e) { do_disconnect_ap(e); });
+            row->signal_change_password_req().connect(
+                [this] (const wf_net::WifiScanEntry& e) { do_change_password_ap(e); });
+            row->signal_forget_req().connect(
+                [this] (const wf_net::WifiScanEntry& e) { do_forget_ap(e); });
+        }
         ap_box_.append(*row);
         ++shown;
     }
@@ -1000,6 +1086,190 @@ void FreeBSDIfaceRow::do_join(const wf_net::WifiScanEntry& ap)
             apply_join_result(ssid, r);
         });
     }).detach();
+}
+
+void FreeBSDIfaceRow::do_disconnect_ap(const wf_net::WifiScanEntry& ap)
+{
+    (void)ap;
+    if (!is_wifi_clone() || power_busy_)
+    {
+        return;
+    }
+    const std::string wlan = wlan_name();
+    auto row_alive = alive_;
+    std::thread([this, row_alive, wlan] () {
+        auto r = wf_net::wifi_disconnect(wlan);
+        ui_idle([this, row_alive, r] () {
+            if (!row_alive->load() || !net_)
+            {
+                return;
+            }
+            if (r.ok)
+            {
+                auto i = net_->info();
+                i.wifi_ssid.clear();
+                i.wifi_bssid.clear();
+                i.wifi_wpa_state = "DISCONNECTED";
+                i.status = "no carrier";
+                i.running = false;
+                net_->update_info(i);
+            }
+            refresh();
+            if (popover_open_)
+            {
+                do_scan();
+            }
+        });
+    }).detach();
+}
+
+void FreeBSDIfaceRow::do_forget_ap(const wf_net::WifiScanEntry& ap)
+{
+    if (!is_wifi_clone() || power_busy_)
+    {
+        return;
+    }
+    const std::string wlan = wlan_name();
+    const std::string ssid = ap.ssid;
+    auto row_alive = alive_;
+    std::thread([this, row_alive, wlan, ssid] () {
+        auto r = wf_net::wifi_forget_network(wlan, ssid);
+        ui_idle([this, row_alive, ssid, r] () {
+            if (!row_alive->load())
+            {
+                return;
+            }
+            if (r.ok && net_ && net_->info().wifi_ssid == ssid)
+            {
+                auto i = net_->info();
+                i.wifi_ssid.clear();
+                i.wifi_bssid.clear();
+                i.wifi_wpa_state = "DISCONNECTED";
+                i.status = "no carrier";
+                i.running = false;
+                net_->update_info(i);
+            }
+            refresh();
+            if (popover_open_)
+            {
+                do_scan();
+            }
+        });
+    }).detach();
+}
+
+void FreeBSDIfaceRow::do_change_password_ap(const wf_net::WifiScanEntry& ap)
+{
+    if (!is_wifi_clone() || power_busy_)
+    {
+        return;
+    }
+    const std::string wlan = wlan_name();
+    const std::string ssid = ap.ssid;
+    const std::string security = ap.security.empty() ? "wpa" : ap.security;
+
+    auto *dlg = new Gtk::Window();
+    auto dlg_alive = std::make_shared<std::atomic<bool>>(true);
+    dlg->set_title("Change password — " + ssid);
+    dlg->set_default_size(400, 220);
+    dlg->set_modal(true);
+    dlg->set_deletable(true);
+    dlg->set_hide_on_close(true);
+    dlg->unset_transient_for();
+    auto *box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 12);
+    box->set_margin(18);
+    auto *lbl = Gtk::make_managed<Gtk::Label>("New password for “" + ssid + "”");
+    lbl->set_halign(Gtk::Align::START);
+    auto *entry = Gtk::make_managed<Gtk::Entry>();
+    entry->set_visibility(false);
+    entry->set_input_purpose(Gtk::InputPurpose::PASSWORD);
+    entry->set_hexpand(true);
+    entry->set_size_request(-1, 40);
+    entry->add_css_class("wifi-password-entry");
+    auto *show = Gtk::make_managed<Gtk::CheckButton>("Show password");
+    show->signal_toggled().connect([entry, show] () {
+        entry->set_visibility(show->get_active());
+    });
+    auto *err = Gtk::make_managed<Gtk::Label>("");
+    err->add_css_class("error");
+    err->set_halign(Gtk::Align::START);
+    auto *btns = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 8);
+    btns->set_halign(Gtk::Align::END);
+    auto *cancel = Gtk::make_managed<Gtk::Button>("Cancel");
+    auto *save = Gtk::make_managed<Gtk::Button>("Save");
+    save->add_css_class("suggested-action");
+    btns->append(*cancel);
+    btns->append(*save);
+    box->append(*lbl);
+    box->append(*entry);
+    box->append(*show);
+    box->append(*err);
+    box->append(*btns);
+    dlg->set_child(*box);
+
+    auto finish = [dlg, dlg_alive] () {
+        if (!dlg_alive->exchange(false))
+        {
+            return;
+        }
+        dlg->hide();
+        g_idle_add(
+            [] (gpointer p) -> gboolean {
+                delete static_cast<Gtk::Window*>(p);
+                return G_SOURCE_REMOVE;
+            },
+            dlg);
+    };
+    cancel->signal_clicked().connect(finish);
+    dlg->signal_close_request().connect([finish] () {
+        finish();
+        return true;
+    }, false);
+
+    save->signal_clicked().connect(
+        [this, entry, err, save, ssid, security, wlan, finish, dlg_alive] () {
+        if (!dlg_alive->load())
+        {
+            return;
+        }
+        std::string k = std::string(entry->get_text());
+        auto v = wf_net::validate_wifi_credentials(security, k);
+        if (!v.ok)
+        {
+            err->set_text(v.message);
+            return;
+        }
+        err->set_text("Saving…");
+        save->set_sensitive(false);
+        auto row_alive = alive_;
+        std::thread([this, row_alive, dlg_alive, finish, err, save,
+            ssid, security, wlan, k] () {
+            auto r = wf_net::wifi_change_password(wlan, ssid, security, k);
+            ui_idle([this, row_alive, dlg_alive, finish, err, save, r] () {
+                if (!dlg_alive->load())
+                {
+                    return;
+                }
+                if (!r.ok)
+                {
+                    err->set_text(r.detail.empty() ? "Failed" : r.detail);
+                    save->set_sensitive(true);
+                    return;
+                }
+                if (row_alive->load())
+                {
+                    refresh();
+                    if (popover_open_)
+                    {
+                        do_scan();
+                    }
+                }
+                finish();
+            });
+        }).detach();
+    });
+    dlg->present();
+    entry->grab_focus();
 }
 
 void FreeBSDIfaceRow::do_details()

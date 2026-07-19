@@ -25,6 +25,7 @@ class FreeBSDApRow : public Gtk::Box
   public:
     FreeBSDApRow(std::string wlan, wf_net::WifiScanEntry entry,
         bool is_connected = false, bool is_saved = false);
+    ~FreeBSDApRow() override;
     const wf_net::WifiScanEntry& entry() const { return entry_; }
     bool is_connected() const { return connected_; }
     bool is_saved() const { return saved_; }
@@ -33,8 +34,27 @@ class FreeBSDApRow : public Gtk::Box
     {
         return activated_;
     }
+    /** Right-click manage actions for known networks. */
+    sigc::signal<void(const wf_net::WifiScanEntry&)>& signal_connect_req()
+    {
+        return connect_req_;
+    }
+    sigc::signal<void(const wf_net::WifiScanEntry&)>& signal_disconnect_req()
+    {
+        return disconnect_req_;
+    }
+    sigc::signal<void(const wf_net::WifiScanEntry&)>& signal_change_password_req()
+    {
+        return change_password_req_;
+    }
+    sigc::signal<void(const wf_net::WifiScanEntry&)>& signal_forget_req()
+    {
+        return forget_req_;
+    }
 
   private:
+    void show_manage_menu(double x, double y);
+
     std::string wlan_;
     wf_net::WifiScanEntry entry_;
     bool connected_ = false;
@@ -44,7 +64,17 @@ class FreeBSDApRow : public Gtk::Box
     Gtk::Label ssid_;
     Gtk::Label band_;
     Gtk::Label badge_;
+    Gtk::Popover menu_;
+    Gtk::Box menu_box_{Gtk::Orientation::VERTICAL};
+    Gtk::Button btn_connect_;
+    Gtk::Button btn_disconnect_;
+    Gtk::Button btn_change_pw_;
+    Gtk::Button btn_forget_;
     sigc::signal<void(const wf_net::WifiScanEntry&)> activated_;
+    sigc::signal<void(const wf_net::WifiScanEntry&)> connect_req_;
+    sigc::signal<void(const wf_net::WifiScanEntry&)> disconnect_req_;
+    sigc::signal<void(const wf_net::WifiScanEntry&)> change_password_req_;
+    sigc::signal<void(const wf_net::WifiScanEntry&)> forget_req_;
     std::vector<sigc::connection> signals_;
 };
 
@@ -70,6 +100,9 @@ class FreeBSDIfaceRow : public Gtk::Box
     void do_create_wlan();
     void do_scan();
     void do_join(const wf_net::WifiScanEntry& ap);
+    void do_disconnect_ap(const wf_net::WifiScanEntry& ap);
+    void do_forget_ap(const wf_net::WifiScanEntry& ap);
+    void do_change_password_ap(const wf_net::WifiScanEntry& ap);
     void elevate_ifconfig(const char *verb);
     void rebuild_ap_list(const std::vector<wf_net::WifiScanEntry>& aps);
     void set_expanded(bool expanded);

@@ -1156,6 +1156,116 @@ std::vector<std::string> wifi_saved_ssids(const std::string& wlan)
     return out;
 }
 
+WifiPowerResult wifi_forget_network(const std::string& wlan,
+    const std::string& ssid)
+{
+    WifiPowerResult r;
+    r.wlan = wlan;
+    net_event_info("wifi.forget.request", {
+        field_str("ssid", ssid),
+    }, wlan);
+    if (ssid.empty() || !is_wlan_clone_name(wlan))
+    {
+        r.detail = "invalid arguments";
+        return r;
+    }
+    if (!ensure_wpa_running(wlan))
+    {
+        r.detail = "wpa_supplicant not ready";
+        return r;
+    }
+    auto listed = parse_wpa_list_networks(wpa_cli_run(wlan, "list_networks"));
+    int removed = 0;
+    bool was_current = false;
+    for (const auto& row : listed)
+    {
+        if (row.ssid != ssid)
+        {
+            continue;
+        }
+        if (row.current)
+        {
+            was_current = true;
+        }
+        if (wpa_cli_ok(wlan, "remove_network " + std::to_string(row.id)))
+        {
+            ++removed;
+        }
+    }
+    if (removed == 0)
+    {
+        r.detail = "network not found in wpa_supplicant";
+        net_event_warn("wifi.forget", {
+            field_str("ssid", ssid),
+            field_str("error", r.detail),
+        }, wlan);
+        return r;
+    }
+    (void)wpa_cli_ok(wlan, "save_config");
+    if (was_current)
+    {
+        (void)wpa_cli_ok(wlan, "disconnect");
+        /* Prefer another saved network if any. */
+        (void)wpa_cli_ok(wlan, "enable_network all");
+        (void)wpa_cli_ok(wlan, "reassociate");
+    }
+    r.ok = true;
+    r.detail = "Forgot “" + ssid + "” (" + std::to_string(removed) + " block(s))";
+    net_event_info("wifi.forget", {
+        field_bool("ok", true),
+        field_str("ssid", ssid),
+        field_int("removed", removed),
+        field_bool("was_current", was_current),
+    }, wlan);
+    return r;
+}
+
+WifiPowerResult wifi_change_password(const std::string& wlan,
+    const std::string& ssid, const std::string& security,
+    const std::string& key)
+{
+    /*
+     * wifi_join with a non-empty key updates the existing block's PSK
+     * (or creates one). Reassociates so the new key is used immediately.
+     */
+    auto r = wifi_join(wlan, ssid, security, key);
+    if (r.ok)
+    {
+        r.detail = "Password updated for “" + ssid + "”";
+        net_event_info("wifi.password.changed", {
+            field_str("ssid", ssid),
+            field_str("security", security),
+        }, wlan);
+    }
+    return r;
+}
+
+WifiPowerResult wifi_disconnect(const std::string& wlan)
+{
+    WifiPowerResult r;
+    r.wlan = wlan;
+    if (!is_wlan_clone_name(wlan))
+    {
+        r.detail = "not a wlan interface";
+        return r;
+    }
+    if (!ensure_wpa_running(wlan))
+    {
+        r.detail = "wpa_supplicant not ready";
+        return r;
+    }
+    if (!wpa_cli_ok(wlan, "disconnect"))
+    {
+        r.detail = "disconnect failed";
+        net_event_error("wifi.disconnect", {field_str("error", r.detail)}, wlan);
+        return r;
+    }
+    r.ok = true;
+    r.detail = "Disconnected";
+    net_event_info("wifi.disconnect", {field_bool("ok", true)}, wlan);
+    return r;
+}
+
 WifiPowerResult wifi_join(const std::string& wlan, const std::string& ssid,
     const std::string& security, const std::string& key)
 {
