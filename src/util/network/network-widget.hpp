@@ -41,6 +41,7 @@ class DeviceControlWidget : public Gtk::Box
     Gtk::Image image;
     Gtk::Revealer revealer;
     Gtk::Box revealer_box, topbox;
+    Gtk::ScrolledWindow ap_scroll;
     std::vector<sigc::connection> signals;
 
   public:

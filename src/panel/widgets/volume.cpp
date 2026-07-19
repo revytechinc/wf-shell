@@ -172,6 +172,34 @@ struct PeakProbe
         }
     }
 
+    /* Wait for a state transition without hanging the caller forever.
+     * Poll with short unlock/sleep so a wedged Pulse cannot freeze the panel. */
+    template<typename GetState, typename IsReady, typename IsFailed>
+    bool wait_state(GetState get, IsReady ready, IsFailed failed, int timeout_ms = 1200)
+    {
+        const gint64 deadline = g_get_monotonic_time() + (gint64)timeout_ms * 1000;
+        while (true)
+        {
+            auto st = get();
+            if (ready(st))
+            {
+                return true;
+            }
+            if (failed(st))
+            {
+                return false;
+            }
+            if (g_get_monotonic_time() >= deadline)
+            {
+                return false;
+            }
+            /* Drop lock briefly so the PA thread can progress, then recheck. */
+            pa_threaded_mainloop_unlock(ml);
+            g_usleep(8000);
+            pa_threaded_mainloop_lock(ml);
+        }
+    }
+
     bool start(const std::string& source)
     {
         stop();
@@ -220,22 +248,16 @@ struct PeakProbe
             return false;
         }
 
-        while (true)
+        if (!wait_state(
+                [this] () { return pa_context_get_state(ctx); },
+                [] (pa_context_state_t st) { return st == PA_CONTEXT_READY; },
+                [] (pa_context_state_t st) {
+                    return st == PA_CONTEXT_FAILED || st == PA_CONTEXT_TERMINATED;
+                }))
         {
-            pa_context_state_t st = pa_context_get_state(ctx);
-            if (st == PA_CONTEXT_READY)
-            {
-                break;
-            }
-
-            if (st == PA_CONTEXT_FAILED || st == PA_CONTEXT_TERMINATED)
-            {
-                pa_threaded_mainloop_unlock(ml);
-                stop();
-                return false;
-            }
-
-            pa_threaded_mainloop_wait(ml);
+            pa_threaded_mainloop_unlock(ml);
+            stop();
+            return false;
         }
 
         pa_sample_spec ss;
@@ -278,22 +300,16 @@ struct PeakProbe
             return false;
         }
 
-        while (true)
+        if (!wait_state(
+                [this] () { return pa_stream_get_state(stream); },
+                [] (pa_stream_state_t st) { return st == PA_STREAM_READY; },
+                [] (pa_stream_state_t st) {
+                    return st == PA_STREAM_FAILED || st == PA_STREAM_TERMINATED;
+                }))
         {
-            pa_stream_state_t st = pa_stream_get_state(stream);
-            if (st == PA_STREAM_READY)
-            {
-                break;
-            }
-
-            if (st == PA_STREAM_FAILED || st == PA_STREAM_TERMINATED)
-            {
-                pa_threaded_mainloop_unlock(ml);
-                stop();
-                return false;
-            }
-
-            pa_threaded_mainloop_wait(ml);
+            pa_threaded_mainloop_unlock(ml);
+            stop();
+            return false;
         }
 
         /* Adopt negotiated channel count if server remapped */
@@ -634,17 +650,23 @@ void WayfireVolume::fill_graph_combo(Gtk::ComboBoxText& combo, const std::string
         {"ribbon", "ribbon"},
     };
     std::string want = safe_graph_style(active_id);
-    int active = 2; /* wave-fill */
+    /* Current selection first, then the rest. */
     for (size_t i = 0; i < sizeof(styles) / sizeof(styles[0]); i++)
     {
-        combo.append(styles[i].id, styles[i].label);
         if (want == styles[i].id)
         {
-            active = (int)i;
+            combo.append(styles[i].id, styles[i].label);
+            break;
         }
     }
-
-    combo.set_active(active);
+    for (size_t i = 0; i < sizeof(styles) / sizeof(styles[0]); i++)
+    {
+        if (want != styles[i].id)
+        {
+            combo.append(styles[i].id, styles[i].label);
+        }
+    }
+    combo.set_active_id(want);
     filling_combos = false;
 }
 
@@ -652,21 +674,29 @@ void WayfireVolume::fill_channel_combo()
 {
     filling_combos = true;
     out_ch_combo.remove_all();
-    out_ch_combo.append("2", "2 ch");
-    out_ch_combo.append("6", "6 ch");
-    out_ch_combo.append("8", "8 ch");
     int ch = out_channels.value();
-    if (ch == 2)
+    if (ch != 2 && ch != 6 && ch != 8)
     {
-        out_ch_combo.set_active(0);
-    } else if (ch == 6)
-    {
-        out_ch_combo.set_active(1);
-    } else
-    {
-        out_ch_combo.set_active(2);
+        ch = 2;
     }
-
+    /* Current channel count first. */
+    auto append_ch = [&] (int n) {
+        out_ch_combo.append(std::to_string(n), std::to_string(n) + " ch");
+    };
+    append_ch(ch);
+    if (ch != 2)
+    {
+        append_ch(2);
+    }
+    if (ch != 6)
+    {
+        append_ch(6);
+    }
+    if (ch != 8)
+    {
+        append_ch(8);
+    }
+    out_ch_combo.set_active_id(std::to_string(ch));
     filling_combos = false;
 }
 
@@ -680,20 +710,38 @@ void WayfireVolume::draw_meter(const Cairo::RefPtr<Cairo::Context>& cr, int w, i
 
     const std::string style = safe_graph_style(style_in);
 
-    cr->set_source_rgb(0.07, 0.07, 0.08);
+    // Draw a premium dark purple gradient background for the scope
+    Cairo::RefPtr<Cairo::LinearGradient> bg_grad = Cairo::LinearGradient::create(0.0, h, w, 0.0);
+    bg_grad->add_color_stop_rgb(0.0, 0.04, 0.03, 0.08);
+    bg_grad->add_color_stop_rgb(1.0, 0.06, 0.05, 0.12);
+    cr->set_source(bg_grad);
     cr->rectangle(0, 0, w, h);
     cr->fill();
 
-    /* Real peaks from Pulse (Virtual OSS: virtual_oss.monitor / virtual_oss_rec).
-     * Do not gate on slider "level" — that is control volume, not signal. */
+    // Draw a subtle Miami Cyberpunk grid in the background
+    cr->set_source_rgba(1.0, 0.0, 0.5, 0.04); // Faint hot pink
+    cr->set_line_width(0.6);
+    for (int x = 0; x < w; x += 16) {
+        cr->move_to(x, 0);
+        cr->line_to(x, h);
+        cr->stroke();
+    }
+    for (int y = 0; y < h; y += 12) {
+        cr->move_to(0, y);
+        cr->line_to(w, y);
+        cr->stroke();
+    }
+
+    /* Real peaks from Pulse */
     float peaks[8] = {};
     int n_peaks = 0;
     copy_peaks(is_output, peaks, 8, &n_peaks);
 
     if (muted)
     {
-        cr->set_source_rgba(0.27, 0.28, 0.35, 0.5);
-        cr->set_line_width(1.0);
+        // Draw flat line with faint neon violet
+        cr->set_source_rgba(0.5, 0.0, 1.0, 0.35);
+        cr->set_line_width(1.5);
         cr->move_to(0, h / 2.0);
         cr->line_to(w, h / 2.0);
         cr->stroke();
@@ -702,7 +750,7 @@ void WayfireVolume::draw_meter(const Cairo::RefPtr<Cairo::Context>& cr, int w, i
 
     int n = vl::meter_trace_count(style, is_output, out_channels.value());
 
-    /* Map peak channels onto display channels (repeat/expand as needed). */
+    /* Map peak channels onto display channels */
     auto peak_for = [&] (int ch) -> double
     {
         return vl::peak_for_channel(peaks, n_peaks, ch);
@@ -710,12 +758,62 @@ void WayfireVolume::draw_meter(const Cairo::RefPtr<Cairo::Context>& cr, int w, i
 
     double t = g_get_monotonic_time() / 1e6;
 
-    auto level_color = [&] (double amp, double& r, double& g, double& b)
+    // Cyberpunk Miami color interpolation: Cyan -> Violet -> Hot Pink
+    auto cyberpunk_color = [&] (double amp, double& r, double& g, double& b)
     {
-        vl::level_color(amp, is_output, r, g, b);
+        if (amp < 0.5) {
+            double u = amp / 0.5;
+            r = u * 0.7;
+            g = 0.94 * (1.0 - u) + 0.2 * u;
+            b = 1.0;
+        } else {
+            double u = (amp - 0.5) / 0.5;
+            r = 0.7 * (1.0 - u) + 1.0 * u;
+            g = 0.2 * (1.0 - u) + 0.0 * u;
+            b = 1.0 * (1.0 - u) + 0.5 * u;
+        }
     };
 
-    if ((style == "bars") || (style == "spectrum"))
+    // 1. Spectrum Style: Segmented Retro LED Blocks
+    if (style == "spectrum")
+    {
+        double gap = 2.0;
+        double bw  = std::max(3.0, (w - gap * (n + 1)) / n);
+        int segments = 8;
+        double seg_h = (h - 4.0 - (segments - 1) * 1.5) / segments;
+
+        for (int ch = 0; ch < n; ch++)
+        {
+            double amp = peak_for(ch);
+            double x  = gap + ch * (bw + gap);
+
+            for (int s = 0; s < segments; s++)
+            {
+                double seg_threshold = (s + 1) / (double)segments;
+                bool lit = (amp >= seg_threshold - 0.04);
+
+                double r, g, b;
+                cyberpunk_color(seg_threshold, r, g, b);
+
+                if (lit)
+                {
+                    cr->set_source_rgba(r, g, b, 0.95);
+                    cr->rectangle(x, h - 2 - s * (seg_h + 1.5) - seg_h, bw, seg_h);
+                    cr->fill();
+                }
+                else
+                {
+                    cr->set_source_rgba(0.2, 0.15, 0.3, 0.12);
+                    cr->rectangle(x, h - 2 - s * (seg_h + 1.5) - seg_h, bw, seg_h);
+                    cr->fill();
+                }
+            }
+        }
+        return;
+    }
+
+    // 2. Bars Style: Smooth Gradient Columns
+    if (style == "bars")
     {
         double gap = 2.0;
         double bw  = std::max(2.0, (w - gap * (n + 1)) / n);
@@ -728,19 +826,91 @@ void WayfireVolume::draw_meter(const Cairo::RefPtr<Cairo::Context>& cr, int w, i
             }
 
             double r, g, b;
-            level_color(amp, r, g, b);
-            double bh = amp * (h - 4);
+            cyberpunk_color(amp, r, g, b);
+            double bh = amp * (h - 6);
             double x  = gap + ch * (bw + gap);
-            cr->set_source_rgb(r, g, b);
+
+            Cairo::RefPtr<Cairo::LinearGradient> bar_grad = Cairo::LinearGradient::create(x, h - 2, x, h - 2 - bh);
+            bar_grad->add_color_stop_rgba(0.0, r, g, b, 0.15);
+            bar_grad->add_color_stop_rgba(1.0, r, g, b, 0.85);
+
+            cr->set_source(bar_grad);
             cr->rectangle(x, h - 2 - bh, bw, bh);
             cr->fill();
+
+            cr->set_source_rgba(r, g, b, 1.0);
+            cr->set_line_width(1.5);
+            cr->move_to(x, h - 2 - bh);
+            cr->line_to(x + bw, h - 2 - bh);
+            cr->stroke();
         }
+        return;
+    }
+
+    // 3. Scope Style: Circular Lissajous Vector Orbit
+    if (style == "scope")
+    {
+        double amp0 = peak_for(0);
+        double amp1 = peak_for(1 % n);
+
+        double cx = w / 2.0;
+        double cy = h / 2.0;
+        double r  = std::min(w, h) * 0.32;
+        double phase = t * 1.8;
+
+        auto draw_orbit = [&] (double line_w, double opacity_mult)
+        {
+            cr->set_line_width(line_w);
+            bool first = true;
+            int steps = 120;
+            for (int i = 0; i <= steps; i++)
+            {
+                double theta = i * (2.0 * G_PI / steps);
+                
+                double radial_mod = 1.0 + 
+                    (amp0 * std::sin(theta * 3.0 + phase * 1.5) + 
+                     amp1 * std::cos(theta * 5.0 - phase * 1.2)) * 0.32;
+                
+                if (amp0 > 0.05)
+                {
+                    radial_mod += 0.02 * std::sin(theta * 15.0 + phase * 10.0) * amp0;
+                }
+
+                double rad = r * radial_mod;
+                double x = cx + rad * std::cos(theta + phase * 0.2);
+                double y = cy + rad * std::sin(theta + phase * 0.2);
+
+                if (first)
+                {
+                    cr->move_to(x, y);
+                    first = false;
+                }
+                else
+                {
+                    cr->line_to(x, y);
+                }
+            }
+            cr->stroke();
+        };
+
+        double max_amp = std::max(amp0, amp1);
+        double cr_r, cr_g, cr_b;
+        cyberpunk_color(max_amp, cr_r, cr_g, cr_b);
+
+        cr->set_source_rgba(cr_r, cr_g, cr_b, 0.15);
+        draw_orbit(5.0, 0.15);
+
+        cr->set_source_rgba(cr_r, cr_g, cr_b, 0.4);
+        draw_orbit(2.5, 0.4);
+
+        cr->set_source_rgba(cr_r, cr_g, cr_b, 1.0);
+        draw_orbit(1.0, 1.0);
 
         return;
     }
 
-    /* mid line for wave-like styles */
-    cr->set_source_rgba(0.27, 0.28, 0.35, 0.5);
+    // Baseline axis line for wave-like styles
+    cr->set_source_rgba(0.0, 0.94, 1.0, 0.15);
     cr->set_line_width(1.0);
     cr->move_to(0, h / 2.0);
     cr->line_to(w, h / 2.0);
@@ -755,87 +925,180 @@ void WayfireVolume::draw_meter(const Cairo::RefPtr<Cairo::Context>& cr, int w, i
             continue;
         }
 
-        /* Shape is decorative; amplitude is real peak (not volume %). */
         double phase = ch * 0.7 + t * (1.2 + amp * 2.0);
         double r, g, b;
-        level_color(amp, r, g, b);
-        double alpha = 0.35 + 0.4 * (1.0 - ch / (double)std::max(traces, 1));
+        cyberpunk_color(amp, r, g, b);
+        double alpha = 0.35 + 0.45 * (1.0 - ch / (double)std::max(traces, 1));
 
-        if (style == "dots")
+        auto build_wave_path = [&] (bool is_mirror, bool bottom)
         {
-            cr->set_source_rgba(r, g, b, alpha);
-            for (int x = 0; x <= w; x += 6)
+            bool first = true;
+            for (int x = 0; x <= w; x += 2)
             {
                 double u = x / (double)w;
-                double y = std::sin(u * 6.28 * (1.5 + ch * 0.2) + phase) * amp * (h * 0.4);
-                cr->arc(x, h / 2.0 - y, 2.0, 0, 2 * G_PI);
+                double window = std::sin(u * G_PI);
+                double y = std::sin(u * 6.28 * (1.5 + ch * 0.25) + phase) * amp * (h * 0.45) * window;
+                if (is_mirror)
+                {
+                    y = std::abs(y);
+                }
+                if (bottom)
+                {
+                    y = -y;
+                }
+
+                if (first)
+                {
+                    cr->move_to(x, h / 2.0 - y);
+                    first = false;
+                } else
+                {
+                    cr->line_to(x, h / 2.0 - y);
+                }
+            }
+        };
+
+        // 4. Dots Style: Scientific Stem / Needle Plot
+        if (style == "dots")
+        {
+            for (int x = 4; x < w; x += 8)
+            {
+                double u = x / (double)w;
+                double window = std::sin(u * G_PI);
+                double y = std::sin(u * 6.28 * (1.5 + ch * 0.25) + phase) * amp * (h * 0.45) * window;
+
+                cr->set_source_rgba(r, g, b, alpha * 0.22);
+                cr->set_line_width(1.0);
+                cr->move_to(x, h / 2.0);
+                cr->line_to(x, h / 2.0 - y);
+                cr->stroke();
+
+                cr->set_source_rgba(r, g, b, alpha * 0.35);
+                cr->arc(x, h / 2.0 - y, 3.5, 0, 2 * G_PI);
+                cr->fill();
+
+                cr->set_source_rgba(r, g, b, std::min(1.0, alpha + 0.3));
+                cr->arc(x, h / 2.0 - y, 1.5, 0, 2 * G_PI);
                 cr->fill();
             }
 
             continue;
         }
 
-        if ((style == "wave-fill") || (style == "mirror") || (style == "ribbon"))
+        // 5. Ribbon Style: Overlapping Siri-like 3D Braided Waves
+        if (style == "ribbon")
         {
-            cr->set_source_rgba(r, g, b, alpha);
-            cr->move_to(0, h / 2.0);
-            for (int x = 0; x <= w; x += 2)
+            for (int sub = 0; sub < 3; sub++)
             {
-                double u = x / (double)w;
-                double y = std::sin(u * 6.28 * (1.5 + ch * 0.2) + phase) * amp * (h * 0.4);
-                if (style == "mirror")
+                double sub_phase = phase + sub * 1.5;
+                double sub_alpha = alpha * (0.25 - sub * 0.07);
+
+                double sr, sg, sb;
+                cyberpunk_color(amp * (1.0 - sub * 0.15), sr, sg, sb);
+
+                cr->set_source_rgba(sr, sg, sb, sub_alpha);
+                cr->move_to(0, h / 2.0);
+
+                auto build_ribbon_path = [&] (double p)
                 {
-                    y = std::abs(y);
-                }
+                    bool first = true;
+                    for (int x = 0; x <= w; x += 2)
+                    {
+                        double u = x / (double)w;
+                        double window = std::sin(u * G_PI);
+                        double y = std::sin(u * 6.28 * (1.2 + ch * 0.2 + sub * 0.1) + p) * amp * (h * 0.45) * window;
+                        if (first)
+                        {
+                            cr->move_to(x, h / 2.0 - y);
+                            first = false;
+                        }
+                        else
+                        {
+                            cr->line_to(x, h / 2.0 - y);
+                        }
+                    }
+                };
 
-                cr->line_to(x, h / 2.0 - y);
-            }
-
-            if (style == "mirror")
-            {
+                build_ribbon_path(sub_phase);
                 for (int x = w; x >= 0; x -= 2)
                 {
                     double u = x / (double)w;
-                    double y = std::abs(std::sin(u * 6.28 * (1.5 + ch * 0.2) + phase) * amp * (h * 0.4));
-                    cr->line_to(x, h / 2.0 + y);
+                    double window = std::sin(u * G_PI);
+                    double y = std::sin(u * 6.28 * (1.2 + ch * 0.2 + sub * 0.1) + sub_phase) * amp * (h * 0.45) * window;
+                    cr->line_to(x, h / 2.0 + y * 0.4);
                 }
-            } else
-            {
-                for (int x = w; x >= 0; x -= 2)
-                {
-                    double u = x / (double)w;
-                    double y = std::sin(u * 6.28 * (1.5 + ch * 0.2) + phase) * amp * (h * 0.4);
-                    cr->line_to(x, h / 2.0 + y * 0.85);
-                }
-            }
+                cr->close_path();
+                cr->fill();
 
-            cr->close_path();
-            cr->fill();
+                cr->set_source_rgba(sr, sg, sb, alpha * 0.85);
+                cr->set_line_width(1.2);
+                build_ribbon_path(sub_phase);
+                cr->stroke();
+            }
             continue;
         }
 
-        /* wave / scope — stroke only */
-        cr->set_source_rgba(r, g, b, std::min(1.0, alpha + 0.3));
-        cr->set_line_width(style == "scope" ? 1.5 : 1.8);
-        bool first = true;
-        for (int x = 0; x <= w; x += 2)
+        // 6. Mirror Style: Cardiac ECG / Vertical Spikes
+        if (style == "mirror")
         {
-            double u = x / (double)w;
-            double y = std::sin(u * 6.28 * (1.5 + ch * 0.2) + phase) * amp * (h * 0.4);
-            if (first)
+            cr->set_line_width(1.5);
+            for (int x = 2; x < w; x += 4)
             {
+                double u = x / (double)w;
+                double window = std::sin(u * G_PI);
+                double y = std::sin(u * 6.28 * (1.5 + ch * 0.25) + phase) * amp * (h * 0.45) * window;
+                y = std::abs(y);
+
+                cr->set_source_rgba(r, g, b, alpha * 0.85);
                 cr->move_to(x, h / 2.0 - y);
-                first = false;
-            } else
-            {
-                cr->line_to(x, h / 2.0 - y);
+                cr->line_to(x, h / 2.0 + y);
+                cr->stroke();
             }
+            continue;
         }
 
+        // 7. Wave-Fill Style: Classic Fluid Oscillation
+        if (style == "wave-fill")
+        {
+            cr->set_source_rgba(r, g, b, alpha * 0.22);
+            cr->move_to(0, h / 2.0);
+            build_wave_path(false, false);
+            for (int x = w; x >= 0; x -= 2)
+            {
+                double u = x / (double)w;
+                double window = std::sin(u * G_PI);
+                double y = std::sin(u * 6.28 * (1.5 + ch * 0.25) + phase) * amp * (h * 0.45) * window;
+                cr->line_to(x, h / 2.0 + y * 0.8);
+            }
+            cr->close_path();
+            cr->fill();
+
+            cr->set_source_rgba(r, g, b, std::min(1.0, alpha + 0.3));
+            cr->set_line_width(1.6);
+            build_wave_path(false, false);
+            cr->stroke();
+
+            continue;
+        }
+
+        /* Default Wave/Line Style: Multi-pass Neon Glow */
+        cr->set_source_rgba(r, g, b, alpha * 0.18);
+        cr->set_line_width(5.0);
+        build_wave_path(false, false);
+        cr->stroke();
+
+        cr->set_source_rgba(r, g, b, alpha * 0.45);
+        cr->set_line_width(2.5);
+        build_wave_path(false, false);
+        cr->stroke();
+
+        cr->set_source_rgba(r, g, b, std::min(1.0, alpha + 0.3));
+        cr->set_line_width(1.2);
+        build_wave_path(false, false);
         cr->stroke();
     }
 
-    (void)level; /* volume slider level no longer drives fake amplitude */
+    (void)level;
 }
 
 bool WayfireVolume::on_meter_tick()
@@ -983,12 +1246,18 @@ void WayfireVolume::refresh_devices()
         const bool cap_list_changed  = (cap_fp != cap_list_fp);
         const bool play_sel_changed  = (cur_play != play_active_fp);
         const bool cap_sel_changed   = (cur_cap != cap_active_fp);
+        const bool play_empty = !play_combo.get_model() ||
+            play_combo.get_model()->children().size() == 0;
+        const bool cap_empty = !cap_combo.get_model() ||
+            cap_combo.get_model()->children().size() == 0;
 
         /*
-         * Rebuilding ComboBoxText every poll closes/flickers an open popup.
-         * Only rebuild when inventory or active path actually changes.
+         * Rebuilding ComboBoxText while the popover is open makes GTK autohide
+         * it (focus/grab lost) — looks like "sound panel won't open".
+         * Full rebuild only when inventory changes or combo is empty.
+         * Selection-only changes use set_active_id without remove_all.
          */
-        if (play_list_changed || play_sel_changed || play_combo.get_model()->children().size() == 0)
+        auto rebuild_play = [&] ()
         {
             filling_combos = true;
             play_combo.remove_all();
@@ -1000,29 +1269,45 @@ void WayfireVolume::refresh_devices()
             for (size_t i = 0; i < play_devices.size(); i++)
             {
                 const auto& d = play_devices[i];
+                if (!cur_play.empty() && (d.path == cur_play || d.id == cur_play ||
+                        cur_play.find(d.id) != std::string::npos))
+                {
+                    play_active = (int)i;
+                    break;
+                }
+            }
+            /* Current device first in the dropdown. */
+            auto append_dev = [&] (size_t i) {
+                const auto& d = play_devices[i];
                 std::string label = d.description.empty() ? d.id : d.description;
                 if (!d.path_ok)
                 {
                     label += " (missing)";
                 }
-
                 play_combo.append(d.path, label);
-                if (!cur_play.empty() && (d.path == cur_play || d.id == cur_play ||
-                        cur_play.find(d.id) != std::string::npos))
+            };
+            if (play_active >= 0)
+            {
+                append_dev((size_t)play_active);
+            }
+            for (size_t i = 0; i < play_devices.size(); i++)
+            {
+                if ((int)i == play_active)
                 {
-                    play_active = (int)i;
+                    continue;
                 }
+                append_dev(i);
             }
 
             if (!play_devices.empty())
             {
-                play_combo.set_active(play_active >= 0 ? play_active : 0);
+                play_combo.set_active(0);
             }
 
             filling_combos = false;
-        }
+        };
 
-        if (cap_list_changed || cap_sel_changed || cap_combo.get_model()->children().size() == 0)
+        auto rebuild_cap = [&] ()
         {
             filling_combos = true;
             cap_combo.remove_all();
@@ -1034,26 +1319,108 @@ void WayfireVolume::refresh_devices()
             for (size_t i = 0; i < cap_devices.size(); i++)
             {
                 const auto& d = cap_devices[i];
+                if (!cur_cap.empty() && (d.path == cur_cap || d.id == cur_cap ||
+                        cur_cap.find(d.id) != std::string::npos))
+                {
+                    cap_active = (int)i;
+                    break;
+                }
+            }
+            auto append_cap = [&] (size_t i) {
+                const auto& d = cap_devices[i];
                 std::string label = d.description.empty() ? d.id : d.description;
                 if (!d.path_ok)
                 {
                     label += " (missing)";
                 }
-
                 cap_combo.append(d.path, label);
-                if (!cur_cap.empty() && (d.path == cur_cap || d.id == cur_cap ||
-                        cur_cap.find(d.id) != std::string::npos))
+            };
+            if (cap_active >= 0)
+            {
+                append_cap((size_t)cap_active);
+            }
+            for (size_t i = 0; i < cap_devices.size(); i++)
+            {
+                if ((int)i == cap_active)
                 {
-                    cap_active = (int)i;
+                    continue;
                 }
+                append_cap(i);
             }
 
             if (!cap_devices.empty())
             {
-                cap_combo.set_active(cap_active >= 0 ? cap_active : 0);
+                cap_combo.set_active(0);
             }
 
             filling_combos = false;
+        };
+
+        if (play_list_changed || play_empty)
+        {
+            rebuild_play();
+        } else if (play_sel_changed)
+        {
+            /* Selection-only: do not remove_all (closes open popover). */
+            filling_combos = true;
+            play_active_fp = cur_play;
+            if (!cur_play.empty())
+            {
+                /* Prefer path id; fall back to first matching row. */
+                play_combo.set_active_id(cur_play);
+                if (play_combo.get_active_id() != cur_play)
+                {
+                    for (size_t i = 0; i < play_devices.size(); i++)
+                    {
+                        const auto& d = play_devices[i];
+                        if (d.path == cur_play || d.id == cur_play)
+                        {
+                            play_combo.set_active_id(d.path);
+                            break;
+                        }
+                    }
+                }
+            }
+            filling_combos = false;
+            /* Keep inventory snapshot for next fingerprint compare. */
+            play_devices = std::move(new_play);
+            play_list_fp = play_fp;
+        } else
+        {
+            play_devices = std::move(new_play);
+            play_list_fp = play_fp;
+        }
+
+        if (cap_list_changed || cap_empty)
+        {
+            rebuild_cap();
+        } else if (cap_sel_changed)
+        {
+            filling_combos = true;
+            cap_active_fp = cur_cap;
+            if (!cur_cap.empty())
+            {
+                cap_combo.set_active_id(cur_cap);
+                if (cap_combo.get_active_id() != cur_cap)
+                {
+                    for (size_t i = 0; i < cap_devices.size(); i++)
+                    {
+                        const auto& d = cap_devices[i];
+                        if (d.path == cur_cap || d.id == cur_cap)
+                        {
+                            cap_combo.set_active_id(d.path);
+                            break;
+                        }
+                    }
+                }
+            }
+            filling_combos = false;
+            cap_devices = std::move(new_cap);
+            cap_list_fp = cap_fp;
+        } else
+        {
+            cap_devices = std::move(new_cap);
+            cap_list_fp = cap_fp;
         }
     } catch (...)
     {
@@ -1239,8 +1606,32 @@ void WayfireVolume::copy_peaks(bool is_output, float *out, int max_n, int *n_out
 void WayfireVolume::on_popover_shown()
 {
     popover_open = true;
-    refresh_devices();
-    start_level_probes();
+
+    /*
+     * Do not do heavy work synchronously here. Combo rebuilds and Pulse level
+     * probes both run on the main loop path and used to either:
+     *  - autohide the popover (combo remove_all steals grab/focus), or
+     *  - freeze the UI for seconds (PeakProbe wait without timeout).
+     * Defer so GTK can finish showing the popover first.
+     */
+    Glib::signal_idle().connect_once([this] ()
+    {
+        if (!popover_open)
+        {
+            return;
+        }
+        try
+        {
+            refresh_devices();
+        } catch (...)
+        {}
+        try
+        {
+            start_level_probes();
+        } catch (...)
+        {}
+    });
+
     if (!meter_tick)
     {
         meter_tick = Glib::signal_timeout().connect(
@@ -1273,13 +1664,16 @@ void WayfireVolume::on_popover_hidden()
 
 void WayfireVolume::build_popover_ui()
 {
+    popover_root.add_css_class("volume-popover-root");
     popover_root.set_spacing(8);
     popover_root.set_margin(10);
     popover_root.set_size_request(320, -1);
 
     auto head = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL);
+    head->add_css_class("volume-popover-header");
     auto title = Gtk::make_managed<Gtk::Label>();
     title->set_markup("<b>Sound Settings</b>");
+    title->add_css_class("volume-popover-title");
     title->set_halign(Gtk::Align::START);
     title->set_hexpand(true);
     head->append(*title);
@@ -1290,6 +1684,8 @@ void WayfireVolume::build_popover_ui()
     auto out_title = Gtk::make_managed<Gtk::Label>("OUTPUT");
     out_title->set_halign(Gtk::Align::START);
     out_title->add_css_class("dim-label");
+    out_title->add_css_class("volume-popover-section-title");
+    out_section.add_css_class("volume-popover-section");
     out_section.set_spacing(6);
     out_section.append(*out_title);
 
@@ -1297,11 +1693,15 @@ void WayfireVolume::build_popover_ui()
     out_mute_btn.set_child(out_mute_icon);
     out_mute_btn.set_tooltip_text("Mute output");
     out_mute_btn.set_has_frame(false);
+    out_mute_btn.add_css_class("volume-popover-mute-btn");
     volume_scale.set_draw_value(false);
     volume_scale.set_hexpand(true);
     volume_scale.set_size_request(180, 0);
+    volume_scale.add_css_class("volume-popover-scale");
     out_pct.set_width_chars(4);
+    out_pct.add_css_class("volume-popover-pct");
     out_row.set_spacing(8);
+    out_row.add_css_class("volume-popover-row");
     out_row.append(out_mute_btn);
     out_row.append(volume_scale);
     out_row.append(out_pct);
@@ -1312,11 +1712,15 @@ void WayfireVolume::build_popover_ui()
     out_meter_lbl.set_halign(Gtk::Align::START);
     out_meter_lbl.set_hexpand(true);
     out_meter_lbl.add_css_class("dim-label");
+    out_meter_lbl.add_css_class("volume-popover-meter-lbl");
     out_ch_combo.set_tooltip_text("Output meter channels");
+    out_ch_combo.add_css_class("volume-popover-combo");
     out_graph_combo.set_tooltip_text("Output graph style");
+    out_graph_combo.add_css_class("volume-popover-combo");
     fill_channel_combo();
     fill_graph_combo(out_graph_combo, graph_style_out.value());
     out_meter_cap.set_spacing(4);
+    out_meter_cap.add_css_class("volume-popover-meter-cap");
     out_meter_cap.append(out_meter_lbl);
     out_meter_cap.append(out_ch_combo);
     out_meter_cap.append(out_graph_combo);
@@ -1324,6 +1728,7 @@ void WayfireVolume::build_popover_ui()
 
     out_meter.set_content_width(300);
     out_meter.set_content_height(48);
+    out_meter.add_css_class("volume-popover-meter");
     out_meter.set_draw_func([this] (const Cairo::RefPtr<Cairo::Context>& cr, int w, int h)
     {
         double level = max_norm > 0 ? volume_scale.get_target_value() / max_norm : 0.0;
@@ -1332,6 +1737,7 @@ void WayfireVolume::build_popover_ui()
     });
     out_section.append(out_meter);
     play_combo.set_hexpand(true);
+    play_combo.add_css_class("volume-popover-device-combo");
     out_section.append(play_combo);
     popover_root.append(out_section);
 
@@ -1341,6 +1747,8 @@ void WayfireVolume::build_popover_ui()
     auto in_title = Gtk::make_managed<Gtk::Label>("INPUT");
     in_title->set_halign(Gtk::Align::START);
     in_title->add_css_class("dim-label");
+    in_title->add_css_class("volume-popover-section-title");
+    in_section.add_css_class("volume-popover-section");
     in_section.set_spacing(6);
     in_section.append(*in_title);
 
@@ -1348,11 +1756,15 @@ void WayfireVolume::build_popover_ui()
     in_mute_btn.set_child(in_mute_icon);
     in_mute_btn.set_tooltip_text("Mute microphone");
     in_mute_btn.set_has_frame(false);
+    in_mute_btn.add_css_class("volume-popover-mute-btn");
     mic_scale.set_draw_value(false);
     mic_scale.set_hexpand(true);
     mic_scale.set_size_request(180, 0);
+    mic_scale.add_css_class("volume-popover-scale");
     mic_pct.set_width_chars(4);
+    mic_pct.add_css_class("volume-popover-pct");
     in_row.set_spacing(8);
+    in_row.add_css_class("volume-popover-row");
     in_row.append(in_mute_btn);
     in_row.append(mic_scale);
     in_row.append(mic_pct);
@@ -1362,15 +1774,19 @@ void WayfireVolume::build_popover_ui()
     in_meter_lbl.set_halign(Gtk::Align::START);
     in_meter_lbl.set_hexpand(true);
     in_meter_lbl.add_css_class("dim-label");
+    in_meter_lbl.add_css_class("volume-popover-meter-lbl");
     in_graph_combo.set_tooltip_text("Input graph style (independent of output)");
+    in_graph_combo.add_css_class("volume-popover-combo");
     fill_graph_combo(in_graph_combo, graph_style_in.value());
     in_meter_cap.set_spacing(4);
+    in_meter_cap.add_css_class("volume-popover-meter-cap");
     in_meter_cap.append(in_meter_lbl);
     in_meter_cap.append(in_graph_combo);
     in_section.append(in_meter_cap);
 
     in_meter.set_content_width(300);
     in_meter.set_content_height(40);
+    in_meter.add_css_class("volume-popover-meter");
     in_meter.set_draw_func([this] (const Cairo::RefPtr<Cairo::Context>& cr, int w, int h)
     {
         double level = max_norm_src > 0 ? mic_scale.get_target_value() / max_norm_src : 0.0;
@@ -1379,17 +1795,23 @@ void WayfireVolume::build_popover_ui()
     });
     in_section.append(in_meter);
     cap_combo.set_hexpand(true);
+    cap_combo.add_css_class("volume-popover-device-combo");
     in_section.append(cap_combo);
     popover_root.append(in_section);
 
     /* Virtual OSS */
     voss_section.set_spacing(4);
     voss_section.set_margin_top(4);
+    voss_section.add_css_class("volume-popover-voss-section");
     voss_title.set_halign(Gtk::Align::START);
+    voss_title.add_css_class("volume-popover-voss-title");
     voss_play_lbl.set_halign(Gtk::Align::START);
+    voss_play_lbl.add_css_class("volume-popover-voss-lbl");
     voss_cap_lbl.set_halign(Gtk::Align::START);
+    voss_cap_lbl.add_css_class("volume-popover-voss-lbl");
     voss_fmt_lbl.set_halign(Gtk::Align::START);
     voss_fmt_lbl.add_css_class("dim-label");
+    voss_fmt_lbl.add_css_class("volume-popover-voss-fmt");
     voss_section.append(voss_title);
     voss_section.append(voss_play_lbl);
     voss_section.append(voss_cap_lbl);
@@ -1400,8 +1822,10 @@ void WayfireVolume::build_popover_ui()
     /* Footer: Advanced only — Virtual OSS status is already in the strip above. */
     foot.set_margin_top(6);
     foot.set_halign(Gtk::Align::END);
+    foot.add_css_class("volume-popover-footer");
     adv_btn.set_label("Advanced…");
     adv_btn.set_has_frame(false);
+    adv_btn.add_css_class("volume-popover-adv-btn");
     foot.append(adv_btn);
     popover_root.append(foot);
 
@@ -1635,6 +2059,59 @@ void WayfireVolume::init(Gtk::Box *container)
     button->add_controller(middle_click_gesture);
     button->open_on(1);
 
+    // Parent the right-click popover menu to the panel button
+    gtk_widget_set_parent(GTK_WIDGET(popover_menu.gobj()), GTK_WIDGET(button->gobj()));
+
+    // Create action group for the context menu actions
+    auto actions = Gio::SimpleActionGroup::create();
+
+    auto mute_out_action = Gio::SimpleAction::create("mute_out");
+    signals.push_back(mute_out_action->signal_activate().connect([this] (Glib::VariantBase) {
+        if (gvc_stream) {
+            bool muted = !gvc_mixer_stream_get_is_muted(gvc_stream);
+            gvc_mixer_stream_change_is_muted(gvc_stream, muted);
+            gvc_mixer_stream_push_volume(gvc_stream);
+            update_icon();
+        }
+    }));
+
+    auto mute_in_action = Gio::SimpleAction::create("mute_in");
+    signals.push_back(mute_in_action->signal_activate().connect([this] (Glib::VariantBase) {
+        if (gvc_source) {
+            bool muted = !gvc_mixer_stream_get_is_muted(gvc_source);
+            gvc_mixer_stream_change_is_muted(gvc_source, muted);
+            gvc_mixer_stream_push_volume(gvc_source);
+            update_mic_badge();
+        }
+    }));
+
+    auto settings_action = Gio::SimpleAction::create("settings");
+    signals.push_back(settings_action->signal_activate().connect([this] (Glib::VariantBase) {
+        button->popup();
+    }));
+
+    auto mixer_action = Gio::SimpleAction::create("mixer");
+    signals.push_back(mixer_action->signal_activate().connect([this] (Glib::VariantBase) {
+        on_advanced_clicked();
+    }));
+
+    actions->add_action(mute_out_action);
+    actions->add_action(mute_in_action);
+    actions->add_action(settings_action);
+    actions->add_action(mixer_action);
+    popover_menu.insert_action_group("volumeaction", actions);
+
+    // Bind right click (button 3) to show the menu
+    auto right_click_gesture = Gtk::GestureClick::create();
+    right_click_gesture->set_button(3);
+    signals.push_back(right_click_gesture->signal_released().connect(
+        [this] (int, double, double) { show_right_click_menu(); }));
+    signals.push_back(right_click_gesture->signal_pressed().connect(
+        [right_click_gesture] (int, double, double) {
+            right_click_gesture->set_state(Gtk::EventSequenceState::CLAIMED);
+        }));
+    button->add_controller(right_click_gesture);
+
     container->append(*button);
     button->append(icon_box);
     button->set_popup_child(popover_root);
@@ -1693,4 +2170,26 @@ WayfireVolume::~WayfireVolume()
         gvc_mixer_control_close(gvc_control);
         g_object_unref(gvc_control);
     }
+    gtk_widget_unparent(GTK_WIDGET(popover_menu.gobj()));
+}
+
+void WayfireVolume::show_right_click_menu()
+{
+    auto menu = Gio::Menu::create();
+
+    bool out_muted = gvc_stream && gvc_mixer_stream_get_is_muted(gvc_stream);
+    bool in_muted = gvc_source && gvc_mixer_stream_get_is_muted(gvc_source);
+
+    auto mute_out_item = Gio::MenuItem::create(out_muted ? "Unmute Output" : "Mute Output", "volumeaction.mute_out");
+    auto mute_in_item = Gio::MenuItem::create(in_muted ? "Unmute Input" : "Mute Input", "volumeaction.mute_in");
+    auto settings_item = Gio::MenuItem::create("Sound Settings...", "volumeaction.settings");
+    auto mixer_item = Gio::MenuItem::create("Advanced Mixer...", "volumeaction.mixer");
+
+    menu->append_item(mute_out_item);
+    menu->append_item(mute_in_item);
+    menu->append_item(settings_item);
+    menu->append_item(mixer_item);
+
+    popover_menu.set_menu_model(menu);
+    popover_menu.popup();
 }

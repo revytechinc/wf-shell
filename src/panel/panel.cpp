@@ -399,21 +399,35 @@ class WayfirePanel::impl
 
     void handle_config_reload()
     {
-        update_orientation();
+        /* Theme / ini reloads must not take down the panel if a widget misbehaves. */
+        try
+        {
+            update_orientation();
+        } catch (...)
+        {}
+
+        auto safe_reload = [] (auto& w)
+        {
+            try
+            {
+                w->handle_config_reload();
+            } catch (...)
+            {}
+        };
 
         for (auto& w : left_widgets)
         {
-            w->handle_config_reload();
+            safe_reload(w);
         }
 
         for (auto& w : right_widgets)
         {
-            w->handle_config_reload();
+            safe_reload(w);
         }
 
         for (auto& w : center_widgets)
         {
-            w->handle_config_reload();
+            safe_reload(w);
         }
     }
 

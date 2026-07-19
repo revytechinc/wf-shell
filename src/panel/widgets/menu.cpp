@@ -14,8 +14,368 @@
 #include "wf-popover.hpp"
 #include "power-controller.hpp"
 #include "platform.hpp"
+#include "wf-shell-app.hpp"
+#include <algorithm>
+#include <cctype>
+#include <filesystem>
+#include <fstream>
+#include <map>
+#include <utility>
+#include <vector>
 
 const std::string default_icon = "wayfire";
+
+namespace
+{
+
+struct ThemeEntry
+{
+    std::string id;
+    std::string name;
+    std::string path; /* empty for default */
+    std::string era;  /* modern | retro | "" */
+};
+
+std::string trim_copy(std::string s)
+{
+    auto not_space = [] (unsigned char c) { return !std::isspace(c); };
+    s.erase(s.begin(), std::find_if(s.begin(), s.end(), not_space));
+    s.erase(std::find_if(s.rbegin(), s.rend(), not_space).base(), s.end());
+    return s;
+}
+
+std::string title_case_id(const std::string& id)
+{
+    std::string out;
+    bool cap = true;
+    for (char c : id)
+    {
+        if (c == '-' || c == '_')
+        {
+            out.push_back(' ');
+            cap = true;
+            continue;
+        }
+        if (cap)
+        {
+            out.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
+            cap = false;
+        } else
+        {
+            out.push_back(c);
+        }
+    }
+    return out;
+}
+
+/* Parse optional wf-shell-theme header: id=...; name=...; era=... */
+void parse_theme_header(const std::string& path, ThemeEntry& te)
+{
+    std::ifstream in(path);
+    if (!in)
+    {
+        return;
+    }
+    std::string line;
+    for (int i = 0; i < 5 && std::getline(in, line); ++i)
+    {
+        auto pos = line.find("wf-shell-theme:");
+        if (pos == std::string::npos)
+        {
+            continue;
+        }
+        auto rest = line.substr(pos + 15);
+        auto take = [&] (const char *key) -> std::string {
+            auto k = std::string(key) + "=";
+            auto p = rest.find(k);
+            if (p == std::string::npos)
+            {
+                return {};
+            }
+            p += k.size();
+            auto end = rest.find_first_of(";,*/", p);
+            auto val = rest.substr(p, end == std::string::npos ? std::string::npos : end - p);
+            return trim_copy(val);
+        };
+        auto id = take("id");
+        auto name = take("name");
+        auto era = take("era");
+        if (!id.empty())
+        {
+            te.id = id;
+        }
+        if (!name.empty())
+        {
+            te.name = name;
+        }
+        if (!era.empty())
+        {
+            te.era = era;
+        }
+        break;
+    }
+}
+
+std::string home_dir()
+{
+    const char *home = getenv("HOME");
+    return home ? std::string(home) : std::string{};
+}
+
+std::string ini_path()
+{
+    auto h = home_dir();
+    return h.empty() ? std::string{} : h + "/.config/wf-shell.ini";
+}
+
+/** Last non-empty panel/css_path from ini (handles duplicates). */
+std::string get_ini_css_path()
+{
+    std::string path = ini_path();
+    if (path.empty())
+    {
+        return {};
+    }
+    std::ifstream in(path);
+    if (!in)
+    {
+        return {};
+    }
+
+    std::string line;
+    std::string last;
+    bool in_panel = false;
+    while (std::getline(in, line))
+    {
+        std::string trimmed = trim_copy(line);
+        if (trimmed == "[panel]")
+        {
+            in_panel = true;
+            continue;
+        }
+        if (!trimmed.empty() && trimmed.front() == '[')
+        {
+            in_panel = false;
+            continue;
+        }
+        if (in_panel && trimmed.rfind("css_path", 0) == 0)
+        {
+            auto eq = trimmed.find('=');
+            if (eq != std::string::npos)
+            {
+                last = trim_copy(trimmed.substr(eq + 1));
+            }
+        }
+    }
+    return last;
+}
+
+/** Write a single css_path under [panel], removing duplicates elsewhere. */
+void update_ini_css_path(const std::string& path)
+{
+    std::string ip = ini_path();
+    if (ip.empty())
+    {
+        return;
+    }
+
+    std::ifstream in(ip);
+    std::vector<std::string> lines;
+    std::string line;
+    bool in_panel = false;
+    bool found_css_path = false;
+    bool saw_panel = false;
+
+    if (in)
+    {
+        while (std::getline(in, line))
+        {
+            std::string trimmed = trim_copy(line);
+            if (trimmed == "[panel]")
+            {
+                in_panel = true;
+                saw_panel = true;
+                lines.push_back(line);
+                continue;
+            }
+            if (!trimmed.empty() && trimmed.front() == '[')
+            {
+                in_panel = false;
+                lines.push_back(line);
+                continue;
+            }
+            /* Drop all css_path lines; re-insert one under [panel]. */
+            if (trimmed.rfind("css_path", 0) == 0)
+            {
+                if (in_panel && !found_css_path)
+                {
+                    lines.push_back("css_path = " + path);
+                    found_css_path = true;
+                }
+                continue;
+            }
+            lines.push_back(line);
+        }
+        in.close();
+    }
+
+    if (!saw_panel)
+    {
+        lines.push_back("[panel]");
+        lines.push_back("css_path = " + path);
+        found_css_path = true;
+    } else if (!found_css_path)
+    {
+        for (auto it = lines.begin(); it != lines.end(); ++it)
+        {
+            if (trim_copy(*it) == "[panel]")
+            {
+                lines.insert(it + 1, "css_path = " + path);
+                break;
+            }
+        }
+    }
+
+    std::ofstream out(ip);
+    if (!out)
+    {
+        return;
+    }
+    for (const auto& l : lines)
+    {
+        out << l << "\n";
+    }
+}
+
+/** Discover installed + user themes. Map id → ThemeEntry (user overrides system). */
+std::map<std::string, ThemeEntry> discover_themes()
+{
+    std::map<std::string, ThemeEntry> themes;
+    themes["default"] = ThemeEntry{"default", "Default Theme", "", ""};
+
+    auto scan_dir = [&] (const std::string& dir, bool user) {
+        std::error_code ec;
+        if (!std::filesystem::is_directory(dir, ec))
+        {
+            return;
+        }
+        for (auto& p : std::filesystem::directory_iterator(dir, ec))
+        {
+            if (ec || !p.is_regular_file())
+            {
+                continue;
+            }
+            if (p.path().extension() != ".css")
+            {
+                continue;
+            }
+            ThemeEntry te;
+            te.id   = p.path().stem().string();
+            te.name = title_case_id(te.id);
+            te.path = p.path().string();
+            parse_theme_header(te.path, te);
+            if (te.id.empty())
+            {
+                te.id = p.path().stem().string();
+            }
+            if (te.name.empty())
+            {
+                te.name = title_case_id(te.id);
+            }
+            /* User themes win by id. */
+            if (user || themes.find(te.id) == themes.end() || te.id == "default")
+            {
+                if (te.id != "default")
+                {
+                    themes[te.id] = te;
+                }
+            }
+        }
+    };
+
+    scan_dir(std::string(RESOURCEDIR) + "/themes", false);
+    auto h = home_dir();
+    if (!h.empty())
+    {
+        scan_dir(h + "/.config/wf-shell/themes", true);
+    }
+    return themes;
+}
+
+std::string resolve_theme_path(const std::string& id)
+{
+    if (id.empty() || id == "default")
+    {
+        return {};
+    }
+    auto themes = discover_themes();
+    auto it = themes.find(id);
+    if (it != themes.end())
+    {
+        return it->second.path;
+    }
+    return {};
+}
+
+std::string theme_id_from_css_path(const std::string& path)
+{
+    if (path.empty())
+    {
+        return "default";
+    }
+    try
+    {
+        return std::filesystem::path(path).stem().string();
+    } catch (...)
+    {
+        return "default";
+    }
+}
+
+/** Populate ComboBoxText with current selection first, then the rest. */
+void fill_combo_current_first(Gtk::ComboBoxText& combo,
+    const std::vector<std::pair<std::string, std::string>>& items,
+    const std::string& current_id)
+{
+    combo.remove_all();
+    std::string cur = current_id;
+    bool have_cur = false;
+    for (const auto& it : items)
+    {
+        if (it.first == cur)
+        {
+            have_cur = true;
+            break;
+        }
+    }
+    if (!have_cur && !items.empty())
+    {
+        cur = items.front().first;
+    }
+
+    /* Current first */
+    for (const auto& it : items)
+    {
+        if (it.first == cur)
+        {
+            combo.append(it.first, it.second);
+            break;
+        }
+    }
+    for (const auto& it : items)
+    {
+        if (it.first != cur)
+        {
+            combo.append(it.first, it.second);
+        }
+    }
+    if (!items.empty())
+    {
+        combo.set_active_id(cur);
+    }
+}
+
+} // namespace
 
 WfMenuLayout::WfMenuLayout(WayfireMenu *menu) : menu(menu)
 {}
@@ -1127,6 +1487,88 @@ void WayfireMenu::init(Gtk::Box *container)
     menu_fullscreen.set_callback(menu_fs_changed);
     menu_fs_changed();
 
+    box_bottom.set_orientation(Gtk::Orientation::HORIZONTAL);
+    box_bottom.set_hexpand(true);
+    box_bottom.set_halign(Gtk::Align::FILL);
+
+    /* Theme picker (left): current theme listed first in the dropdown. */
+    auto *theme_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
+    theme_box->set_margin_start(15);
+    theme_box->set_halign(Gtk::Align::START);
+
+    theme_lbl.set_text("Theme:");
+    theme_lbl.add_css_class("dim-label");
+    theme_lbl.set_valign(Gtk::Align::CENTER);
+
+    std::string current_css;
+    try
+    {
+        current_css = static_cast<std::string>(WfOption<std::string>{"panel/css_path"});
+    } catch (...)
+    {
+        current_css = get_ini_css_path();
+    }
+    if (current_css.empty())
+    {
+        current_css = get_ini_css_path();
+    }
+    std::string current_id = theme_id_from_css_path(current_css);
+
+    auto themes = discover_themes();
+    std::vector<std::pair<std::string, std::string>> theme_items;
+    /* default first among non-current; current will be hoisted by fill helper */
+    theme_items.emplace_back("default", "Default Theme");
+    /* Modern then retro, alpha within era */
+    std::vector<ThemeEntry> modern, retro, other;
+    for (auto& kv : themes)
+    {
+        if (kv.first == "default")
+        {
+            continue;
+        }
+        if (kv.second.era == "modern")
+        {
+            modern.push_back(kv.second);
+        } else if (kv.second.era == "retro")
+        {
+            retro.push_back(kv.second);
+        } else
+        {
+            other.push_back(kv.second);
+        }
+    }
+    auto by_name = [] (const ThemeEntry& a, const ThemeEntry& b) {
+        return a.name < b.name;
+    };
+    std::sort(modern.begin(), modern.end(), by_name);
+    std::sort(retro.begin(), retro.end(), by_name);
+    std::sort(other.begin(), other.end(), by_name);
+    for (auto& t : modern)
+    {
+        theme_items.emplace_back(t.id, t.name);
+    }
+    for (auto& t : other)
+    {
+        theme_items.emplace_back(t.id, t.name);
+    }
+    for (auto& t : retro)
+    {
+        theme_items.emplace_back(t.id, t.name);
+    }
+
+    fill_combo_current_first(theme_combo, theme_items, current_id);
+    theme_combo.set_valign(Gtk::Align::CENTER);
+    signals.push_back(theme_combo.signal_changed().connect(
+        sigc::mem_fun(*this, &WayfireMenu::on_theme_changed)));
+
+    theme_box->append(theme_lbl);
+    theme_box->append(theme_combo);
+    box_bottom.append(*theme_box);
+
+    auto *spacer = Gtk::make_managed<Gtk::Box>();
+    spacer->set_hexpand(true);
+    box_bottom.append(*spacer);
+
     logout_image.set_icon_size(Gtk::IconSize::LARGE);
     logout_image.set_from_icon_name("system-shutdown");
     logout_button.add_css_class("flat");
@@ -1135,7 +1577,6 @@ void WayfireMenu::init(Gtk::Box *container)
     logout_button.set_margin_end(35);
     logout_button.set_child(logout_image);
     box_bottom.append(logout_button);
-    box_bottom.set_halign(Gtk::Align::END);
 
     popover_layout_box.set_orientation(Gtk::Orientation::VERTICAL);
 
@@ -1228,5 +1669,112 @@ WayfireMenu::~WayfireMenu()
     for (auto signal : signals)
     {
         signal.disconnect();
+    }
+}
+
+
+
+void WayfireMenu::on_theme_changed()
+{
+    if (filling_theme_combo)
+    {
+        return;
+    }
+
+    std::string selected = theme_combo.get_active_id();
+    if (selected.empty())
+    {
+        return;
+    }
+    std::string target_path = resolve_theme_path(selected);
+
+    /*
+     * Seamless switch (must not crash the panel):
+     *  1) update in-memory option so on_css_reload sees the new path immediately
+     *  2) reload CSS only (no full widget config reload on this path)
+     *  3) defer ini write so inotify config reload cannot re-enter mid-handler
+     *  4) rebuild combo so the active theme sits at the top of the list
+     */
+    try
+    {
+        auto opt = WayfireShellApp::get().config.get_option<std::string>("panel/css_path");
+        if (opt)
+        {
+            opt->set_value(target_path);
+        }
+    } catch (...)
+    {
+        /* option may be missing in some configs */
+    }
+
+    try
+    {
+        WayfireShellApp::get().on_css_reload();
+    } catch (...)
+    {
+        std::cerr << "wf-panel: theme CSS reload failed" << std::endl;
+    }
+
+    /* Persist after the current event loop turn — avoids nested config reload
+     * while GTK is still processing the combo change. */
+    Glib::signal_idle().connect_once([path = target_path] ()
+    {
+        try
+        {
+            update_ini_css_path(path);
+        } catch (...)
+        {}
+    });
+
+    /* Keep current selection at top of the dropdown. */
+    try
+    {
+        auto themes = discover_themes();
+        std::vector<std::pair<std::string, std::string>> theme_items;
+        theme_items.emplace_back("default", "Default Theme");
+        std::vector<ThemeEntry> modern, retro, other;
+        for (auto& kv : themes)
+        {
+            if (kv.first == "default")
+            {
+                continue;
+            }
+            if (kv.second.era == "modern")
+            {
+                modern.push_back(kv.second);
+            } else if (kv.second.era == "retro")
+            {
+                retro.push_back(kv.second);
+            } else
+            {
+                other.push_back(kv.second);
+            }
+        }
+        auto by_name = [] (const ThemeEntry& a, const ThemeEntry& b) {
+            return a.name < b.name;
+        };
+        std::sort(modern.begin(), modern.end(), by_name);
+        std::sort(retro.begin(), retro.end(), by_name);
+        std::sort(other.begin(), other.end(), by_name);
+        for (auto& t : modern)
+        {
+            theme_items.emplace_back(t.id, t.name);
+        }
+        for (auto& t : other)
+        {
+            theme_items.emplace_back(t.id, t.name);
+        }
+        for (auto& t : retro)
+        {
+            theme_items.emplace_back(t.id, t.name);
+        }
+
+        /* Block signal while reordering so we do not recurse. */
+        filling_theme_combo = true;
+        fill_combo_current_first(theme_combo, theme_items, selected);
+        filling_theme_combo = false;
+    } catch (...)
+    {
+        filling_theme_combo = false;
     }
 }

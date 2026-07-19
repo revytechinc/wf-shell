@@ -127,7 +127,7 @@ static std::string uint_to_time(int64_t time)
 
 void WayfireBatteryInfo::update_details()
 {
-    if (!display_device)
+    if (!display_device || !box)
     {
         return;
     }
@@ -305,20 +305,43 @@ bool WayfireBatteryInfo::setup_dbus_battery()
 
 void WayfireBatteryInfo::update_layout()
 {
-    WfOption<std::string> panel_position{"panel/position"};
+    /* Widget may be inert when UPower/power-profiles are unavailable (common
+     * on FreeBSD desktops). Config reload after theme change must not crash. */
+    if (!box)
+    {
+        return;
+    }
 
-    if (panel_position.value() == PANEL_POSITION_LEFT or panel_position.value() == PANEL_POSITION_RIGHT)
+    try
     {
-        box->set_orientation(Gtk::Orientation::VERTICAL);
-    } else
+        WfOption<std::string> panel_position{"panel/position"};
+
+        if (panel_position.value() == PANEL_POSITION_LEFT or
+            panel_position.value() == PANEL_POSITION_RIGHT)
+        {
+            box->set_orientation(Gtk::Orientation::VERTICAL);
+        } else
+        {
+            box->set_orientation(Gtk::Orientation::HORIZONTAL);
+        }
+    } catch (...)
     {
-        box->set_orientation(Gtk::Orientation::HORIZONTAL);
+        /* Config mid-reload or missing option — ignore. */
     }
 }
 
 void WayfireBatteryInfo::handle_config_reload()
 {
-    update_layout();
+    /* Defensive: never let theme/ini reload take down the panel. */
+    try
+    {
+        if (!box)
+        {
+            return;
+        }
+        update_layout();
+    } catch (...)
+    {}
 }
 
 // TODO: simplify config loading

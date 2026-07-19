@@ -137,13 +137,20 @@ DeviceControlWidget::DeviceControlWidget(std::shared_ptr<Network> network) :
     network(network)
 {
     add_css_class("device");
+    topbox.add_css_class("device-header");
+    label.add_css_class("device-label");
+    revealer_box.add_css_class("device-content");
     set_halign(Gtk::Align::FILL);
     set_orientation(Gtk::Orientation::VERTICAL);
     append(topbox);
     append(revealer);
     topbox.append(image);
     topbox.append(label);
-    revealer.set_child(revealer_box);
+    revealer.set_child(ap_scroll);
+    ap_scroll.set_child(revealer_box);
+    ap_scroll.set_policy(Gtk::PolicyType::NEVER, Gtk::PolicyType::AUTOMATIC);
+    ap_scroll.set_max_content_height(250);
+    ap_scroll.set_propagate_natural_height(true);
     revealer_box.set_orientation(Gtk::Orientation::VERTICAL);
     image.add_css_class("default-icon");
     auto wifi   = std::dynamic_pointer_cast<WifiNetwork>(network);
@@ -474,7 +481,13 @@ void NetworkControlWidget::setup_linux_ui()
 {
     /* Linux: NetworkManager D-Bus UI */
     network_manager_failed.set_label("Network Manager is not running");
+    network_manager_failed.add_css_class("network-failed-label");
     append(network_manager_failed);
+
+    top.add_css_class("network-global-toggles");
+    global_networking.add_css_class("network-toggle-button");
+    wifi_networking.add_css_class("network-toggle-button");
+    mobile_networking.add_css_class("network-toggle-button");
 
     top.append(global_networking);
     top.append(wifi_networking);
