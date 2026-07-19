@@ -1,27 +1,11 @@
 /* wf-shell-theme: id=amiga-workbench; name=Amiga Workbench; era=retro */
 /* ==========================================================================
- * Amiga Workbench 2/3 inspired theme
- *
- * Palette (classic WB):
- *   Gray fill    #aaaaaa   panel / window body
- *   Blue title   #0000aa   selected / title bars
- *   Orange hi    #ee8800   accents (classic Amiga orange)
- *   Black text   #000000   on light surfaces
- *   White text   #ffffff   on blue / dark surfaces
- *   Shadow       #555555   3D bevel dark
- *   Shine        #ffffff   3D bevel light
- *
- * Rules: never dark-blue text on dark-blue fill; icons always get outline
- * shadows so symbolic glyphs stay readable on gray.
+ * Amiga Workbench — contrast-safe theme (generated)
+ * panel_fg on panel_bg · surface_fg on surface · title_fg on title_bg
+ * Icons always outlined so they never vanish into the bar.
  * ========================================================================== */
 
-/* ── Shared tokens as comments (GTK CSS has no vars in older stacks) ─────
- * bg: #aaaaaa  text: #000000  title: #0000aa  accent: #ee8800
- */
-
-/* ══════════════════════════════════════════════════════════════════════════
- * Panel bar
- * ══════════════════════════════════════════════════════════════════════════ */
+/* ── Panel ─────────────────────────────────────────────────────────────── */
 
 .wf-panel {
     background-color: #9999bb;
@@ -29,10 +13,9 @@
     color: #000000;
     border-bottom: 2px solid #000000;
     border-top: 1px solid #ffffff;
-    box-shadow: inset 0 1px 0 #ccccdd, 0 2px 0 #555555;
+    box-shadow: inset 0 1px 0 #ffffff, 0 2px 0 #555555;
 }
 
-/* Labels / chrome on the bar — black on lavender-gray */
 .wf-panel .clock,
 .wf-panel .battery,
 .wf-panel .network,
@@ -60,11 +43,7 @@
 .wf-panel .window-list button:hover {
     color: #ffffff;
     background-color: #0000aa;
-    border: 1px solid #000000;
-    border-top-color: #ffffff;
-    border-left-color: #ffffff;
-    border-right-color: #555555;
-    border-bottom-color: #555555;
+    border-color: #000000;
     text-shadow: none;
     box-shadow: none;
 }
@@ -72,113 +51,33 @@
 .wf-panel .volume.selected,
 .wf-panel .network.selected,
 .wf-panel .menu.selected,
-.wf-panel .window-list button.active {
+.wf-panel .window-list button.active,
+.wf-panel .window-button.activated {
     color: #ffffff;
     background-color: #0000aa;
-    border: 1px solid #000000;
-    border-top-color: #555555;
-    border-left-color: #555555;
-    border-right-color: #ffffff;
-    border-bottom-color: #ffffff;
+    border-color: #000000;
     text-shadow: none;
     box-shadow: none;
 }
 
-/* Window-list active — classic selected gadget */
-.wf-panel .window-button.activated {
-    background-color: #0000aa;
-    color: #ffffff;
-}
-
 .wf-panel .window-button:hover {
-    background-color: #ccccdd;
+    background-color: #bbbbbb;
     color: #000000;
 }
 
-/* ══════════════════════════════════════════════════════════════════════════
- * Icons — outline so dark glyphs never vanish into the bar
- * (volume / network / battery / menu / launchers / tray)
- * ══════════════════════════════════════════════════════════════════════════ */
-
-/*
- * Symbolic icons use `color` + -gtk-icon-shadow.
- * Full-color launchers use filter drop-shadow for a similar halo.
- */
-.wf-panel .widget-icon,
-.wf-panel .volume image,
-.wf-panel .network image,
-.wf-panel .battery image,
-.wf-panel .menu image,
-.wf-panel .tray-button image,
-.wf-panel .clock image,
-.wf-panel image.widget-icon {
-    color: #000000;
-    -gtk-icon-shadow:
-        0  1px 0 #ffffff,
-        0 -1px 0 #ffffff,
-         1px  0 0 #ffffff,
-        -1px  0 0 #ffffff,
-         1px  1px 0 #ffffff,
-        -1px -1px 0 #ffffff,
-         1px -1px 0 #ffffff,
-        -1px  1px 0 #ffffff,
-         1px  1px 1px rgba(0, 0, 0, 0.55);
-}
-
-/* Selected / hover gadgets: invert to white icon with dark outline */
-.wf-panel .volume.selected image,
-.wf-panel .network.selected image,
-.wf-panel .menu.selected image,
-.wf-panel .volume:hover image,
-.wf-panel .network:hover image,
-.wf-panel .menu:hover image,
-.wf-panel .battery:hover image {
-    color: #ffffff;
-    -gtk-icon-shadow:
-        0  1px 0 #000000,
-        0 -1px 0 #000000,
-         1px  0 0 #000000,
-        -1px  0 0 #000000,
-         1px  1px 0 #000000,
-        -1px -1px 0 #000000,
-         1px -1px 0 #000000,
-        -1px  1px 0 #000000;
-}
-
-/* Network quality tints stay readable (dark enough on gray bar) */
-.wf-panel .network.excellent image { color: #006600; }
-.wf-panel .network.good image      { color: #0000aa; }
-.wf-panel .network.medium image    { color: #886600; }
-.wf-panel .network.weak image      { color: #aa4400; }
-.wf-panel .network.none image      { color: #444444; }
-.wf-panel .network.wifi.weak image { color: #aa4400; }
-.wf-panel .network.wifi.excellent image { color: #006600; }
-
-/* Full-color app launchers — halo so dark icons don’t vanish on #9999bb */
-.wf-panel image.launcher,
-.wf-panel .launcher image,
-.wf-panel .launchers image {
-    filter:
-        drop-shadow(0 0 0.6px #ffffff)
-        drop-shadow(0 0 0.6px #ffffff)
-        drop-shadow(1px 1px 0 rgba(0, 0, 0, 0.65));
-}
-
-/*
- * Icon “well” — light inset plate behind tray gadgets so you can see icon
- * bounds (volume was disappearing into the bar color).
- */
+/* Icon wells — inspectable bounds for tray gadgets */
 .wf-panel .volume,
 .wf-panel .network,
 .wf-panel .battery,
 .wf-panel .menu,
 .wf-panel .tray-button {
     background-color: #b8b8cc;
-    border: 1px solid #555555;
+    border: 2px solid #000000;
     border-top-color: #ffffff;
     border-left-color: #ffffff;
-    border-right-color: #666688;
-    border-bottom-color: #666688;
+    border-right-color: #555555;
+    border-bottom-color: #555555;
+    border-radius: 0;
     padding: 2px 6px;
     margin: 1px 2px;
 }
@@ -189,26 +88,85 @@
 .wf-panel .menu:hover,
 .wf-panel .tray-button:hover {
     background-color: #0000aa;
+    color: #ffffff;
+}
+
+/* Symbolic icons + outline */
+.wf-panel .widget-icon,
+.wf-panel .volume image,
+.wf-panel .network image,
+.wf-panel .battery image,
+.wf-panel .menu image,
+.wf-panel .tray-button image,
+.wf-panel .clock image,
+.wf-panel image.widget-icon {
+    color: #000000;
+    -gtk-icon-shadow:
+        0 1px 0 #ffffff,
+        0 -1px 0 #ffffff,
+        1px 0 0 #ffffff,
+        -1px 0 0 #ffffff,
+        1px 1px 0 #ffffff,
+        -1px -1px 0 #ffffff,
+        1px -1px 0 #ffffff,
+        -1px 1px 0 #ffffff;
+}
+
+.wf-panel .volume.selected image,
+.wf-panel .network.selected image,
+.wf-panel .menu.selected image,
+.wf-panel .volume:hover image,
+.wf-panel .network:hover image,
+.wf-panel .menu:hover image,
+.wf-panel .battery:hover image {
+    color: #ffffff;
+    -gtk-icon-shadow:
+        0 1px 0 #000000,
+        0 -1px 0 #000000,
+        1px 0 0 #000000,
+        -1px 0 0 #000000,
+        1px 1px 0 #000000,
+        -1px -1px 0 #000000,
+        1px -1px 0 #000000,
+        -1px 1px 0 #000000;
+}
+
+.wf-panel .network.excellent image { color: #006600; }
+.wf-panel .network.good image      { color: #0000aa; }
+.wf-panel .network.medium image    { color: #886600; }
+.wf-panel .network.weak image      { color: #aa4400; }
+.wf-panel .network.none image      { color: #444444; }
+.wf-panel .network.wifi.weak image { color: #aa4400; }
+.wf-panel .network.wifi.excellent image { color: #006600; }
+
+/* Full-color launchers */
+.wf-panel image.launcher,
+.wf-panel .launcher image,
+.wf-panel .launchers image {
+    filter:
+        drop-shadow(0 0 0.6px #ffffff)
+        drop-shadow(0 0 0.6px #ffffff)
+        drop-shadow(1px 1px 0 rgba(0, 0, 0, 0.55));
 }
 
 .wf-panel .launcher-button,
 .wf-panel .launcher {
     margin: 0 3px;
     padding: 2px;
-    border: 1px solid transparent;
-    background: #b8b8cc;
-}
-
-.wf-panel .launcher-button:hover,
-.wf-panel .launcher:hover {
-    background-color: #ccccdd;
+    background-color: #b8b8cc;
+    border: 2px solid #000000;
     border-top-color: #ffffff;
     border-left-color: #ffffff;
     border-right-color: #555555;
     border-bottom-color: #555555;
+    border-radius: 0;
 }
 
-/* Battery overlay % — keep reverse outline from default.css readable */
+.wf-panel .launcher-button:hover,
+.wf-panel .launcher:hover {
+    background-color: #bbbbbb;
+}
+
 .wf-panel .battery overlay label {
     color: #000000;
     text-shadow:
@@ -223,9 +181,7 @@
     font-weight: bold;
 }
 
-/* ══════════════════════════════════════════════════════════════════════════
- * Popovers / menus — light gray body, black text (readable)
- * ══════════════════════════════════════════════════════════════════════════ */
+/* ── Popovers / menus ──────────────────────────────────────────────────── */
 
 popover > contents,
 popovercontents,
@@ -240,9 +196,9 @@ popovermenu > contents {
     border-right-color: #555555;
     border-bottom-color: #555555;
     border-radius: 0;
-    padding: 8px;
-    box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.35);
+    padding: 10px;
     color: #000000;
+    box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.3);
 }
 
 .popover label,
@@ -251,20 +207,19 @@ popovermenu label {
     color: #000000;
 }
 
-/* Buttons: raised gray gadgets, black label */
 .popover button,
 .network-control-center button,
 window button {
     background-image: none;
-    background-color: #aaaaaa;
-    background: #aaaaaa;
+    background-color: #bbbbbb;
+    background: #bbbbbb;
     border: 2px solid #000000;
     border-top-color: #ffffff;
     border-left-color: #ffffff;
     border-right-color: #555555;
     border-bottom-color: #555555;
-    color: #000000;
     border-radius: 0;
+    color: #000000;
     padding: 4px 10px;
     font-weight: bold;
     text-shadow: none;
@@ -275,14 +230,10 @@ window button {
 .network-control-center button:hover,
 window button:hover {
     background-image: none;
-    background-color: #bbbbbb;
-    background: #bbbbbb;
+    background-color: #0000aa;
+    background: #0000aa;
     border-color: #000000;
-    border-top-color: #ffffff;
-    border-left-color: #ffffff;
-    border-right-color: #555555;
-    border-bottom-color: #555555;
-    color: #000000;
+    color: #ffffff;
     text-shadow: none;
     box-shadow: none;
 }
@@ -290,23 +241,22 @@ window button:hover {
 .popover button:active,
 .network-control-center button:active,
 window button:active {
-    background-color: #888888;
+    background-color: #ffffff;
+    border: 2px solid #000000;
     border-top-color: #555555;
     border-left-color: #555555;
     border-right-color: #ffffff;
     border-bottom-color: #ffffff;
+    border-radius: 0;
     color: #000000;
 }
 
-/* Destructive = orange edge, still black text on gray */
 .popover button.destructive-action,
 .network-control-center button.destructive-action {
     background-image: none;
     background-color: #aaaaaa;
     background: #aaaaaa;
-    border-color: #ee8800;
-    border-top-color: #ffcc88;
-    border-left-color: #ffcc88;
+    border-color: #aa0000;
     color: #000000;
 }
 
@@ -340,27 +290,37 @@ window button:active {
     box-shadow: none;
 }
 
-/* Flat button icons inside popovers */
 .popover button image,
 .network-control-center button image,
 .popover .widget-icon {
     color: #000000;
     -gtk-icon-shadow:
-         1px  1px 0 #ffffff,
+        0 1px 0 #ffffff,
+        0 -1px 0 #ffffff,
+        1px 0 0 #ffffff,
+        -1px 0 0 #ffffff,
+        1px 1px 0 #ffffff,
         -1px -1px 0 #ffffff,
-         1px -1px 0 #ffffff,
-        -1px  1px 0 #ffffff;
+        1px -1px 0 #ffffff,
+        -1px 1px 0 #ffffff;
 }
 
-.popover button.flat:hover image,
-.network-control-center button.flat:hover image {
+.popover button:hover image,
+.network-control-center button:hover image,
+.popover button.flat:hover image {
     color: #ffffff;
     -gtk-icon-shadow:
-         1px  1px 0 #000000,
-        -1px -1px 0 #000000;
+        0 1px 0 #000000,
+        0 -1px 0 #000000,
+        1px 0 0 #000000,
+        -1px 0 0 #000000,
+        1px 1px 0 #000000,
+        -1px -1px 0 #000000,
+        1px -1px 0 #000000,
+        -1px 1px 0 #000000;
 }
 
-/* Combos — light field, black text */
+/* Combos / fields — always surface_fg on field_bg */
 .popover combobox,
 .network-control-center combobox,
 .network-control-center combobox button,
@@ -384,6 +344,7 @@ dropdown button {
     text-shadow: none;
     font-weight: bold;
     box-shadow: none;
+    padding: 4px 8px;
 }
 
 .volume-popover-combo:hover,
@@ -391,11 +352,11 @@ dropdown button {
 combobox button:hover,
 dropdown button:hover {
     background-image: none;
-    background-color: #eeeeee;
-    background: #eeeeee;
+    background-color: #bbbbbb;
+    background: #bbbbbb;
     border-color: #0000aa;
-    box-shadow: none;
     color: #000000;
+    box-shadow: none;
 }
 
 combobox cellview,
@@ -406,7 +367,6 @@ dropdown cellview {
     text-shadow: none;
 }
 
-/* List rows in dropdowns / menus */
 popover listbox row,
 popover listview row,
 popover row,
@@ -427,12 +387,7 @@ popover listview row:hover,
 popover row:hover,
 .popover listbox row:hover,
 popovermenu modelbutton:hover,
-popover modelbutton:hover {
-    background-color: #0000aa;
-    color: #ffffff;
-    text-shadow: none;
-}
-
+popover modelbutton:hover,
 popover listbox row:selected,
 popover listview row:selected,
 popover row:selected,
@@ -453,9 +408,7 @@ popover list,
     border: none;
 }
 
-/* ══════════════════════════════════════════════════════════════════════════
- * Volume popover
- * ══════════════════════════════════════════════════════════════════════════ */
+/* ── Volume ────────────────────────────────────────────────────────────── */
 
 .volume-popover-root {
     background-color: #aaaaaa;
@@ -469,14 +422,14 @@ popover list,
     background-color: #0000aa;
     padding: 4px 8px;
     border: 1px solid #000000;
+    border-radius: 0;
     text-shadow: none;
-    letter-spacing: 0.02em;
 }
 
 .volume-popover-section-title {
     font-size: 0.78em;
     font-weight: 800;
-    color: #000000;
+    color: #333333;
     text-shadow: none;
     letter-spacing: 0.12em;
     text-transform: uppercase;
@@ -484,9 +437,12 @@ popover list,
 
 .volume-popover-section {
     background-color: #bbbbbb;
-    border: 1px solid #555555;
+    border: 2px solid #000000;
     border-top-color: #ffffff;
     border-left-color: #ffffff;
+    border-right-color: #555555;
+    border-bottom-color: #555555;
+    border-radius: 0;
     padding: 6px;
     margin: 4px 0;
 }
@@ -495,21 +451,28 @@ popover list,
     border-radius: 0;
     padding: 6px;
     background-image: none;
-    background-color: #aaaaaa;
-    background: #aaaaaa;
+    background-color: #bbbbbb;
+    background: #bbbbbb;
     border: 2px solid #000000;
     border-top-color: #ffffff;
     border-left-color: #ffffff;
     border-right-color: #555555;
     border-bottom-color: #555555;
+    border-radius: 0;
     color: #000000;
 }
 
 .volume-popover-mute-btn image {
     color: #000000;
     -gtk-icon-shadow:
-         1px  1px 0 #ffffff,
-        -1px -1px 0 #ffffff;
+        0 1px 0 #ffffff,
+        0 -1px 0 #ffffff,
+        1px 0 0 #ffffff,
+        -1px 0 0 #ffffff,
+        1px 1px 0 #ffffff,
+        -1px -1px 0 #ffffff,
+        1px -1px 0 #ffffff,
+        -1px 1px 0 #ffffff;
 }
 
 .volume-popover-mute-btn:hover {
@@ -525,8 +488,14 @@ popover list,
 .volume-popover-mute-btn:hover image {
     color: #ffffff;
     -gtk-icon-shadow:
-         1px  1px 0 #000000,
-        -1px -1px 0 #000000;
+        0 1px 0 #000000,
+        0 -1px 0 #000000,
+        1px 0 0 #000000,
+        -1px 0 0 #000000,
+        1px 1px 0 #000000,
+        -1px -1px 0 #000000,
+        1px -1px 0 #000000,
+        -1px 1px 0 #000000;
 }
 
 .volume-popover-pct {
@@ -555,7 +524,7 @@ popover list,
 }
 
 .volume-popover-scale slider {
-    background-color: #aaaaaa;
+    background-color: #bbbbbb;
     border: 2px solid #000000;
     border-top-color: #ffffff;
     border-left-color: #ffffff;
@@ -568,20 +537,9 @@ popover list,
     box-shadow: none;
 }
 
-.volume-popover-section:nth-child(5) .volume-popover-scale slider {
-    border-color: #000000;
-    border-top-color: #ffffff;
-    border-left-color: #ffffff;
-    box-shadow: none;
-}
-
 .volume-popover-scale slider:hover {
     transform: none;
-    background-color: #cccccc;
-}
-
-.volume-popover-section:nth-child(5) .volume-popover-scale slider:hover {
-    background-color: #ffcc88;
+    background-color: #0000aa;
 }
 
 .volume-popover-meter {
@@ -591,6 +549,7 @@ popover list,
     border-left-color: #555555;
     border-right-color: #ffffff;
     border-bottom-color: #ffffff;
+    border-radius: 0;
     margin: 6px 0;
     background-color: #000022;
 }
@@ -600,12 +559,13 @@ popover list,
     padding: 5px 14px;
     color: #000000;
     text-shadow: none;
-    background-color: #aaaaaa;
+    background-color: #bbbbbb;
     border: 2px solid #000000;
     border-top-color: #ffffff;
     border-left-color: #ffffff;
     border-right-color: #555555;
     border-bottom-color: #555555;
+    border-radius: 0;
     font-weight: bold;
     font-size: 0.85em;
 }
@@ -623,7 +583,6 @@ popover list,
     opacity: 1.0;
 }
 
-/* Virtual OSS strip — keep labels black on gray */
 .volume-popover-voss-section,
 .volume-popover-voss-title,
 .volume-popover-voss-lbl,
@@ -631,18 +590,18 @@ popover list,
     color: #000000;
 }
 
-/* ══════════════════════════════════════════════════════════════════════════
- * Network popover / FreeBSD iface rows
- * ══════════════════════════════════════════════════════════════════════════ */
+/* ── Network ───────────────────────────────────────────────────────────── */
 
 .network-global-toggles {
     padding: 8px 12px;
     margin-bottom: 10px;
     background-color: #bbbbbb;
-    border-radius: 0;
-    border: 1px solid #555555;
+    border: 2px solid #000000;
     border-top-color: #ffffff;
     border-left-color: #ffffff;
+    border-right-color: #555555;
+    border-bottom-color: #555555;
+    border-radius: 0;
 }
 
 .network-toggle-button {
@@ -669,35 +628,32 @@ popover list,
 .network-control-center .freebsd-iface {
     margin-bottom: 8px;
     background-color: #bbbbbb;
-    border-radius: 0;
-    border: 1px solid #555555;
+    border: 2px solid #000000;
     border-top-color: #ffffff;
     border-left-color: #ffffff;
+    border-right-color: #555555;
+    border-bottom-color: #555555;
+    border-radius: 0;
     padding: 8px;
 }
 
 .network-control-center .freebsd-iface:hover {
-    background-color: #cccccc;
+    background-color: #ffffff;
 }
 
 .network-control-center .device-label {
     font-weight: bold;
     color: #000000;
     text-shadow: none;
-    font-size: 1em;
 }
 
 .network-control-center .freebsd-iface .sub,
 .network-control-center .freebsd-iface .speed {
-    color: #222222;
-}
-
-.network-control-center .freebsd-iface.is-down {
-    opacity: 0.85;
+    color: #333333;
 }
 
 .network-control-center .freebsd-iface.is-up .state-dot {
-    background-color: #00aa00;
+    background-color: #006600;
 }
 
 .network-control-center .freebsd-iface.is-down .state-dot {
@@ -750,7 +706,7 @@ popover list,
 }
 
 .network-control-center .access-point.saved .ap-saved-badge {
-    color: #000000;
+    color: #ffffff;
     background-color: #ee8800;
     padding: 0 4px;
     font-weight: bold;
@@ -760,16 +716,28 @@ popover list,
 .network-control-center image.access-point {
     color: #000000;
     -gtk-icon-shadow:
-         1px  1px 0 #ffffff,
-        -1px -1px 0 #ffffff;
+        0 1px 0 #ffffff,
+        0 -1px 0 #ffffff,
+        1px 0 0 #ffffff,
+        -1px 0 0 #ffffff,
+        1px 1px 0 #ffffff,
+        -1px -1px 0 #ffffff,
+        1px -1px 0 #ffffff,
+        -1px 1px 0 #ffffff;
 }
 
 .network-control-center .access-point:hover image.access-point,
 .network-control-center .access-point.connected image.access-point {
     color: #ffffff;
     -gtk-icon-shadow:
-         1px  1px 0 #000000,
-        -1px -1px 0 #000000;
+        0 1px 0 #000000,
+        0 -1px 0 #000000,
+        1px 0 0 #000000,
+        -1px 0 0 #000000,
+        1px 1px 0 #000000,
+        -1px -1px 0 #000000,
+        1px -1px 0 #000000,
+        -1px 1px 0 #000000;
 }
 
 .network-control-center .vpn {
@@ -777,7 +745,7 @@ popover list,
     margin: 4px 0;
     border-radius: 0;
     background-color: #bbbbbb;
-    border: 1px solid #555555;
+    border: 1px solid #000000;
 }
 
 .network-control-center .vpn:hover {
@@ -809,16 +777,13 @@ popover list,
     box-shadow: none;
 }
 
-/* ══════════════════════════════════════════════════════════════════════════
- * Dialogs / windows
- * ══════════════════════════════════════════════════════════════════════════ */
+/* ── Windows / dialogs ─────────────────────────────────────────────────── */
 
 window {
     background-color: #aaaaaa;
     color: #000000;
 }
 
-/* Title bar — classic blue with WHITE text (high contrast) */
 headerbar,
 headerbar:backdrop,
 window headerbar,
@@ -862,8 +827,14 @@ headerbar button,
 headerbar button image {
     color: #ffffff;
     -gtk-icon-shadow:
-         1px  1px 0 #000000,
-        -1px -1px 0 #000000;
+        0 1px 0 #000000,
+        0 -1px 0 #000000,
+        1px 0 0 #000000,
+        -1px 0 0 #000000,
+        1px 1px 0 #000000,
+        -1px -1px 0 #000000,
+        1px -1px 0 #000000,
+        -1px 1px 0 #000000;
 }
 
 window .wifi-password-entry {
@@ -871,6 +842,8 @@ window .wifi-password-entry {
     border: 2px solid #000000;
     border-top-color: #555555;
     border-left-color: #555555;
+    border-right-color: #ffffff;
+    border-bottom-color: #ffffff;
     border-radius: 0;
     color: #000000;
     padding: 6px;
@@ -887,40 +860,42 @@ window button.suggested-action {
     background: #0000aa;
     color: #ffffff;
     border: 2px solid #000000;
-    border-top-color: #5555cc;
-    border-left-color: #5555cc;
+    border-top-color: #ffffff;
+    border-left-color: #ffffff;
+    border-right-color: #555555;
+    border-bottom-color: #555555;
+    border-radius: 0;
     font-weight: bold;
     box-shadow: none;
 }
 
 window button.suggested-action:hover {
     background-image: none;
-    background-color: #2222cc;
-    background: #2222cc;
+    background-color: #ee8800;
+    background: #ee8800;
+    color: #ffffff;
     box-shadow: none;
 }
 
 window button:not(.suggested-action) {
     background-image: none;
-    background-color: #aaaaaa;
-    background: #aaaaaa;
+    background-color: #bbbbbb;
+    background: #bbbbbb;
     color: #000000;
     border: 2px solid #000000;
     border-top-color: #ffffff;
     border-left-color: #ffffff;
     border-right-color: #555555;
     border-bottom-color: #555555;
+    border-radius: 0;
 }
 
 window button:not(.suggested-action):hover {
     background-image: none;
-    background-color: #bbbbbb;
-    background: #bbbbbb;
-    border-color: #000000;
-    border-top-color: #ffffff;
-    border-left-color: #ffffff;
+    background-color: #0000aa;
+    background: #0000aa;
+    color: #ffffff;
     box-shadow: none;
-    color: #000000;
 }
 
 window grid label {
@@ -940,7 +915,6 @@ window grid label:nth-child(even) {
     text-shadow: none;
 }
 
-/* Entries */
 entry,
 entry text,
 passwordentry,
@@ -965,7 +939,6 @@ passwordentry:focus text {
     color: #000000;
 }
 
-/* Menu app list / flowbox items */
 .popover .app-button,
 .menu-popover .app-button {
     color: #000000;
@@ -980,17 +953,28 @@ passwordentry:focus text {
 
 .popover .app-button image {
     -gtk-icon-shadow:
-         1px  1px 0 #ffffff,
-        -1px -1px 0 #ffffff;
+        0 1px 0 #ffffff,
+        0 -1px 0 #ffffff,
+        1px 0 0 #ffffff,
+        -1px 0 0 #ffffff,
+        1px 1px 0 #ffffff,
+        -1px -1px 0 #ffffff,
+        1px -1px 0 #ffffff,
+        -1px 1px 0 #ffffff;
 }
 
 .popover .app-button:hover image {
     -gtk-icon-shadow:
-         1px  1px 0 #000000,
-        -1px -1px 0 #000000;
+        0 1px 0 #000000,
+        0 -1px 0 #000000,
+        1px 0 0 #000000,
+        -1px 0 0 #000000,
+        1px 1px 0 #000000,
+        -1px -1px 0 #000000,
+        1px -1px 0 #000000,
+        -1px 1px 0 #000000;
 }
 
-/* Theme combo + logout in menu footer */
 .popover combobox label,
 .popover .dim-label {
     color: #000000;
