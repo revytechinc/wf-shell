@@ -1,6 +1,8 @@
 #include "network-types.hpp"
 
+#include <algorithm>
 #include <cctype>
+#include <cstring>
 
 namespace wf_net
 {
@@ -278,6 +280,269 @@ std::string format_wifi_radio_label(unsigned freq_mhz, unsigned max_bitrate_kbps
         return gen;
     }
     return format_wifi_frequency_mhz(freq_mhz);
+}
+
+/* ─── Clone / destroy / create preflight ─────────────────────────────────── */
+
+namespace
+{
+
+/** Return true if name is PREFIX + digits (e.g. tap0, bridge12). */
+bool is_prefix_unit(const std::string& name, const char *prefix)
+{
+    const size_t n = std::char_traits<char>::length(prefix);
+    if (name.size() <= n || name.rfind(prefix, 0) != 0)
+    {
+        return false;
+    }
+    for (size_t i = n; i < name.size(); ++i)
+    {
+        if (!std::isdigit(static_cast<unsigned char>(name[i])))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+/** Permanent hardware / system NICs — never ifconfig destroy from the panel. */
+bool is_permanent_hardware_name(const std::string& name)
+{
+    if (name == "lo0")
+    {
+        return true;
+    }
+    static const char *eth_prefixes[] = {
+        "em", "igb", "ix", "ixl", "aq", "re", "rl", "bge", "bnx", "bnxt",
+        "cxgbe", "oce", "qlxgb", "alc", "ale", "age", "msk", "nfe", "stge",
+        "vge", "vr", "xl", "fxp", "dc", "le", "ue", "axe", "cdce", "ure",
+        "eth", "en", "vtnet", "xn", "bce", "bfe", "cas", "cc", "cxgb",
+        "ena", "enic", "et", "ice", "igc", "ixv", "jme", "lge", "liquidio",
+        "mlx", "mlxen", "mthca", "mxge", "myri", "nfe", "nge", "nxe",
+        "oce", "qlnxe", "qlxge", "ral", "rdma", "sge", "siba", "sge",
+        "sk", "ste", "stge", "ti", "txp", "vte", "xl", "atlantic",
+        nullptr
+    };
+    for (int i = 0; eth_prefixes[i]; ++i)
+    {
+        if (is_prefix_unit(name, eth_prefixes[i]))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+} // namespace
+
+bool is_destroyable_iface(const std::string& name)
+{
+    if (name.empty() || is_permanent_hardware_name(name))
+    {
+        return false;
+    }
+    /* Cloned / virtual families FreeBSD creates with ifconfig TYPE create */
+    static const char *clone_prefixes[] = {
+        "tap", "tun", "bridge", "gif", "gre", "vlan", "lagg", "epair",
+        "vxlan", "stf", "wg", "lo", "vmnet", "usbus",
+        nullptr
+    };
+    for (int i = 0; clone_prefixes[i]; ++i)
+    {
+        if (is_prefix_unit(name, clone_prefixes[i]))
+        {
+            /* lo0 already rejected; lo1+ clones ok */
+            return true;
+        }
+    }
+    /* epair ends in a/b: epair0a, epair0b */
+    if (name.rfind("epair", 0) == 0 && name.size() > 5)
+    {
+        return true;
+    }
+    /* bhyve / custom: vm-public (bridge group), vm-port* (tap) */
+    if (name.rfind("vm-", 0) == 0)
+    {
+        return true;
+    }
+    /* Cloned wlan (ifconfig wlan create) — not permanent radio parent */
+    if (is_prefix_unit(name, "wlan"))
+    {
+        return true;
+    }
+    return false;
+}
+
+const CloneTypeInfo *known_clone_types(size_t *count_out)
+{
+    static const CloneTypeInfo kTypes[] = {
+        {"tap",    "tap (virtual Ethernet)", "if_tuntap", true},
+        {"tun",    "tun (point-to-point)",   "if_tuntap", true},
+        {"bridge", "bridge",                 "if_bridge", true},
+        {"gif",    "gif (IPv6-in-IPv4 / tunnel)", "if_gif", true},
+        {"gre",    "gre (tunnel)",           "if_gre", true},
+        {"vlan",   "vlan",                   "if_vlan", true},
+        {"lagg",   "lagg (aggregation)",     "if_lagg", true},
+        {"epair",  "epair (pair)",           "if_epair", true},
+        {"vxlan",  "vxlan",                  "if_vxlan", true},
+        {"wg",     "wg (WireGuard)",         "if_wg", true},
+        {"lo",     "lo (loopback clone)",    nullptr, true},
+        {"stf",    "stf (6to4)",             "if_stf", true},
+    };
+    if (count_out)
+    {
+        *count_out = sizeof(kTypes) / sizeof(kTypes[0]);
+    }
+    return kTypes;
+}
+
+const CloneTypeInfo *find_clone_type(const std::string& type)
+{
+    size_t n = 0;
+    const CloneTypeInfo *t = known_clone_types(&n);
+    for (size_t i = 0; i < n; ++i)
+    {
+        if (type == t[i].type)
+        {
+            return &t[i];
+        }
+    }
+    return nullptr;
+}
+
+std::vector<std::string> parse_ifconfig_clone_list(const std::string& text)
+{
+    std::vector<std::string> out;
+    std::string cur;
+    for (char ch : text)
+    {
+        if (std::isspace(static_cast<unsigned char>(ch)))
+        {
+            if (!cur.empty())
+            {
+                out.push_back(cur);
+                cur.clear();
+            }
+        }
+        else
+        {
+            cur.push_back(ch);
+        }
+    }
+    if (!cur.empty())
+    {
+        out.push_back(cur);
+    }
+    return out;
+}
+
+bool kldstat_has_module(const std::string& kldstat_text, const std::string& module_name)
+{
+    if (module_name.empty() || kldstat_text.empty())
+    {
+        return false;
+    }
+    /* Match "if_gif.ko" or bare "if_gif" as a token */
+    const std::string with_ko = module_name + ".ko";
+    auto contains_token = [&] (const std::string& needle) {
+        size_t pos = 0;
+        while ((pos = kldstat_text.find(needle, pos)) != std::string::npos)
+        {
+            const bool left_ok = (pos == 0) ||
+                (!std::isalnum(static_cast<unsigned char>(kldstat_text[pos - 1])) &&
+                 kldstat_text[pos - 1] != '_');
+            const size_t end = pos + needle.size();
+            const bool right_ok = (end >= kldstat_text.size()) ||
+                (!std::isalnum(static_cast<unsigned char>(kldstat_text[end])) &&
+                 kldstat_text[end] != '_');
+            if (left_ok && right_ok)
+            {
+                return true;
+            }
+            pos = end;
+        }
+        return false;
+    };
+    return contains_token(with_ko) || contains_token(module_name);
+}
+
+CreatePreflight evaluate_create_preflight(
+    const std::string& type,
+    const std::vector<std::string>& clone_catalog,
+    bool module_loaded,
+    bool module_file_exists,
+    bool has_admin)
+{
+    CreatePreflight r;
+    r.type = type;
+    const CloneTypeInfo *spec = find_clone_type(type);
+    if (!spec)
+    {
+        r.detail = "unknown interface type";
+        return r;
+    }
+    if (spec->module)
+    {
+        r.module = spec->module;
+    }
+    if (!has_admin)
+    {
+        r.detail = "no admin privileges (information-only) — cannot create " + type;
+        return r;
+    }
+
+    const bool in_catalog = std::find(clone_catalog.begin(), clone_catalog.end(), type)
+        != clone_catalog.end();
+
+    /*
+     * Module not required (nullptr) or already offered by ifconfig -C:
+     * kernel already knows the type → create is allowed.
+     */
+    if (!spec->module)
+    {
+        if (in_catalog || clone_catalog.empty())
+        {
+            /* empty catalog = caller skipped live -C (unit test / optimistic) */
+            r.can_create = true;
+            r.detail = std::string("in kernel / no module required · ifconfig ") +
+                type + " create";
+            return r;
+        }
+        r.detail = "type " + type + " not offered by ifconfig -C";
+        return r;
+    }
+
+    if (in_catalog)
+    {
+        r.can_create = true;
+        r.detail = std::string("module ") + spec->module +
+            " available · ifconfig " + type + " create";
+        return r;
+    }
+
+    if (module_loaded)
+    {
+        r.can_create = true;
+        r.detail = std::string("module ") + spec->module +
+            " loaded · ifconfig " + type + " create";
+        return r;
+    }
+
+    if (module_file_exists)
+    {
+        /*
+         * Module on disk but not in -C yet — create/kldload may still work
+         * under admin. Allow Create; apply path will load or fail soft.
+         */
+        r.can_create = true;
+        r.detail = std::string("module ") + spec->module +
+            ".ko present (not loaded) · ifconfig " + type + " create";
+        return r;
+    }
+
+    r.detail = std::string("module ") + spec->module +
+        " not loaded and not found — cannot create " + type;
+    return r;
 }
 
 } // namespace wf_net

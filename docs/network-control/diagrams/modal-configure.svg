@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 440 520" width="100%" preserveAspectRatio="xMidYMid meet">
+  <foreignObject x="0" y="0" width="440" height="520">
+    <div xmlns="http://www.w3.org/1999/xhtml" style="position:relative;width:440px;height:520px;box-sizing:border-box;font-family:system-ui,Sans,sans-serif;background:#0c0c14;color:#cdd6f4;padding:16px;">
+      <div style="font-size:11px;color:#a6adc8;margin-bottom:10px;">Configure… modal — FreeBSD editor · static shows gateways; DHCP/SLAAC hide them</div>
+      <div style="background:#1e1e2e;border:1px solid #45475a;border-radius:12px;overflow:hidden;max-width:400px;box-shadow:0 20px 50px rgba(0,0,0,0.5);">
+        <div style="padding:12px 14px;border-bottom:1px solid #313244;display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:14px;font-weight:600;">Configure aq0</span>
+          <span style="color:#a6adc8;">✕</span>
+        </div>
+        <div style="padding:12px 14px;display:flex;flex-direction:column;gap:10px;font-size:12px;">
+          <div>
+            <div style="font-size:10px;color:#6c7086;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;">Interface</div>
+            <div style="background:#313244;border:1px solid #45475a;border-radius:6px;padding:8px 10px;">aq0 · Ethernet ▾</div>
+          </div>
+          <div>
+            <div style="font-size:10px;color:#6c7086;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;">IPv4 mode</div>
+            <div style="background:#313244;border:1px solid #89b4fa;border-radius:6px;padding:8px 10px;">Static ▾</div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div>
+              <div style="font-size:10px;color:#6c7086;text-transform:uppercase;margin-bottom:4px;">IPv4 address</div>
+              <div style="background:#313244;border:1px solid #45475a;border-radius:6px;padding:8px 10px;">99.48.162.238</div>
+            </div>
+            <div>
+              <div style="font-size:10px;color:#6c7086;text-transform:uppercase;margin-bottom:4px;">Prefix</div>
+              <div style="background:#313244;border:1px solid #45475a;border-radius:6px;padding:8px 10px;">25</div>
+            </div>
+          </div>
+          <div>
+            <div style="font-size:10px;color:#6c7086;text-transform:uppercase;margin-bottom:4px;">IPv4 gateway</div>
+            <div style="background:#313244;border:1px solid #45475a;border-radius:6px;padding:8px 10px;">99.48.162.254</div>
+          </div>
+          <div>
+            <div style="font-size:10px;color:#6c7086;text-transform:uppercase;margin-bottom:4px;">IPv6 mode</div>
+            <div style="background:#313244;border:1px solid #45475a;border-radius:6px;padding:8px 10px;">Static ▾</div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div>
+              <div style="font-size:10px;color:#6c7086;text-transform:uppercase;margin-bottom:4px;">IPv6 address</div>
+              <div style="background:#313244;border:1px solid #45475a;border-radius:6px;padding:8px 10px;font-size:11px;">2600:1700:…:55</div>
+            </div>
+            <div>
+              <div style="font-size:10px;color:#6c7086;text-transform:uppercase;margin-bottom:4px;">Prefix</div>
+              <div style="background:#313244;border:1px solid #45475a;border-radius:6px;padding:8px 10px;">64</div>
+            </div>
+          </div>
+        </div>
+        <div style="padding:10px 14px;border-top:1px solid #313244;display:flex;justify-content:flex-end;gap:8px;">
+          <span style="border:1px solid #45475a;border-radius:6px;padding:6px 10px;font-size:11px;color:#a6adc8;">Cancel</span>
+          <span style="border:1px solid #89b4fa;border-radius:6px;padding:6px 10px;font-size:11px;background:#313a55;color:#89b4fa;">Save</span>
+        </div>
+      </div>
+      <div style="font-size:10px;color:#6c7086;margin-top:10px;">DHCP / SLAAC: gateway fields hidden · no tutorial copy in UI</div>
+    </div>
+  </foreignObject>
+</svg>

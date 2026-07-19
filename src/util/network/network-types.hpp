@@ -131,6 +131,108 @@ struct ProbeOptions
 };
 
 /**
+ * Privilege to mutate network state (ifconfig/sysrc/create/destroy).
+ * Read-only probe always works without this.
+ */
+enum class AdminPrivilege
+{
+    None,   /**< information-only UI */
+    Root,   /**< already euid 0 */
+    Doas,   /**< doas -n succeeds (passwordless or already authenticated) */
+    Sudo,   /**< sudo -n succeeds */
+};
+
+/** Stack capabilities for UI gating (autodetect — never invent). */
+struct NetworkStackFeatures
+{
+    bool physical_ifaces = false;
+    bool default_route   = false;
+    bool wireless        = false;
+    bool wpa             = false;
+    /** FreeBSD config editor / create / destroy / up-down require admin. */
+    bool can_admin       = false;
+    AdminPrivilege admin = AdminPrivilege::None;
+    /** How admin was detected (for diagnostics; empty if none). */
+    std::string admin_method;
+};
+
+inline bool is_information_only(const NetworkStackFeatures& f)
+{
+    return !f.can_admin;
+}
+
+/* ─── Clone / destroy / create preflight (pure; apply path deferred) ───── */
+
+/**
+ * True if `ifconfig NAME destroy` is a safe UI action for this name.
+ * Permanent hardware NICs (aq0, igb0, …) and system lo0 are never destroyable.
+ * Cloned types (tap, bridge, gif, vlan, lagg, epair, gre, …) are.
+ * Pure — no I/O.
+ */
+bool is_destroyable_iface(const std::string& name);
+
+/**
+ * Label for the Turn on / Turn off menu item from live IFF_UP.
+ * Pure: up → "Turn off", down → "Turn on".
+ */
+inline const char *toggle_action_label(bool iface_up)
+{
+    return iface_up ? "Turn off" : "Turn on";
+}
+
+/** One FreeBSD cloned-interface type offered in Create… (static catalog). */
+struct CloneTypeInfo
+{
+    const char *type;          /**< ifconfig type token: tap, bridge, gif, … */
+    const char *label;         /**< UI label */
+    const char *module;        /**< kld name without .ko, or nullptr if usually in-kernel */
+    bool destroyable = true;   /**< instances of this type may be destroyed */
+};
+
+/** Static catalog of types we surface in Create… (subset of ifconfig -C). */
+const CloneTypeInfo *known_clone_types(size_t *count_out);
+
+/** Look up a type in the static catalog; nullptr if unknown. */
+const CloneTypeInfo *find_clone_type(const std::string& type);
+
+/**
+ * Parse `ifconfig -C` output (space-separated type names on one line).
+ * Pure — unit-testable.
+ */
+std::vector<std::string> parse_ifconfig_clone_list(const std::string& text);
+
+/**
+ * True if `kldstat` text shows module loaded (matches "module.ko" or bare name).
+ * Pure.
+ */
+bool kldstat_has_module(const std::string& kldstat_text, const std::string& module_name);
+
+/** Result of create preflight (UI gate + reason string). */
+struct CreatePreflight
+{
+    bool can_create = false;
+    std::string type;
+    std::string module;   /**< empty if none required / unknown */
+    std::string detail;   /**< human-readable reason for UI strip */
+};
+
+/**
+ * Pure preflight decision for Create….
+ *
+ * @param type              clone type (tap, gif, …)
+ * @param clone_catalog     types currently offered by `ifconfig -C`
+ * @param module_loaded     kldstat shows module (true if no module needed)
+ * @param module_file_exists .ko present under /boot/kernel or /boot/modules
+ * @param has_admin         root/doas/sudo available
+ */
+CreatePreflight evaluate_create_preflight(
+    const std::string& type,
+    const std::vector<std::string>& clone_catalog,
+    bool module_loaded,
+    bool module_file_exists,
+    bool has_admin);
+
+/**
  * Wi‑Fi RF helpers (centre frequency in MHz from NM / wpa / ifconfig).
  * Pure — unit-testable. Empty string if unknown.
  *

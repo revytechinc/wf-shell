@@ -222,6 +222,7 @@
           </select>
         </label>
         <label><input type="checkbox" id="optGifMod" /> Simulate gif module missing</label>
+        <label><input type="checkbox" id="optNoAdmin" /> No sudo/doas (information-only)</label>
         <label class="dim" style="opacity:0.7">Tray icon-only · right-click ifaces for actions</label>
 
         <div class="feat" id="featBits"></div>
@@ -352,33 +353,40 @@
     bridge: true,
     plat: "freebsd", /* freebsd | linux */
     gifModuleMissing: false,
+    noAdmin: false, /* information-only when true */
   });
 
   /**
-   * FreeBSD cloned-interface catalog (from ifconfig -C + typical modules).
-   * preflight: module name if needed (null = usually in kernel / always ok).
-   * destroyable: ifconfig destroy allowed for cloned types.
+   * FreeBSD cloned-interface catalog (mirrors wf_net::known_clone_types).
+   * Live host also intersects with ifconfig -C; mock uses full catalog.
+   * module: kld name without .ko; null = usually in-kernel.
    */
   const CLONE_TYPES = [
-    { type: "tap",    label: "tap (virtual Ethernet)", module: "if_tap", destroyable: true },
+    { type: "tap",    label: "tap (virtual Ethernet)", module: "if_tuntap", destroyable: true },
     { type: "tun",    label: "tun (point-to-point)",   module: "if_tuntap", destroyable: true },
     { type: "bridge", label: "bridge",                 module: "if_bridge", destroyable: true },
-    { type: "gif",    label: "gif (tunnel)",           module: "if_gif", destroyable: true },
-    { type: "vlan",   label: "vlan",                   module: null, destroyable: true },
-    { type: "lagg",   label: "lagg (aggregation)",     module: null, destroyable: true },
+    { type: "gif",    label: "gif (IPv6-in-IPv4 / tunnel)", module: "if_gif", destroyable: true },
+    { type: "gre",    label: "gre (tunnel)",           module: "if_gre", destroyable: true },
+    { type: "vlan",   label: "vlan",                   module: "if_vlan", destroyable: true },
+    { type: "lagg",   label: "lagg (aggregation)",     module: "if_lagg", destroyable: true },
     { type: "epair",  label: "epair (pair)",           module: "if_epair", destroyable: true },
+    { type: "vxlan",  label: "vxlan",                  module: "if_vxlan", destroyable: true },
+    { type: "wg",     label: "wg (WireGuard)",         module: "if_wg", destroyable: true },
     { type: "lo",     label: "lo (loopback clone)",    module: null, destroyable: true },
+    { type: "stf",    label: "stf (6to4)",             module: "if_stf", destroyable: true },
   ];
 
-  /* Physical / permanent ifaces must not be destroyed */
+  /* Mirrors wf_net::is_destroyable_iface — permanent hardware never destroyable */
   function isDestroyable(iface) {
     if (!iface) return false;
     const n = iface.name;
-    if (/^(aq|igb|em|re|ix|ixl|bge|bnx|ue|wlan)\d+$/.test(n)) return false;
-    if (iface.kind === "Ethernet" && !/^(tap|tun|bridge|gif|vlan|lagg|epair|lo|vm-)/.test(n))
-      return false;
-    return /^(tap|tun|bridge|gif|vlan|lagg|epair|lo)\d+$/.test(n) ||
-      n.indexOf("vm-") === 0 || iface.kind === "Virtual" || iface.kind === "Bridge";
+    if (n === "lo0") return false;
+    if (/^(aq|igb|em|re|rl|ix|ixl|bge|bnx|ue|eth|vtnet)\d+$/.test(n)) return false;
+    if (iface.permanent) return false;
+    if (/^(tap|tun|bridge|gif|gre|vlan|lagg|vxlan|wg|stf|lo|vmnet|wlan)\d+$/.test(n)) return true;
+    if (/^epair\d+[ab]?$/.test(n) || n.indexOf("epair") === 0) return true;
+    if (n.indexOf("vm-") === 0) return true;
+    return iface.kind === "Virtual" || iface.kind === "Bridge";
   }
 
   /** Mock kldstat / kernel: which modules are "available" */
@@ -389,11 +397,13 @@
     return { ok: true, detail: "module " + mod + " available" };
   }
 
-  function preflightCreate(typeName, plat, gifMissing) {
+  function preflightCreate(typeName, plat, gifMissing, noAdmin) {
     const t = CLONE_TYPES.find((x) => x.type === typeName);
     if (!t) return { ok: false, detail: "unknown type", canCreate: false };
     if (plat !== "freebsd")
       return { ok: false, detail: "create is FreeBSD-only", canCreate: false };
+    if (noAdmin)
+      return { ok: false, detail: "no admin privileges (information-only) — cannot create " + t.type, canCreate: false };
     const m = moduleAvailable(t.module, gifMissing);
     if (!m.ok)
       return { ok: false, detail: m.detail + " — cannot create " + t.type, canCreate: false };
@@ -493,12 +503,14 @@
     bridge: DEFAULTS.bridge,
     plat: DEFAULTS.plat,
     gifModuleMissing: DEFAULTS.gifModuleMissing,
+    noAdmin: DEFAULTS.noAdmin,
     selected: "aq0",
     open: true,
     editorOpen: false,
     createOpen: false,
     ctxName: null,
     extraIfaces: [], /* dynamically created in mock */
+    ifaceOverrides: {}, /* up/down/delete from context menu */
   };
 
   const $ = (id) => document.getElementById(id);
@@ -506,14 +518,18 @@
   function features() {
     const ifaces = buildIfaces(state);
     const isFbsd = state.plat === "freebsd";
+    const canAdmin = !state.noAdmin; /* real app: root || doas -n || sudo -n */
     return {
       physical_ifaces: ifaces.some((i) => i.kind === "Ethernet" || i.kind === "Wireless"),
       default_route: ifaces.some((i) => i.isDefault),
       wireless: state.wifi,
       wpa: state.wifi,
+      can_admin: canAdmin,
+      information_only: !canAdmin,
       advanced_gui: !isFbsd,
-      config_editor: isFbsd,
-      create_iface: isFbsd,
+      config_editor: isFbsd && canAdmin,
+      create_iface: isFbsd && canAdmin,
+      mutate_iface: isFbsd && canAdmin, /* up/down/destroy */
     };
   }
 
@@ -596,6 +612,8 @@
       ["default_route", feat.default_route],
       ["wireless", feat.wireless],
       ["wpa", feat.wpa],
+      ["can_admin", feat.can_admin],
+      ["info_only", feat.information_only],
       ["config_editor", feat.config_editor],
       ["create_iface", feat.create_iface],
       ["advanced_nm", feat.advanced_gui],
@@ -604,10 +622,14 @@
     /* wiring dump */
     $("wireBox").textContent =
       "platform → " + state.plat + "\n" +
+      "admin   → " + (feat.can_admin ? "doas/sudo/root" : "NONE (information-only)") + "\n" +
       "probe → InterfaceInfo[]\n" +
       "route  → primary=" + (p ? p.name : "none") + "\n" +
       (state.plat === "freebsd"
-        ? "Factory → FreeBSDNetworkBackend\nrclick → up/down · destroy\ncreate → preflight kld\n"
+        ? "Factory → FreeBSDNetworkBackend\n" +
+          (feat.can_admin
+            ? "rclick → up/down · destroy\ncreate → preflight kld\n"
+            : "mutations disabled\n")
         : "Factory → null poll · NM D-Bus\nAdvanced → networkmgr\n") +
       "tray   ← icon only";
 
@@ -696,11 +718,21 @@
   function showCtx(x, y, name) {
     const i = ifaceByName(name);
     const menu = $("ctxMenu");
+    const feat = features();
     const on = i && i.up;
+    /* Live IFF_UP → label (mirrors toggle_action_label) */
     $("ctxToggle").textContent = on ? "Turn off" : "Turn on";
-    $("ctxToggle").disabled = !i;
-    $("ctxDelete").disabled = !isDestroyable(i);
-    $("ctxConfigure").disabled = state.plat !== "freebsd";
+    $("ctxToggle").title = on
+      ? "ifconfig " + name + " down"
+      : "ifconfig " + name + " up";
+    /* Information-only: no mutations */
+    $("ctxToggle").disabled = !i || !feat.mutate_iface;
+    const canDel = feat.mutate_iface && isDestroyable(i);
+    $("ctxDelete").disabled = !canDel;
+    $("ctxDelete").title = !feat.mutate_iface
+      ? "requires admin (doas/sudo/root)"
+      : (canDel ? "ifconfig " + name + " destroy" : name + " is permanent — cannot destroy");
+    $("ctxConfigure").disabled = !feat.config_editor;
     menu.classList.add("open");
     menu.style.left = Math.min(x, window.innerWidth - 200) + "px";
     menu.style.top = Math.min(y, window.innerHeight - 140) + "px";
@@ -747,7 +779,7 @@
         `<option value="${t.type}">${t.label}</option>`
       ).join("");
     }
-    const pf = preflightCreate(sel.value, state.plat, state.gifModuleMissing);
+    const pf = preflightCreate(sel.value, state.plat, state.gifModuleMissing, state.noAdmin);
     const el = $("crPreflight");
     el.textContent = pf.detail;
     el.className = "preflight " + (pf.canCreate ? "ok" : "bad");
@@ -869,7 +901,7 @@
     $("crType").addEventListener("change", syncCreatePreflight);
     $("btnCreateGo").addEventListener("click", () => {
       const t = $("crType").value;
-      const pf = preflightCreate(t, state.plat, state.gifModuleMissing);
+      const pf = preflightCreate(t, state.plat, state.gifModuleMissing, state.noAdmin);
       if (!pf.canCreate) {
         toast(pf.detail);
         return;
@@ -920,6 +952,15 @@
     $("optGifMod").addEventListener("change", (e) => {
       state.gifModuleMissing = e.target.checked;
       if (state.createOpen) syncCreatePreflight();
+    });
+    $("optNoAdmin").addEventListener("change", (e) => {
+      state.noAdmin = e.target.checked;
+      if (state.noAdmin) {
+        state.editorOpen = false;
+        state.createOpen = false;
+      }
+      hideCtx();
+      render();
     });
     $("optPlat").addEventListener("change", (e) => {
       state.plat = e.target.value;

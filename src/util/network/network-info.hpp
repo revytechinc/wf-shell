@@ -50,4 +50,29 @@ std::string parse_route_get_gateway(const std::string& text);
 /** Parse ifconfig single-iface output for media/status/ether/inet/inet6 (pure). */
 void parse_ifconfig_detail(const std::string& text, InterfaceInfo& info);
 
+/**
+ * Detect whether the current user can elevate for network mutations.
+ * Order: already root → doas -n → sudo -n. Fail-soft → AdminPrivilege::None
+ * (information-only mode). Never throws.
+ *
+ * Host doas/sudo policy is system config, not part of this repo.
+ */
+AdminPrivilege probe_admin_privilege(std::string *method_out = nullptr);
+
+/** Autodetect stack features including admin / information-only gate. */
+NetworkStackFeatures probe_features(const ProbeOptions& opts = {});
+
+/**
+ * Live create preflight for one clone type (FreeBSD).
+ * Uses ifconfig -C + kldstat + module path existence. Fail-soft.
+ * Does **not** create the interface (apply path deferred).
+ */
+CreatePreflight probe_create_preflight(const std::string& type);
+
+/**
+ * Types from known catalog that pass or fail preflight (for Create… UI).
+ * Order matches known_clone_types(). Empty vector off FreeBSD / on error.
+ */
+std::vector<CreatePreflight> probe_create_catalog();
+
 } // namespace wf_net

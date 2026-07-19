@@ -42,6 +42,10 @@ We **will implement our own FreeBSD network manager** as a library inside `wf-sh
    - **SLAAC / accept_rtadv** → no manual `ipv6_defaultrouter` (RA provides routes).  
    - **Static** → address/prefix + optional gateway fields.  
 5. **Feature autodetection** — same spirit as audio `features()`  
+6. **Privilege gate** — probe root / `doas -n` / `sudo -n` before any mutation.  
+   - **Has admin** → Configure / Create / Turn on|off / Delete enabled.  
+   - **No admin** → **information-only mode**: tray + iface list + status only;  
+     no editor save, no create/destroy, no up/down. Never crash; never pretend.  
 
 **Linux-only:** NetworkManager D-Bus + optional **Advanced** → `networkmgr`.  
 **FreeBSD:** no NetworkManager chrome; no networkmgr Advanced button.
@@ -64,20 +68,20 @@ Privileged work stays with **base tools** (`ifconfig`, `sysrc`, `wpa_cli`, `dhcl
 
 ### Layering (target)
 
-```text
-  Panel (tray + popover)          ← no ifconfig, no #ifdef
-           │
-  NetworkManager (signals only)   ← thin orchestrator, OS-agnostic
-           │
-  INetworkBackend (Factory)
-           │
-  ┌────────┴────────┐
-  FreeBSDNetworkService     Linux → NM D-Bus
-  · probe / fingerprint
-  · primary / gateway
-  · features()
-  · apply(Op) → ifconfig/wpa_cli
-  · never throw
+```mermaid
+flowchart TB
+  UI["Panel tray + popover<br/>no ifconfig · no #ifdef"]
+  ORCH["NetworkManager orchestrator<br/>signals only · OS-agnostic"]
+  FACT["NetworkBackendFactory + Builder"]
+  FB["FreeBSDNetworkBackend<br/>probe · fingerprint · primary · features<br/>apply Op → ifconfig/sysrc/wpa_cli"]
+  LN["Linux path<br/>NetworkManager D-Bus only"]
+
+  UI --> ORCH
+  ORCH --> FACT
+  FACT -->|freebsd| FB
+  FACT -->|linux| LN
+  FB -->|"never throw · fail-soft"| UI
+  LN --> UI
 ```
 
 Name in code can stay `FreeBSDNetworkBackend` until it grows; docs call it the
@@ -100,32 +104,58 @@ We already started: **Factory/Builder**, `wf_net::probe_interfaces()`, primary f
 
 ## 2. FreeBSD wiring (how data moves)
 
-```text
-┌─────────────────────────────────────────────────────────────┐
-│  Panel tray  (WayfireNetworkInfo)                           │
-│  icon + short label ← Connection(primary device)            │
-└───────────────────────────▲─────────────────────────────────┘
-                            │ signal_default_changed
-┌───────────────────────────┴─────────────────────────────────┐
-│  NetworkManager (orchestrator, OS-agnostic signals)         │
-│  all_devices map · primary_connection_obj                   │
-└───────────────────────────▲─────────────────────────────────┘
-                            │ Factory product
-┌───────────────────────────┴─────────────────────────────────┐
-│  NetworkBackendFactory::create()                            │
-│   freebsd → FreeBSDNetworkBackend (poll)                    │
-│   linux   → D-Bus NM (manager path)                         │
-│   other   → Null                                            │
-└───────────────────────────▲─────────────────────────────────┘
-                            │ probe_interfaces(ProbeOptions)
-┌───────────────────────────┴─────────────────────────────────┐
-│  FreeBSD live sources (fail-soft, never throw)              │
-│  · getifaddrs(3)     flags, IPv4/IPv6                       │
-│  · route -n get default    primary iface + gateway          │
-│  · ifconfig <iface>  media, status, ether                   │
-│  · (later) wpa_cli   scan / status / connect if wlan*       │
-│  · (later) networkmgr or custom onclick for advanced UI     │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+  subgraph tray [Panel tray]
+    ICON["Icon only · activity colour"]
+    TIP["Tooltip detail"]
+  end
+
+  subgraph orch [NetworkManager orchestrator]
+    MAP["all_devices map"]
+    PRI["primary_connection_obj"]
+  end
+
+  subgraph factory [Factory Method]
+    F["NetworkBackendFactory::create"]
+    F -->|freebsd| FB[FreeBSDNetworkBackend]
+    F -->|linux| NMDB[NetworkManager D-Bus]
+    F -->|other| NULL[Null backend]
+  end
+
+  subgraph sources [FreeBSD live sources — fail-soft]
+    GIFA["getifaddrs · flags · IPv4/IPv6"]
+    RT["route get default · v4/v6 gateway"]
+    IFC["ifconfig detail · media · status"]
+    WPA["wpa_cli later · scan/connect"]
+    ADM["probe_admin_privilege · doas/sudo/root"]
+  end
+
+  ICON --> PRI
+  PRI -->|signal_default_changed| ICON
+  orch --> factory
+  FB --> sources
+  sources --> FB
+  FB -->|InterfaceInfo + primary| MAP
+  MAP --> PRI
+  ADM -->|can_admin| UIGate[UI gate mutations]
+```
+
+### Privilege gate
+
+```mermaid
+flowchart LR
+  A[Start mutation?] --> B{geteuid == 0?}
+  B -->|yes| OK[AdminPrivilege Root]
+  B -->|no| C{doas -n true?}
+  C -->|yes| D[AdminPrivilege Doas]
+  C -->|no| E{sudo -n true?}
+  E -->|yes| F[AdminPrivilege Sudo]
+  E -->|no| G[AdminPrivilege None]
+  OK --> H[can_admin mutations]
+  D --> H
+  F --> H
+  G --> I[information-only mode<br/>list + tooltip only]
 ```
 
 ### Autodetect features (same idea as audio `features()`)
@@ -133,10 +163,12 @@ We already started: **Factory/Builder**, `wf_net::probe_interfaces()`, primary f
 | Flag | True when | UI |
 |------|-----------|-----|
 | `physical_ifaces` | any non-lo iface | interface list |
-| `default_route` | `route get default` has interface | status strip + tray primary |
+| `default_route` | `route get default` has interface | tray primary |
 | `wireless` | any `wlanN` present | Wi‑Fi section |
 | `wpa` | `wpa_cli` + control socket | scan/join controls |
-| `config_editor` | FreeBSD always (our modal) | **Configure…** → editor modal |
+| `can_admin` | root / `doas -n` / `sudo -n` | mutations; else **information-only** |
+| `config_editor` | FreeBSD **and** `can_admin` | **Configure…** modal |
+| `create_iface` | FreeBSD **and** `can_admin` | **Create…** + preflight |
 | `advanced_gui` | Linux + `networkmgr` / ini | **Advanced** (hidden on FreeBSD) |
 
 **Only show sections that probe true.** No fake Wi‑Fi on a wired-only box.
@@ -171,42 +203,156 @@ Same Honcho rule as audio: **diff before paint**.
 8. Signal strength icons.  
 9. PSK prompt (reuse password popup pattern carefully).
 
-### v3 — actions / policy (**planned — not implemented yet**)
+### v3 — actions / policy
 
-10. **Right-click** on interface row (detect live state):  
-    - Turn on / Turn off (`ifconfig IF up|down`)  
-    - Configure… → editor modal  
-    - Delete interface… when destroyable (`ifconfig IF destroy`) — tap, bridge, gif, vlan, lagg, epair, lo clones; **not** permanent NICs (aq0, igb0, …)  
-11. **Create…** cloned types from `ifconfig -C` catalog (tap, tun, bridge, gif, vlan, lagg, epair, …)  
-12. **Preflight** before create: kernel module present/loadable (`kldstat` / `if_*.ko`); disable Create with reason if e.g. `if_gif` missing  
+**Status:** design + mockup + pure helpers/tests. **Apply path (run ifconfig create/destroy/up/down) deferred.**
+
+10. **Right-click** on interface row (detect live state)  
+11. **Create…** cloned types  
+12. **Preflight** before create  
 13. Unit tests for pure parsers, preflight catalog, destroyable rules  
 
-Mockup exercises these flows; C++ apply path deferred until planning sign-off.
+See **§3.1** for the full action design. Mockup: right-click + Create + knobs for gif-missing / no-admin.
+
+---
+
+## 3.1 Interface actions (right-click · Create · preflight)
+
+### Context menu (per interface row)
+
+```mermaid
+flowchart TB
+  RC[Right-click iface row] --> ADM{can_admin?}
+  ADM -->|no| RO[Information-only<br/>items disabled · no toast pretend]
+  ADM -->|yes| ST{InterfaceInfo.up<br/>IFF_UP live}
+  ST -->|true| OFF[Menu: Turn off]
+  ST -->|false| ON[Menu: Turn on]
+  OFF --> CFG[Configure…]
+  ON --> CFG
+  CFG --> DES{is_destroyable_iface name?}
+  DES -->|yes| DEL[Delete interface… enabled]
+  DES -->|no| NOD[Delete disabled<br/>permanent NIC]
+```
+
+| Item | State detection | Planned apply | Gate |
+|------|-----------------|---------------|------|
+| **Turn off** | `InterfaceInfo.up == true` → label “Turn off” | `ifconfig IF down` | `can_admin` |
+| **Turn on** | `InterfaceInfo.up == false` → label “Turn on” | `ifconfig IF up` | `can_admin` |
+| **Configure…** | always (when FreeBSD + admin) | editor → sysrc | `config_editor` |
+| **Delete interface…** | `is_destroyable_iface(name)` | `ifconfig IF destroy` | `can_admin` + destroyable |
+
+Label comes from **live probe flags**, not a stale toggle. After apply (later), fingerprint refresh repaints the row (`admin down` badge when `!up`).
+
+### Destroyable vs permanent
+
+| May delete (`ifconfig IF destroy`) | Must **not** delete |
+|------------------------------------|---------------------|
+| `tapN`, `tunN`, `bridgeN`, `gifN`, `greN` | Physical NICs: `aq0`, `igb0`, `em0`, … |
+| `vlanN`, `laggN`, `epairNa/b`, `vxlanN` | System loopback `lo0` |
+| `loN` (N≥1), `wgN`, `stfN`, `vmnetN` | |
+| `vm-*` (bhyve groups / ports) | |
+| Cloned `wlanN` | Parent radio hardware (not listed as wlan unit alone if permanent — UI treats `wlanN` as destroyable clone) |
+
+Pure helper: `wf_net::is_destroyable_iface(name)` — unit-tested; no I/O.
+
+### Create… catalog
+
+UI offers the **intersection** of:
+
+1. Static known catalog (`known_clone_types()`): tap, tun, bridge, gif, gre, vlan, lagg, epair, vxlan, wg, lo, stf  
+2. Live `ifconfig -C` (what this kernel currently registers)  
+3. Preflight OK (module present / loadable / already in `-C`)
+
+| Type | Typical module | Notes |
+|------|----------------|-------|
+| tap / tun | `if_tuntap` | VM / tunnel |
+| bridge | `if_bridge` | |
+| gif | `if_gif` | Often missing if module not installed |
+| gre | `if_gre` | |
+| vlan | `if_vlan` | |
+| lagg | `if_lagg` | |
+| epair | `if_epair` | Creates pair (a/b) |
+| vxlan | `if_vxlan` | |
+| wg | `if_wg` | WireGuard |
+| lo | (kernel) | clone loopback |
+| stf | `if_stf` | 6to4 |
+
+Optional name field: empty → kernel assigns (`tap0`, `bridge1`, …).
+
+### Preflight (before Create is enabled)
+
+```mermaid
+flowchart TB
+  T[Select type e.g. gif] --> A{can_admin?}
+  A -->|no| X1[Block: information-only]
+  A -->|yes| C{type in ifconfig -C?}
+  C -->|yes| OK[can_create · green strip]
+  C -->|no| M{module known?}
+  M -->|no module needed| OK2[can_create if catalog empty/test]
+  M -->|yes| L{kldstat has module?}
+  L -->|yes| OK
+  L -->|no| F{.ko in /boot/kernel or /boot/modules?}
+  F -->|yes| OK3[can_create · will load at apply]
+  F -->|no| X2[Block: module not loaded and not found]
+```
+
+| Input | Source |
+|-------|--------|
+| clone catalog | `ifconfig -C` |
+| module loaded | `kldstat` → `kldstat_has_module` |
+| module file | `access(/boot/kernel/if_*.ko)` / `/boot/modules/` |
+| admin | `probe_admin_privilege` |
+
+Pure decision: `evaluate_create_preflight(...)`.  
+Live: `probe_create_preflight(type)` / `probe_create_catalog()`.
+
+**Never** enable Create when preflight fails. Show the reason string in the modal strip (green OK / red blocked). Mockup knob: “Simulate gif module missing”.
+
+### Apply path (deferred — not in this milestone)
+
+| Action | Command (host policy via doas/sudo) |
+|--------|-------------------------------------|
+| Up | `ifconfig IF up` |
+| Down | `ifconfig IF down` |
+| Destroy | `ifconfig IF destroy` |
+| Create | `ifconfig TYPE create` [name] |
+
+Elevation: reuse `AdminPrivilege` (root / `doas -n` / `sudo -n`). Host `doas.conf` is **not** in this repo. Fail-soft: toast/error string; never crash.
+
+### Pure API surface (implemented)
+
+| Symbol | Role |
+|--------|------|
+| `is_destroyable_iface` | Delete menu enable |
+| `toggle_action_label` | Turn on / Turn off text |
+| `known_clone_types` / `find_clone_type` | Create catalog |
+| `parse_ifconfig_clone_list` | Parse `ifconfig -C` |
+| `kldstat_has_module` | Module loaded? |
+| `evaluate_create_preflight` | Pure gate |
+| `probe_create_preflight` / `probe_create_catalog` | Live FreeBSD probe |
 
 ---
 
 ## 4. UI layout (popover — sparse)
 
-```text
-┌─ Network ───────────────────────────── ✕ ┐
-│  INTERFACES                              │  ← no status strip under title
-│  ● aq0  Ethernet · default               │     (detail is per-row)
-│    99.48…                                │
-│    2600:…                                │
-│  ○ igb0 …                                │
-├──────────────────────────────────────────┤
-│  WI‑FI          (hidden if no wlan)      │
-│  … SSID · 5 GHz · Wi-Fi 6 …              │
-├──────────────────────────────────────────┤
-│  [ Configure… ]   ← FreeBSD editor modal │
-│  (Linux only: Advanced → networkmgr)     │
-└──────────────────────────────────────────┘
+```mermaid
+flowchart TB
+  subgraph pop [Network popover]
+    H[Title: Network]
+    I[Interfaces list<br/>per-row detail · no status strip under title]
+    W[Wi-Fi section<br/>hidden if no wlan]
+    F[Footer actions]
+    H --> I --> W --> F
+  end
 
-┌─ Configure aq0 ──────────────────────────┐  ← modal
-│  IPv4 mode · address/prefix · gateway    │
-│  IPv6 mode · address/prefix · gateway    │
-│  Save → doas sysrc …                     │
-└──────────────────────────────────────────┘
+  F -->|FreeBSD and can_admin| CFG[Configure…]
+  F -->|FreeBSD and can_admin| CR[Create…]
+  F -->|Linux only| ADV[Advanced → networkmgr]
+  F -->|no can_admin| NONE[No mutation buttons]
+
+  CFG --> M[Editor modal<br/>IPv4/IPv6 modes · static fields only]
+  I -->|right-click · can_admin| CTX[Context menu<br/>Turn on/off · Configure · Delete]
+  I -->|right-click · information-only| RO[No mutation items]
 ```
 
 **Tray:** icon only (activity colour); tooltip + popover hold detail.
@@ -219,8 +365,14 @@ Mockup exercises these flows; C++ apply path deferred until planning sign-off.
 
 | File | Purpose |
 |------|---------|
-| [mockup.html](mockup.html) | Click-through FreeBSD Network popover |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | Factory/Builder + probe diagram |
+| [mockup.html](mockup.html) | Click-through FreeBSD Network popover + editor/create/ctx |
+| [diagrams/tray-icon-only.svg](diagrams/tray-icon-only.svg) | Tray: icon only, activity colour |
+| [diagrams/popover-interfaces.svg](diagrams/popover-interfaces.svg) | FreeBSD popover (no NM / no status strip) |
+| [diagrams/popover-context-menu.svg](diagrams/popover-context-menu.svg) | Right-click: up/down · configure · delete |
+| [diagrams/modal-configure.svg](diagrams/modal-configure.svg) | Configure… static/DHCP editor |
+| [diagrams/modal-create-preflight.svg](diagrams/modal-create-preflight.svg) | Create… + module preflight OK/blocked |
+| [diagrams/information-only.svg](diagrams/information-only.svg) | No doas/sudo — read-only list |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Factory/Builder + Mermaid wiring |
 
 Open locally:
 
@@ -232,7 +384,9 @@ firefox docs/network-control/mockup.html
 
 ---
 
-## 6. Acceptance (v1)
+## 6. Acceptance
+
+### v1 (status / Configure UI)
 
 - [ ] Tray primary matches `route -n get default` interface  
 - [ ] Popover lists real FreeBSD ifaces with IP/media  
@@ -242,7 +396,17 @@ firefox docs/network-control/mockup.html
 - [ ] FreeBSD: Configure… opens our editor modal (no networkmgr)  
 - [ ] Linux: Advanced may open networkmgr  
 - [ ] Editor writes/preview sysrc keys; elevate via doas/sudo  
-- [ ] gtest for classify / route parse / primary pick  
+- [x] gtest for classify / route parse / primary pick  
+
+### v3 actions (design + pure helpers now; apply deferred)
+
+- [x] Design: right-click Turn on/off from live `up` flag  
+- [x] Design: Delete only when `is_destroyable_iface`  
+- [x] Design: Create catalog + preflight (module / ifconfig -C)  
+- [x] Mockup exercises context menu + Create + gif-missing / no-admin  
+- [x] Pure gtest: destroyable rules, clone parse, preflight decision  
+- [ ] UI wires context menu + Create modal to live probe  
+- [ ] Apply: `ifconfig up|down|destroy|create` via admin (after sign-off)  
 
 ---
 

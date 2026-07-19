@@ -99,6 +99,83 @@ TEST(NetworkTypes, FingerprintChanges)
     EXPECT_NE(fp1, interface_fingerprint(a));
 }
 
+TEST(NetworkTypes, InformationOnlyHelper)
+{
+    NetworkStackFeatures f;
+    EXPECT_TRUE(is_information_only(f));
+    f.can_admin = true;
+    f.admin = AdminPrivilege::Doas;
+    EXPECT_FALSE(is_information_only(f));
+}
+
+TEST(NetworkTypes, DestroyableIfaceRules)
+{
+    /* Permanent hardware — never destroy */
+    EXPECT_FALSE(is_destroyable_iface("aq0"));
+    EXPECT_FALSE(is_destroyable_iface("igb0"));
+    EXPECT_FALSE(is_destroyable_iface("em0"));
+    EXPECT_FALSE(is_destroyable_iface("lo0"));
+    EXPECT_FALSE(is_destroyable_iface(""));
+
+    /* Clones / virtual — destroyable */
+    EXPECT_TRUE(is_destroyable_iface("tap0"));
+    EXPECT_TRUE(is_destroyable_iface("tun1"));
+    EXPECT_TRUE(is_destroyable_iface("bridge0"));
+    EXPECT_TRUE(is_destroyable_iface("gif0"));
+    EXPECT_TRUE(is_destroyable_iface("gre0"));
+    EXPECT_TRUE(is_destroyable_iface("vlan10"));
+    EXPECT_TRUE(is_destroyable_iface("lagg0"));
+    EXPECT_TRUE(is_destroyable_iface("epair0a"));
+    EXPECT_TRUE(is_destroyable_iface("vxlan0"));
+    EXPECT_TRUE(is_destroyable_iface("lo1"));
+    EXPECT_TRUE(is_destroyable_iface("vm-public"));
+    EXPECT_TRUE(is_destroyable_iface("wlan0")); /* cloned wlan */
+
+    EXPECT_STREQ(toggle_action_label(true), "Turn off");
+    EXPECT_STREQ(toggle_action_label(false), "Turn on");
+}
+
+TEST(NetworkTypes, CloneCatalogAndPreflight)
+{
+    size_t n = 0;
+    const CloneTypeInfo *types = known_clone_types(&n);
+    ASSERT_GT(n, 0u);
+    EXPECT_NE(find_clone_type("tap"), nullptr);
+    EXPECT_NE(find_clone_type("gif"), nullptr);
+    EXPECT_EQ(find_clone_type("notatype"), nullptr);
+    EXPECT_EQ(std::string(types[0].type), "tap");
+
+    auto catalog = parse_ifconfig_clone_list("bridge vlan tap tun lo gif\n");
+    ASSERT_EQ(catalog.size(), 6u);
+    EXPECT_EQ(catalog[0], "bridge");
+    EXPECT_EQ(catalog[5], "gif");
+
+    EXPECT_TRUE(kldstat_has_module(
+        "Id Refs Address Size Name\n 1 1 0x0 1000 if_gif.ko\n", "if_gif"));
+    EXPECT_FALSE(kldstat_has_module(
+        "Id Refs Address Size Name\n 1 1 0x0 1000 if_bridge.ko\n", "if_gif"));
+
+    /* gif in catalog → can create with admin */
+    auto ok = evaluate_create_preflight("gif", catalog, false, false, true);
+    EXPECT_TRUE(ok.can_create);
+    EXPECT_NE(ok.detail.find("ifconfig gif create"), std::string::npos);
+
+    /* gif missing everywhere → blocked */
+    std::vector<std::string> no_gif = {"tap", "bridge"};
+    auto bad = evaluate_create_preflight("gif", no_gif, false, false, true);
+    EXPECT_FALSE(bad.can_create);
+    EXPECT_NE(bad.detail.find("not found"), std::string::npos);
+
+    /* module file on disk still allows Create (load at apply time) */
+    auto loadable = evaluate_create_preflight("gif", no_gif, false, true, true);
+    EXPECT_TRUE(loadable.can_create);
+
+    /* no admin → blocked even if module present */
+    auto noadm = evaluate_create_preflight("tap", catalog, true, true, false);
+    EXPECT_FALSE(noadm.can_create);
+    EXPECT_NE(noadm.detail.find("information-only"), std::string::npos);
+}
+
 TEST(NetworkTypes, WifiFrequencyLabels)
 {
     EXPECT_EQ(format_wifi_frequency_mhz(0), "");
@@ -272,6 +349,22 @@ TEST_F(NetworkHooksTest, LiveProbeOnFreeBSD)
         }
     }
     EXPECT_TRUE(saw_v6) << "expected at least one interface with IPv6 on this host";
+}
+
+TEST_F(NetworkHooksTest, ProbeAdminPrivilegeDoesNotThrow)
+{
+    std::string method;
+    AdminPrivilege p = AdminPrivilege::None;
+    EXPECT_NO_THROW(p = probe_admin_privilege(&method));
+    /* On this desktop mlapointe often has doas/sudo -n; either way is valid */
+    if (p != AdminPrivilege::None)
+    {
+        EXPECT_FALSE(method.empty());
+        EXPECT_TRUE(p == AdminPrivilege::Root || p == AdminPrivilege::Doas ||
+            p == AdminPrivilege::Sudo);
+    }
+    auto feat = probe_features();
+    EXPECT_EQ(feat.can_admin, p != AdminPrivilege::None);
 }
 
 TEST_F(NetworkHooksTest, FreeBSDNetworkSnapshot)

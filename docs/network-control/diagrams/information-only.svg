@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 420" width="100%" preserveAspectRatio="xMidYMid meet">
+  <foreignObject x="0" y="0" width="360" height="420">
+    <div xmlns="http://www.w3.org/1999/xhtml" style="position:relative;width:360px;height:420px;box-sizing:border-box;font-family:system-ui,Sans,sans-serif;background:#11111b;color:#cdd6f4;padding:12px;">
+      <div style="font-size:11px;color:#a6adc8;margin-bottom:8px;">No doas/sudo/root — information-only mode</div>
+      <div style="background:#1e1e2e;border:1px solid #45475a;border-radius:12px;overflow:hidden;font-size:12px;">
+        <div style="padding:10px 12px;border-bottom:1px solid #313244;display:flex;justify-content:space-between;">
+          <span style="font-weight:600;font-size:13px;">Network</span>
+          <span style="color:#a6adc8;">✕</span>
+        </div>
+        <div style="padding:8px 12px;border-bottom:1px solid #313244;">
+          <div style="font-size:10px;color:#6c7086;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">Interfaces</div>
+          <div style="padding:8px;border-radius:8px;background:#1a2030;border:1px solid #313244;margin-bottom:4px;">
+            <strong>aq0</strong>
+            <span style="font-size:9px;margin-left:6px;padding:1px 5px;border-radius:4px;background:#1e3a2f;color:#a6e3a1;">DEFAULT</span>
+            <div style="font-size:10px;color:#a6adc8;margin-top:3px;line-height:1.25;">99.48.162.238<br/>2600:1700:…</div>
+          </div>
+          <div style="padding:8px;border-radius:8px;">
+            <strong>igb0</strong>
+            <div style="font-size:10px;color:#a6adc8;margin-top:3px;">192.168.1.154</div>
+          </div>
+        </div>
+        <!-- footer empty / no mutation buttons -->
+        <div style="padding:10px 12px;min-height:36px;display:flex;align-items:center;justify-content:flex-end;">
+          <span style="font-size:10px;color:#6c7086;font-style:italic;">read-only</span>
+        </div>
+      </div>
+      <div style="margin-top:12px;font-size:10px;color:#6c7086;line-height:1.5;">
+        Hidden when <code style="color:#f9e2af;">can_admin</code> is false:<br/>
+        Configure… · Create… · Turn on/off · Delete<br/>
+        Tray still shows status icon (colour by activity).
+      </div>
+    </div>
+  </foreignObject>
+</svg>

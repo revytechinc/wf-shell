@@ -49,6 +49,29 @@ static std::string run_cmd_real(const std::string& cmd)
     return out;
 }
 
+/** Run cmd; return true if exit status is 0. */
+static bool run_cmd_ok(const std::string& cmd)
+{
+    if (g_hooks.run_cmd)
+    {
+        /* Tests: hook returns "0" / "ok" for success, empty/fail otherwise */
+        std::string o = g_hooks.run_cmd(cmd);
+        return o == "0" || o == "ok" || o.find("uid=0") != std::string::npos;
+    }
+    FILE *fp = popen(cmd.c_str(), "r");
+    if (!fp)
+    {
+        return false;
+    }
+    std::array<char, 256> buf{};
+    while (fgets(buf.data(), static_cast<int>(buf.size()), fp))
+    {
+        /* discard */
+    }
+    int st = pclose(fp);
+    return WIFEXITED(st) && WEXITSTATUS(st) == 0;
+}
+
 static std::string run_cmd(const std::string& cmd)
 {
     if (g_hooks.run_cmd)
@@ -354,6 +377,123 @@ std::vector<InterfaceInfo> probe_interfaces(const ProbeOptions& opts)
     });
 
     return result;
+}
+
+AdminPrivilege probe_admin_privilege(std::string *method_out)
+{
+    if (method_out)
+    {
+        method_out->clear();
+    }
+    if (geteuid() == 0)
+    {
+        if (method_out)
+        {
+            *method_out = "root";
+        }
+        return AdminPrivilege::Root;
+    }
+    /* -n: non-interactive; fails if a password would be required */
+    if (run_cmd_ok("doas -n true 2>/dev/null"))
+    {
+        if (method_out)
+        {
+            *method_out = "doas";
+        }
+        return AdminPrivilege::Doas;
+    }
+    if (run_cmd_ok("sudo -n true 2>/dev/null"))
+    {
+        if (method_out)
+        {
+            *method_out = "sudo";
+        }
+        return AdminPrivilege::Sudo;
+    }
+    return AdminPrivilege::None;
+}
+
+NetworkStackFeatures probe_features(const ProbeOptions& opts)
+{
+    NetworkStackFeatures f;
+    auto list = probe_interfaces(opts);
+    f.physical_ifaces = false;
+    for (const auto& i : list)
+    {
+        if (i.kind == InterfaceKind::Ethernet || i.kind == InterfaceKind::Wireless)
+        {
+            f.physical_ifaces = true;
+        }
+        if (i.kind == InterfaceKind::Wireless)
+        {
+            f.wireless = true;
+        }
+        if (i.is_default_route)
+        {
+            f.default_route = true;
+        }
+    }
+    /* wpa: presence of wpa_cli + any wlan — lightweight check */
+    if (f.wireless && run_cmd_ok("command -v wpa_cli >/dev/null 2>&1"))
+    {
+        f.wpa = true;
+    }
+    std::string method;
+    f.admin = probe_admin_privilege(&method);
+    f.can_admin = (f.admin != AdminPrivilege::None);
+    f.admin_method = method;
+    return f;
+}
+
+static bool module_file_exists(const std::string& module_name)
+{
+    if (module_name.empty())
+    {
+        return false;
+    }
+    /* Fixed paths only — no user input in the path. */
+    const std::string ko = module_name + ".ko";
+    const std::string paths[] = {
+        "/boot/kernel/" + ko,
+        "/boot/modules/" + ko,
+    };
+    for (const auto& p : paths)
+    {
+        if (access(p.c_str(), R_OK) == 0)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+CreatePreflight probe_create_preflight(const std::string& type)
+{
+    const bool has_admin = (probe_admin_privilege() != AdminPrivilege::None);
+    std::string c_out = run_cmd("ifconfig -C 2>/dev/null");
+    auto catalog = parse_ifconfig_clone_list(c_out);
+    const CloneTypeInfo *spec = find_clone_type(type);
+    bool loaded = false;
+    bool file_ok = false;
+    if (spec && spec->module)
+    {
+        std::string kld = run_cmd("kldstat 2>/dev/null");
+        loaded = kldstat_has_module(kld, spec->module);
+        file_ok = module_file_exists(spec->module);
+    }
+    return evaluate_create_preflight(type, catalog, loaded, file_ok, has_admin);
+}
+
+std::vector<CreatePreflight> probe_create_catalog()
+{
+    std::vector<CreatePreflight> out;
+    size_t n = 0;
+    const CloneTypeInfo *types = known_clone_types(&n);
+    for (size_t i = 0; i < n; ++i)
+    {
+        out.push_back(probe_create_preflight(types[i].type));
+    }
+    return out;
 }
 
 std::string pick_primary_path(const std::vector<InterfaceInfo>& list)

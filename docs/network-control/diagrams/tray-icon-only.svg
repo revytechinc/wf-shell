@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 160" width="100%" preserveAspectRatio="xMidYMid meet">
+  <foreignObject x="0" y="0" width="720" height="160">
+    <div xmlns="http://www.w3.org/1999/xhtml" style="position:relative;width:720px;height:160px;box-sizing:border-box;font-family:system-ui,Sans,sans-serif;background:#11111b;color:#cdd6f4;padding:16px;">
+      <div style="font-size:11px;color:#a6adc8;margin-bottom:8px;">Panel tray — network icon only (no IP / SSID text)</div>
+      <div style="display:flex;align-items:center;height:40px;background:#1e1e2e;border:1px solid #45475a;border-radius:8px;padding:0 12px;gap:10px;">
+        <div style="font-size:12px;color:#6c7086;flex:1;">wayfire · FreeBSD seat</div>
+        <!-- network icon online (green) -->
+        <div style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:28px;border-radius:6px;border:1px solid #89b4fa;background:#313244;" title="aq0 · default&#10;99.48.162.238&#10;2600:…">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#a6e3a1" stroke-width="1.8">
+            <rect x="3" y="8" width="18" height="10" rx="2"/>
+            <path d="M8 8V6h8v2M7 12h2m3 0h2m3 0h2" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <!-- sound icon (shipped) -->
+        <div style="opacity:0.55;font-size:14px;padding:4px 6px;">🔊</div>
+        <div style="font-size:11px;color:#cdd6f4;">14:02</div>
+      </div>
+      <div style="margin-top:10px;font-size:10px;color:#6c7086;line-height:1.45;">
+        Activity colour: <span style="color:#a6e3a1;">excellent / online</span> ·
+        <span style="color:#89b4fa;">good</span> ·
+        <span style="color:#f9e2af;">medium</span> ·
+        <span style="color:#6c7086;">none / offline</span>
+        · detail only in tooltip + popover
+      </div>
+    </div>
+  </foreignObject>
+</svg>

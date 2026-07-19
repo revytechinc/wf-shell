@@ -78,23 +78,101 @@ flowchart TB
 
 ## Probe → tray contract
 
-1. `probe_interfaces(opts)` → vector of `InterfaceInfo`  
-2. Backend upserts `FreeBSDNetwork` by `path` (`/freebsd/interfaces/<name>`)  
-3. `pick_primary_path` → default-route iface if up  
-4. `signal_primary_changed` → `Connection{device}` → tray `set_connection`  
-5. Device list fingerprint equal → **no** full popover rebuild  
+```mermaid
+sequenceDiagram
+  participant B as FreeBSDNetworkBackend
+  participant P as probe_interfaces
+  participant M as NetworkManager
+  participant T as Tray WayfireNetworkInfo
+
+  B->>P: probe_interfaces(opts)
+  P-->>B: InterfaceInfo[]
+  B->>B: upsert FreeBSDNetwork by path
+  B->>B: pick_primary_path
+  B->>M: signal_primary_changed
+  M->>T: signal_default_changed Connection
+  Note over B: fingerprint equal → no list rebuild
+```
+
+---
+
+## Privilege → information-only
+
+```mermaid
+flowchart TB
+  PF[probe_features]
+  PF --> AD[probe_admin_privilege]
+  AD --> R{AdminPrivilege}
+  R -->|Root / Doas / Sudo| CA[can_admin true]
+  R -->|None| IO[information-only]
+  CA --> MUT[Configure · Create · up/down · destroy]
+  IO --> RO[List + tooltip only<br/>mutations hidden/disabled]
+```
+
+---
+
+## Right-click actions + Create preflight
+
+```mermaid
+flowchart LR
+  subgraph probe [Live probe]
+    IF[InterfaceInfo.up / running]
+    DES[is_destroyable_iface]
+    C[ifconfig -C]
+    K[kldstat + .ko paths]
+    AD[can_admin]
+  end
+
+  subgraph ui [Popover]
+    CTX[Context menu]
+    CR[Create modal]
+  end
+
+  IF -->|toggle label| CTX
+  DES -->|Delete enable| CTX
+  AD --> CTX
+  AD --> CR
+  C --> PF[evaluate_create_preflight]
+  K --> PF
+  PF -->|can_create + detail| CR
+```
+
+| Pure (gtest) | Live probe | Apply (deferred) |
+|--------------|------------|------------------|
+| `is_destroyable_iface` | flags from `getifaddrs` | `ifconfig up/down/destroy` |
+| `evaluate_create_preflight` | `probe_create_preflight` | `ifconfig TYPE create` |
+| `parse_ifconfig_clone_list` | `ifconfig -C` | — |
+| `kldstat_has_module` | `kldstat` | optional `kldload` |
+
+Domain types: `CloneTypeInfo`, `CreatePreflight` in `network-types.hpp`.
 
 ---
 
 ## Wi‑Fi (v2, optional module)
 
-When `wlanN` exists and `wpa_cli -i wlanN status` works:
+```mermaid
+flowchart LR
+  W{wlanN present?}
+  W -->|no| H[Hide Wi-Fi section]
+  W -->|yes| C{wpa_cli works?}
+  C -->|no| H2[Show iface only]
+  C -->|yes| S[Scan / status / connect]
+```
 
-- Status: ssid, ip, wpa state  
-- Scan: `wpa_cli scan` / `scan_results`  
-- Connect: `wpa_cli` network add / enable (details in implementation PR)  
+---
 
-Absent → section not built (features flag).
+## UI snapshots (SVG)
+
+| Diagram | Content |
+|---------|---------|
+| [diagrams/tray-icon-only.svg](diagrams/tray-icon-only.svg) | Tray icon only |
+| [diagrams/popover-interfaces.svg](diagrams/popover-interfaces.svg) | Interface list + Configure/Create |
+| [diagrams/popover-context-menu.svg](diagrams/popover-context-menu.svg) | Right-click actions |
+| [diagrams/modal-configure.svg](diagrams/modal-configure.svg) | Address editor modal |
+| [diagrams/modal-create-preflight.svg](diagrams/modal-create-preflight.svg) | Create + kld preflight |
+| [diagrams/information-only.svg](diagrams/information-only.svg) | No admin privileges |
+
+Interactive twin: [mockup.html](mockup.html).
 
 ---
 
@@ -104,5 +182,6 @@ Absent → section not built (features flag).
 meson test -C build --suite unit   # includes network-backend-test
 ```
 
-Pure: classify, route parse, ifconfig media parse, primary pick.  
-Live FreeBSD: probe non-empty + default route (host-dependent).
+Pure: classify, route parse, ifconfig media parse, primary pick, privilege helpers,
+destroyable rules, clone catalog, create preflight decision.  
+Live FreeBSD: probe non-empty + default route + create catalog (host-dependent).
