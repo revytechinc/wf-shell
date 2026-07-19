@@ -1278,6 +1278,22 @@ void FreeBSDIfaceRow::do_details()
     {
         return;
     }
+
+    /*
+     * Close the network tray popover first. Details closes cleanly alone;
+     * keeping the popover open under it fights focus/grabs on Wayland.
+     */
+    for (Gtk::Widget *w = this; w; w = w->get_parent())
+    {
+        if (auto *pop = dynamic_cast<Gtk::Popover*>(w))
+        {
+            pop->popdown();
+            break;
+        }
+    }
+    /* Also collapse local context menu if still up. */
+    menu_.popdown();
+
     /* Already open — just raise it. */
     if (details_ && details_->get_visible())
     {
