@@ -20,6 +20,8 @@ class Connection : public Network
     Connection();
     Connection(std::string path, std::shared_ptr<Gio::DBus::Proxy> connection_proxy,
         std::vector<std::shared_ptr<Network>> devices);
+    /** FreeBSD / no-D-Bus: wrap one or more devices as the "primary connection". */
+    explicit Connection(std::vector<std::shared_ptr<Network>> devices);
     ~Connection();
     std::string get_name();
     std::string get_icon_name();

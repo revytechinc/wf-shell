@@ -1,34 +1,32 @@
 #pragma once
 
 #include "network.hpp"
-#include <string>
+#include "network-types.hpp"
 
 /**
- * FreeBSDNetwork — a Network subclass backed by ifconfig(8) polling.
- *
- * Used on FreeBSD when NetworkManager is not available.  Detects interface
- * status by checking IFF_UP and IFF_RUNNING flags from getifaddrs(3).
+ * FreeBSDNetwork — Network product backed by a live InterfaceInfo snapshot.
+ * Updated by FreeBSDNetworkBackend on each probe (fingerprint-driven).
  */
 class FreeBSDNetwork : public Network
 {
   public:
-    /**
-     * @param path       D-Bus-style object path, e.g. "/org/freedesktop/NetworkManager/Devices/0"
-     * @param interface  The OS interface name, e.g. "em0", "wlan0"
-     * @param is_wireless True if the interface is wireless
-     */
-    FreeBSDNetwork(std::string path, std::string interface, bool is_wireless);
+    FreeBSDNetwork(wf_net::InterfaceInfo info);
 
     std::string get_name() override;
     std::string get_icon_name() override;
     std::vector<std::string> get_css_classes() override;
     std::string get_friendly_name() override;
-    bool is_active();
-    void disconnect();
+    std::string get_interface() override;
+    bool is_active() override;
+    void disconnect() override;
     bool can_toggle() override;
 
-  private:
-    bool is_wireless;
+    /** Replace snapshot if fingerprint changed; returns true if UI should refresh. */
+    bool update_info(wf_net::InterfaceInfo info);
 
-    static std::string icon_for_state(bool active, bool wireless);
+    const wf_net::InterfaceInfo& info() const { return info_; }
+
+  private:
+    wf_net::InterfaceInfo info_;
+    std::string fingerprint_;
 };

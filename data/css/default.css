@@ -65,9 +65,12 @@ text-shadow: 1px  1px 0 var(--bcol),
     font-size: 20px;
 }
 
-.wf-panel .network label {
-    padding-left: 6px;
-}
+/* Network tray icon activity (classes from backend: excellent/good/medium/none) */
+.wf-panel .network.excellent image { color: #a6e3a1; }
+.wf-panel .network.good image      { color: #89b4fa; }
+.wf-panel .network.medium image    { color: #f9e2af; }
+.wf-panel .network.none image      { color: #6c7086; }
+.wf-panel .network.wifi.weak image { color: #f9e2af; }
 
 .wf-panel .command-output.icon-left label {
     padding-left: 5px;

@@ -231,22 +231,6 @@ If full_span is off, both sides of the panel will take the same amount of space,
 	</group>
 	<group>
 	<_short>Network</_short>
-	<option name="network_status" type="string">
-		<_short>Network Status</_short>
-		<default>connection</default>
-		<desc>
-			<value>none</value>
-			<_name>None</_name>
-		</desc>
-		<desc>
-			<value>connection</value>
-			<_name>Connection</_name>
-		</desc>
-	</option>
-	<option name="network_status_font" type="string">
-		<_short>Clock Font</_short>
-		<default>default</default>
-	</option>
 	<option name="network_icon_size" type="int">
 		<_short>Network Icon Size</_short>
 		<default>0</default>
@@ -256,17 +240,15 @@ If full_span is off, both sides of the panel will take the same amount of space,
 		<_short>Network Icon Invert Color</_short>
 		<default>false</default>
 	</option>
-	<option name="network_status_use_color" type="bool">
-		<_short>Network Status Use Color</_short>
-		<default>false</default>
-	</option>
 	<option name="network_onclick_command" type="string">
-		<_short>On Click Command</_short>
+		<_short>Right-click command</_short>
+		<_long>Command for right-click / long-press. Left-click opens the network popover. Use "default" for platform default (none on FreeBSD).</_long>
 		<default>default</default>
 	</option>
 	<option name="network_no_label" type="bool">
-		<_short>No text</_short>
-		<default>false</default>
+		<_short>No text (compat)</_short>
+		<_long>Tray is always icon-only. Kept so old ini files still parse.</_long>
+		<default>true</default>
 	</option>
 	</group>
 	<group>

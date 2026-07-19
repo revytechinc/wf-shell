@@ -1,123 +1,207 @@
 /*
- * FreeBSD network backend — ifconfig polling via getifaddrs(3).
- *
- * Each poll cycle (every 3 seconds) walks the interface list, diffs against
- * the previous state, and emits device_added / device_removed signals.
+ * FreeBSD network backend — Factory product.
+ * Probes via getifaddrs + route + ifconfig (wf_net::probe_interfaces).
+ * Fingerprint-driven: no device_added/altered spam when nothing changed.
  */
 
 #include "network-backend.hpp"
+#include "freebsd-network.hpp"
+#include "network-info.hpp"
 #include "null.hpp"
 
-#include <cstring>
-#include <ifaddrs.h>
-#include <net/if.h>
-#include <sys/types.h>
-
-#include <map>
+#include <memory>
 #include <string>
+#include <vector>
 
 #include <glibmm.h>
 
-/*
- * Detect whether an interface is a wireless interface on FreeBSD.
- * Wireless interfaces are typically wlanN, which is a virtual interface
- * layered over a physical device (e.g. iwm0, iwn0, urtwn0).
- * The actual physical interface does not expose Wi-Fi scan capabilities.
- */
-static bool is_wireless_iface(const char *iface)
+namespace
 {
-    return (strncmp(iface, "wlan", 4) == 0) && (iface[4] >= '0') && (iface[4] <= '9');
+
+class FreeBSDNetworkBackend final : public NetworkBackend
+{
+  public:
+    explicit FreeBSDNetworkBackend(NetworkBackendBuilder b) : builder_(std::move(b))
+    {
+        all_devices_.emplace("/", std::make_shared<NullNetwork>());
+    }
+
+    const char *platform_name() const override
+    {
+        return "freebsd";
+    }
+
+    void connect() override
+    {
+        refresh_devices();
+        int ms = builder_.poll_interval_ms();
+        poll_timer_ = Glib::signal_timeout().connect(
+            [this] () -> bool {
+                refresh_devices();
+                return true;
+            },
+            ms);
+        signal_nm_start.emit();
+    }
+
+    void disconnect() override
+    {
+        if (poll_timer_.connected())
+        {
+            poll_timer_.disconnect();
+        }
+        signal_nm_stop.emit();
+    }
+
+    DeviceMap& devices() override
+    {
+        return all_devices_;
+    }
+
+    std::shared_ptr<Network> primary_device() override
+    {
+        if (primary_path_.empty())
+        {
+            return nullptr;
+        }
+        auto it = all_devices_.find(primary_path_);
+        if (it == all_devices_.end())
+        {
+            return nullptr;
+        }
+        return it->second;
+    }
+
+  private:
+    void refresh_devices()
+    {
+        auto list = wf_net::probe_interfaces(builder_.probe_options());
+        std::map<std::string, bool> seen;
+
+        for (auto& info : list)
+        {
+            seen[info.path] = true;
+            auto it = all_devices_.find(info.path);
+            if (it == all_devices_.end())
+            {
+                auto net = std::make_shared<FreeBSDNetwork>(std::move(info));
+                all_devices_.emplace(net->get_path(), net);
+                signal_device_added.emit(net);
+            } else
+            {
+                auto fbsd = std::dynamic_pointer_cast<FreeBSDNetwork>(it->second);
+                if (fbsd)
+                {
+                    fbsd->update_info(std::move(info));
+                }
+            }
+        }
+
+        /* Remove vanished interfaces */
+        std::vector<std::string> removed;
+        for (const auto& [path, _] : all_devices_)
+        {
+            if (path == "/")
+            {
+                continue;
+            }
+            if (!seen.count(path))
+            {
+                removed.push_back(path);
+            }
+        }
+        for (const auto& path : removed)
+        {
+            signal_device_removed.emit(all_devices_[path]);
+            all_devices_.erase(path);
+        }
+
+        /* Primary / default route */
+        std::string want = wf_net::pick_primary_path(
+            /* rebuild infos from devices for pick — use probe list paths */
+            [&] () {
+                std::vector<wf_net::InterfaceInfo> infos;
+                for (const auto& [path, dev] : all_devices_)
+                {
+                    if (path == "/")
+                    {
+                        continue;
+                    }
+                    auto f = std::dynamic_pointer_cast<FreeBSDNetwork>(dev);
+                    if (f)
+                    {
+                        infos.push_back(f->info());
+                    }
+                }
+                return infos;
+            }());
+
+        if (want != primary_path_)
+        {
+            primary_path_ = want;
+            signal_primary_changed.emit(primary_device());
+        }
+    }
+
+    NetworkBackendBuilder builder_;
+    DeviceMap all_devices_;
+    sigc::connection poll_timer_;
+    std::string primary_path_;
+};
+
+class NullNetworkBackend final : public NetworkBackend
+{
+  public:
+    explicit NullNetworkBackend(NetworkBackendBuilder)
+    {
+        all_devices_.emplace("/", std::make_shared<NullNetwork>());
+    }
+
+    const char *platform_name() const override
+    {
+        return "unknown";
+    }
+
+    void connect() override
+    {
+        signal_nm_start.emit();
+    }
+
+    void disconnect() override
+    {
+        signal_nm_stop.emit();
+    }
+
+    DeviceMap& devices() override
+    {
+        return all_devices_;
+    }
+
+    std::shared_ptr<Network> primary_device() override
+    {
+        return nullptr;
+    }
+
+  private:
+    DeviceMap all_devices_;
+};
+
+} // namespace
+
+namespace wf_net
+{
+namespace detail
+{
+
+std::unique_ptr<NetworkBackend> create_freebsd_network_backend(const NetworkBackendBuilder& b)
+{
+    return std::make_unique<FreeBSDNetworkBackend>(b);
 }
 
-/* ─── FreeBSDNetworkBackend ──────────────────────────────────────────────── */
-
-FreeBSDNetworkBackend::FreeBSDNetworkBackend()
+std::unique_ptr<NetworkBackend> create_null_network_backend(const NetworkBackendBuilder& b)
 {
-    /* Placeholder null device — represents "no connection" */
-    all_devices.emplace("/", std::make_shared<NullNetwork>());
+    return std::make_unique<NullNetworkBackend>(b);
 }
 
-void FreeBSDNetworkBackend::connect()
-{
-    /* Initial scan */
-    refresh_devices();
-
-    /* Poll every 3 seconds for interface changes */
-    poll_timer = Glib::signal_timeout().connect(
-        [this]() -> bool {
-            refresh_devices();
-            return true;
-        },
-        3000);
-
-    /* Tell listeners that the "NM" equivalent started */
-    signal_nm_start.emit();
-}
-
-void FreeBSDNetworkBackend::refresh_devices()
-{
-    struct ifaddrs *ifaddr, *ifa;
-
-    if (getifaddrs(&ifaddr) == -1) {
-        return;
-    }
-
-    std::map<std::string, std::string> current; // interface name → path
-
-    for (ifa = ifaddr; ifa != nullptr; ifa = ifa->ifa_next) {
-        /* Only consider AF_INET (IPv4) — present on any up interface.
-         * Skip loopback (lo0). */
-        if (ifa->ifa_addr == nullptr || ifa->ifa_addr->sa_family != AF_INET) {
-            continue;
-        }
-        if (strncmp(ifa->ifa_name, "lo", 2) == 0) {
-            continue;
-        }
-
-        std::string iface = ifa->ifa_name;
-        std::string path = "/org/freedesktop/NetworkManager/Devices/freebsd/" + iface;
-
-        current[iface] = path;
-
-        if (all_devices.find(path) == all_devices.end()) {
-            /* New interface */
-            bool wireless = is_wireless_iface(iface.c_str());
-            auto net = std::make_shared<FreeBSDNetwork>(path, iface, wireless);
-            all_devices.emplace(path, net);
-            signal_device_added.emit(all_devices[path]);
-        }
-    }
-
-    freeifaddrs(ifaddr);
-
-    /* Remove interfaces that disappeared */
-    std::vector<std::string> removed;
-    for (const auto &[path, _] : all_devices) {
-        if (path == "/") {
-            continue;
-        }
-        /* Extract interface name from path */
-        std::string iface = path.substr(path.rfind('/') + 1);
-        if (current.find(iface) == current.end()) {
-            removed.push_back(path);
-        }
-    }
-    for (const auto& path : removed) {
-        signal_device_removed.emit(all_devices[path]);
-        all_devices.erase(path);
-    }
-
-    /* Re-emit network altered on each device to refresh icon state */
-    for (auto& [path, dev] : all_devices) {
-        if (path != "/") {
-            dev->signal_network_altered().emit();
-        }
-    }
-}
-
-void FreeBSDNetworkBackend::disconnect()
-{
-    if (poll_timer.connected()) {
-        poll_timer.disconnect();
-    }
-}
+} // namespace detail
+} // namespace wf_net

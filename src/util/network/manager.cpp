@@ -48,20 +48,13 @@ NetworkManager::NetworkManager()
     our_signals.push_back(popup_entry.signal_activate().connect(
         sigc::mem_fun(*this, &NetworkManager::submit_password)));
 
-    /* ── Create the platform-appropriate network backend ───────────────── */
-    if (std::strcmp(wf_platform_name(), "freebsd") == 0)
-    {
-        backend = std::make_unique<FreeBSDNetworkBackend>();
-    }
-    else
-    {
-        /* Linux / other: use NetworkManager over D-Bus.  The backend is
-         * nullptr here; the D-Bus setup below IS the Linux backend. */
-        backend = nullptr;
-    }
-
-    /* Wire backend signals to manager signals */
-    if (backend)
+    /*
+     * Factory Method: OS product selection lives in NetworkBackendFactory.
+     * FreeBSD → poll backend (ifconfig/route) — never NetworkManager.
+     * Linux   → no poll backend; NetworkManager D-Bus below only.
+     */
+    backend = NetworkBackendFactory::create();
+    if (backend && std::strcmp(backend->platform_name(), "freebsd") == 0)
     {
         backend->signal_device_added.connect(
             [this] (std::shared_ptr<Network> net) {
@@ -73,85 +66,105 @@ NetworkManager::NetworkManager()
                 device_removed.emit(net);
                 all_devices.erase(net->get_path());
             });
-        backend->signal_nm_start.connect(
-            [this] { nm_start.emit(); });
-        backend->signal_nm_stop.connect(
-            [this] { nm_stop.emit(); });
+        backend->signal_primary_changed.connect(
+            [this] (std::shared_ptr<Network> net) {
+                if (!net)
+                {
+                    primary_connection_obj = std::make_shared<Connection>();
+                    primary_connection     = "/";
+                    default_changed.emit(primary_connection_obj);
+                    return;
+                }
+                std::vector<std::shared_ptr<Network>> devs = {net};
+                primary_connection_obj = std::make_shared<Connection>(devs);
+                primary_connection     = net->get_path();
+                if (primary_signal)
+                {
+                    primary_signal.disconnect();
+                }
+                primary_signal = net->signal_network_altered().connect(
+                    [this] () {
+                        default_changed.emit(primary_connection_obj);
+                    });
+                default_changed.emit(primary_connection_obj);
+            });
 
         backend->connect();
-    }
-    else
-    {
-        /* ── Linux / other: use NetworkManager over D-Bus ── */
-        Gio::DBus::Proxy::create_for_bus(Gio::DBus::BusType::SYSTEM,
-            "org.freedesktop.DBus",
-            "/org/freedesktop/DBus",
-            "org.freedesktop.DBus",
-            [this] (const Glib::RefPtr<Gio::AsyncResult> & result)
+        if (auto p = backend->primary_device())
         {
-            // Got a dbus proxy
-            manager_proxy = Gio::DBus::Proxy::create_finish(result);
-            auto val = manager_proxy->call_sync("ListNames");
-            Glib::Variant<std::vector<std::string>> list;
-            val.get_child(list, 0);
-            auto l2 = list.get();
-            for (auto t : l2)
-            {
-                if (t == NM_DBUS_NAME)
-                {
-                    connect_nm();
-                }
+            backend->signal_primary_changed.emit(p);
+        }
+        return; /* FreeBSD: done — no D-Bus NetworkManager */
+    }
 
-                if (t == MM_DBUS_NAME)
-                {
-                    mm_start.emit();
-                }
+    /* Linux (and non-FreeBSD): NetworkManager over D-Bus only */
+    backend.reset();
+    Gio::DBus::Proxy::create_for_bus(Gio::DBus::BusType::SYSTEM,
+        "org.freedesktop.DBus",
+        "/org/freedesktop/DBus",
+        "org.freedesktop.DBus",
+        [this] (const Glib::RefPtr<Gio::AsyncResult> & result)
+    {
+        manager_proxy = Gio::DBus::Proxy::create_finish(result);
+        auto val = manager_proxy->call_sync("ListNames");
+        Glib::Variant<std::vector<std::string>> list;
+        val.get_child(list, 0);
+        auto l2 = list.get();
+        for (auto t : l2)
+        {
+            if (t == NM_DBUS_NAME)
+            {
+                connect_nm();
             }
 
-            /* https://dbus.freedesktop.org/doc/dbus-java/api/org/freedesktop/DBus.NameOwnerChanged.html */
-            our_signals.push_back(manager_proxy->signal_signal().connect(
-                [this] (const Glib::ustring & sender_name,
-                        const Glib::ustring & signal_name,
-                        const Glib::VariantContainerBase & params)
+            if (t == MM_DBUS_NAME)
             {
-                if (signal_name == "NameOwnerChanged")
+                mm_start.emit();
+            }
+        }
+
+        our_signals.push_back(manager_proxy->signal_signal().connect(
+            [this] (const Glib::ustring & sender_name,
+                    const Glib::ustring & signal_name,
+                    const Glib::VariantContainerBase & params)
+        {
+            if (signal_name == "NameOwnerChanged")
+            {
+                Glib::Variant<std::string> to, from, name;
+                params.get_child(name, 0);
+                params.get_child(from, 1);
+                params.get_child(to, 2);
+                if (name.get() == NM_DBUS_NAME)
                 {
-                    Glib::Variant<std::string> to, from, name;
-                    params.get_child(name, 0);
-                    params.get_child(from, 1);
-                    params.get_child(to, 2);
-                    if (name.get() == NM_DBUS_NAME)
+                    if (from.get() == "")
                     {
-                        if (from.get() == "")
-                        {
-                            connect_nm();
-                        } else if (to.get() == "")
-                        {
-                            lost_nm();
-                        }
-                    } else if (name.get() == MM_DBUS_NAME)
+                        connect_nm();
+                    } else if (to.get() == "")
                     {
-                        if (from.get() == "")
+                        lost_nm();
+                    }
+                } else if (name.get() == MM_DBUS_NAME)
+                {
+                    if (from.get() == "")
+                    {
+                        mm_start.emit();
+                    } else if (to.get() == "")
+                    {
+                        for_each(all_devices.cbegin(), all_devices.cend(),
+                            [this] (std::map<std::string, std::shared_ptr<Network>>::const_reference it)
                         {
-                            mm_start.emit();
-                        } else if (to.get() == "")
-                        {
-                            for_each(all_devices.cbegin(), all_devices.cend(),
-                                [this] (std::map<std::string, std::shared_ptr<Network>>::const_reference it)
+                            if (std::dynamic_pointer_cast<ModemNetwork>(it.second) != nullptr)
                             {
-                                if (std::dynamic_pointer_cast<ModemNetwork>(it.second) != nullptr)
-                                {
-                                    device_removed.emit(it.second);
-                                    all_devices.erase(it.first);
-                                }
-                            });
-                            mm_stop.emit();
-                        }
+                                device_removed.emit(it.second);
+                                all_devices.erase(it.first);
+                            }
+                        });
+                        mm_stop.emit();
                     }
                 }
-            }));
-        });
-    }
+            }
+        }));
+    });
 }
 
 void NetworkManager::setting_added(std::string path)

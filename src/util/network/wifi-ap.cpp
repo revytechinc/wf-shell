@@ -1,6 +1,7 @@
 #include "wifi-ap.hpp"
 #include "glibmm/variant.h"
 #include "network.hpp"
+#include "network-types.hpp"
 #include <memory>
 
 std::string AccessPoint::get_path()
@@ -26,7 +27,17 @@ AccessPoint::AccessPoint(std::string path, std::shared_ptr<Gio::DBus::Proxy> acc
 
     Glib::Variant<unsigned int> freq_start;
     access_point_proxy->get_cached_property(freq_start, "Frequency");
-    freq = freq_start.get();
+    if (freq_start)
+    {
+        freq = freq_start.get();
+    }
+
+    Glib::Variant<unsigned int> bitrate_start;
+    access_point_proxy->get_cached_property(bitrate_start, "MaxBitrate");
+    if (bitrate_start)
+    {
+        max_bitrate_kbps = bitrate_start.get();
+    }
 
     signals.push_back(access_point_proxy->signal_properties_changed().connect(
         [this] (const Gio::DBus::Proxy::MapChangedProperties& properties,
@@ -56,6 +67,12 @@ AccessPoint::AccessPoint(std::string path, std::shared_ptr<Gio::DBus::Proxy> acc
                 auto value =
                     Glib::VariantBase::cast_dynamic<Glib::Variant<unsigned int>>(it.second).get();
                 freq = value;
+                access_point_altered.emit();
+            } else if (it.first == "MaxBitrate")
+            {
+                auto value =
+                    Glib::VariantBase::cast_dynamic<Glib::Variant<unsigned int>>(it.second).get();
+                max_bitrate_kbps = value;
                 access_point_altered.emit();
             }
         }
@@ -94,7 +111,9 @@ std::string AccessPoint::strength_string()
 
 std::string AccessPoint::get_icon_name()
 {
-    return "network-wireless-signal-" + strength_string() + "-symbolic";
+    /* Base name only — callers append -symbolic via set_from_icon_name(...-symbolic)
+     * or Network::get_icon_symbolic(). Double -symbolic breaks theme lookup. */
+    return "network-wireless-signal-" + strength_string();
 }
 
 type_signal_network_altered AccessPoint::signal_altered()
@@ -120,29 +139,20 @@ std::string AccessPoint::get_security_icon_name()
     return "channel-insecure-symbolic";
 }
 
+unsigned int AccessPoint::get_frequency_mhz() const
+{
+    return freq;
+}
+
+unsigned int AccessPoint::get_max_bitrate_kbps() const
+{
+    return max_bitrate_kbps;
+}
+
 std::string AccessPoint::get_band_name()
 {
-    if ((freq > 800) && (freq < 1000))
-    {
-        return "900Mhz";
-    } else if ((freq > 2000) && (freq < 3000))
-    {
-        return "2.4 Ghz";
-    } else if ((freq >= 5000) && (freq < 6000))
-    {
-        return "5 Ghz";
-    } else if ((freq >= 6000) && (freq < 7000))
-    {
-        return "6 Ghz";
-    } else if ((freq >= 40000) && (freq < 50000))
-    {
-        return "45 Ghz";
-    } else if ((freq >= 57000) && (freq < 74000))
-    {
-        return "60 Ghz";
-    }
-
-    return "???";
+    /* e.g. "5 GHz · Wi-Fi 6" from Frequency + MaxBitrate */
+    return wf_net::format_wifi_radio_label(freq, max_bitrate_kbps);
 }
 
 std::vector<std::string> AccessPoint::get_css_classes()
@@ -151,24 +161,27 @@ std::vector<std::string> AccessPoint::get_css_classes()
      *  This allows theme makers to put much more detail in */
     std::vector<std::string> classlist;
     classlist.push_back("access-point");
-    if ((freq > 800) && (freq < 1000))
     {
-        classlist.push_back("f900mhz");
-    } else if ((freq > 2000) && (freq < 3000))
-    {
-        classlist.push_back("f2-4ghz");
-    } else if ((freq >= 5000) && (freq < 6000))
-    {
-        classlist.push_back("f5ghz");
-    } else if ((freq >= 6000) && (freq < 7000))
-    {
-        classlist.push_back("f6ghz");
-    } else if ((freq >= 40000) && (freq < 50000))
-    {
-        classlist.push_back("f45ghz");
-    } else if ((freq >= 57000) && (freq < 74000))
-    {
-        classlist.push_back("f60ghz");
+        auto band = wf_net::format_wifi_band(freq);
+        if (band == "900 MHz")
+        {
+            classlist.push_back("f900mhz");
+        } else if (band == "2.4 GHz")
+        {
+            classlist.push_back("f2-4ghz");
+        } else if (band == "5 GHz")
+        {
+            classlist.push_back("f5ghz");
+        } else if (band == "6 GHz")
+        {
+            classlist.push_back("f6ghz");
+        } else if (band == "45 GHz")
+        {
+            classlist.push_back("f45ghz");
+        } else if (band == "60 GHz")
+        {
+            classlist.push_back("f60ghz");
+        }
     }
 
     classlist.push_back(strength_string());

@@ -5,13 +5,32 @@
 
 Connection::Connection() :
     Network("/", nullptr), connection_proxy(nullptr), devices({})
-{}
+{
+    has_vpn = false;
+    has_wireguard = false;
+}
+
+Connection::Connection(std::vector<std::shared_ptr<Network>> devices_in) :
+    Network(devices_in.empty() ? "/" : devices_in[0]->get_path(), nullptr),
+    connection_proxy(nullptr), devices({})
+{
+    has_vpn = false;
+    has_wireguard = false;
+    replace_devices(std::move(devices_in));
+}
 
 Connection::Connection(std::string path, std::shared_ptr<Gio::DBus::Proxy> connection_proxy,
     std::vector<std::shared_ptr<Network>> devices) :
     Network(path, nullptr), connection_proxy(connection_proxy), devices(devices)
 {
     replace_devices(devices);
+
+    if (!connection_proxy)
+    {
+        has_vpn = false;
+        has_wireguard = false;
+        return;
+    }
 
     Glib::Variant<std::string> type_data;
     connection_proxy->get_cached_property(type_data, "Type");

@@ -52,10 +52,11 @@ class Network
     }
 
     std::string get_path();
-    void disconnect();
+    /** FreeBSD overrides — base uses NetworkManager D-Bus. */
+    virtual void disconnect();
     void connect(std::string path_extra);
     void toggle();
-    bool is_active();
+    virtual bool is_active();
     Network(const Network &) = delete;
     Network& operator =(const Network&) = delete;
 };

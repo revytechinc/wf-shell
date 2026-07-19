@@ -138,15 +138,16 @@ std::vector<std::string> WifiNetwork::get_css_classes()
 
 std::string WifiNetwork::get_icon_name()
 {
+    /* Adwaita has network-wireless-offline, not network-wireless-disconnected. */
     if (show_spinner())
     {
-        return "network-wireless-disconnected";
+        return "network-wireless-acquiring";
     }
 
     auto ap = get_current_access_point();
     if (!ap)
     {
-        return "network-wireless-disconnected";
+        return "network-wireless-offline";
     }
 
     return "network-wireless-signal-" + ap->strength_string();

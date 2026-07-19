@@ -15,12 +15,13 @@ class AccessPoint
   private:
     std::string ap_path;
     type_signal_access_point_altered access_point_altered;
-    unsigned char strength;
-    unsigned int security_flags;
-    unsigned int freq;
+    unsigned char strength = 0;
+    unsigned int security_flags = 0;
+    unsigned int freq = 0;
+    unsigned int max_bitrate_kbps = 0; /**< NM MaxBitrate, Kb/s */
     std::string ssid = "";
     std::vector<sigc::connection> signals;
-    bool saved_password;
+    bool saved_password = false;
 
   public:
 
@@ -32,7 +33,11 @@ class AccessPoint
     std::string strength_string();
     std::string get_icon_name();
     std::string get_security_icon_name();
+    /** Compact radio label: "5 GHz · Wi-Fi 6" (empty if unknown). */
     std::string get_band_name();
+    /** Centre frequency in MHz (0 if unknown). */
+    unsigned int get_frequency_mhz() const;
+    unsigned int get_max_bitrate_kbps() const;
     std::vector<std::string> get_css_classes();
     type_signal_access_point_altered signal_altered();
     unsigned char get_strength();

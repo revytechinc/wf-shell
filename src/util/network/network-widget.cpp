@@ -4,16 +4,20 @@
 #include <string>
 
 #include "bluetooth.hpp"
+#include "freebsd-network.hpp"
 #include "gtk/gtk.h"
 #include "gtkmm/enums.h"
 #include "manager.hpp"
 #include "modem.hpp"
 #include "network.hpp"
+#include "network-widget.hpp"
+#include "platform.hpp"
 #include "vpn.hpp"
 #include "wifi-ap.hpp"
 #include "wifi.hpp"
 #include "wired.hpp"
-#include "network-widget.hpp"
+
+#include <cstring>
 
 
 AccessPointWidget::AccessPointWidget(std::string path_in, std::shared_ptr<AccessPoint> ap_in) :
@@ -35,9 +39,13 @@ AccessPointWidget::AccessPointWidget(std::string path_in, std::shared_ptr<Access
     auto update_ap = [this] ()
     {
         label.set_label(ap->get_ssid());
-        wifi.set_from_icon_name(ap->get_icon_name());
+        /* Prefer symbolic status icons (FreeBSD/Adwaita always ship *-symbolic). */
+        wifi.set_from_icon_name(ap->get_icon_name() + "-symbolic");
         security.set_from_icon_name(ap->get_security_icon_name());
-        band.set_label(ap->get_band_name());
+        /* Radio frequency (MHz) · band — omit if unknown (no "???"). */
+        auto radio = ap->get_band_name();
+        band.set_label(radio);
+        band.set_visible(!radio.empty());
         auto classes = get_css_classes();
         for (auto css_class : classes)
         {
@@ -176,6 +184,19 @@ DeviceControlWidget::DeviceControlWidget(std::shared_ptr<Network> network) :
     } else if (mobile)
     {
         type = "mobile";
+        revealer.hide();
+    } else if (std::dynamic_pointer_cast<FreeBSDNetwork>(network))
+    {
+        /* FreeBSD product — not NM Wired/Wifi types; still a real iface. */
+        type = "wired";
+        for (const auto& c : network->get_css_classes())
+        {
+            if (c == "wifi")
+            {
+                type = "wifi";
+                break;
+            }
+        }
         revealer.hide();
     } else
     {
@@ -352,15 +373,73 @@ void DeviceControlWidget::sort_access_points()
     }
 }
 
-NetworkControlWidget::NetworkControlWidget()
+void NetworkControlWidget::seed_devices()
 {
-    append(network_manager_failed);
-    /* Default state is no NM found */
+    for (auto& device : network_manager->get_all_devices())
+    {
+        add_device(device.second);
+    }
+}
+
+void NetworkControlWidget::setup_freebsd_ui()
+{
+    /* FreeBSD: no NetworkManager — interface list only. */
+    wire_box.set_orientation(Gtk::Orientation::VERTICAL);
+    wifi_box.set_orientation(Gtk::Orientation::VERTICAL);
+    append(wire_box);
+    append(wifi_box);
+
+    signals.push_back(network_manager->signal_device_added().connect(
+        sigc::mem_fun(*this, &NetworkControlWidget::add_device)));
+    signals.push_back(network_manager->signal_device_removed().connect(
+        sigc::mem_fun(*this, &NetworkControlWidget::remove_device)));
+
+    /* Manager/backend already running; nm_start may have fired before we connected. */
+    seed_devices();
+}
+
+void NetworkControlWidget::setup_linux_ui()
+{
+    /* Linux: NetworkManager D-Bus UI */
     network_manager_failed.set_label("Network Manager is not running");
+    append(network_manager_failed);
+
+    top.append(global_networking);
+    top.append(wifi_networking);
+    top.append(mobile_networking);
     top.hide();
-    add_css_class("network-control-center");
-    set_orientation(Gtk::Orientation::VERTICAL);
-    network_manager = NetworkManager::getInstance();
+    append(top);
+
+    mobile_box.set_orientation(Gtk::Orientation::VERTICAL);
+    wifi_box.set_orientation(Gtk::Orientation::VERTICAL);
+    wire_box.set_orientation(Gtk::Orientation::VERTICAL);
+    bt_box.set_orientation(Gtk::Orientation::VERTICAL);
+    vpn_box.set_orientation(Gtk::Orientation::VERTICAL);
+    append(wire_box);
+    append(mobile_box);
+    append(wifi_box);
+    append(bt_box);
+    append(vpn_box);
+
+    mobile_networking.set_halign(Gtk::Align::END);
+    wifi_networking.set_halign(Gtk::Align::END);
+    global_networking.set_label("Networking");
+    wifi_networking.set_label("Wifi");
+    mobile_networking.set_label("Mobile");
+    mobile_networking.hide();
+
+    signal_network = global_networking.signal_toggled().connect(
+        [this] () {
+            network_manager->networking_global_set(global_networking.get_active());
+        });
+    signal_wifi = wifi_networking.signal_toggled().connect(
+        [this] () {
+            network_manager->wifi_global_set(wifi_networking.get_active());
+        });
+    signal_mobile = mobile_networking.signal_toggled().connect(
+        [this] () {
+            network_manager->mobile_global_set(mobile_networking.get_active());
+        });
 
     signals.push_back(network_manager->signal_nm_start().connect(
         sigc::mem_fun(*this, &NetworkControlWidget::nm_start)));
@@ -378,54 +457,33 @@ NetworkControlWidget::NetworkControlWidget()
         sigc::mem_fun(*this, &NetworkControlWidget::add_vpn)));
     signals.push_back(network_manager->signal_vpn_removed().connect(
         sigc::mem_fun(*this, &NetworkControlWidget::remove_vpn)));
-
-    top.append(global_networking);
-    top.append(wifi_networking);
-    top.append(mobile_networking);
-    append(top);
-    append(wire_box);
-    append(mobile_box);
-    append(wifi_box);
-    append(bt_box);
-    append(vpn_box);
-
-    mobile_box.set_orientation(Gtk::Orientation::VERTICAL);
-    wifi_box.set_orientation(Gtk::Orientation::VERTICAL);
-    wire_box.set_orientation(Gtk::Orientation::VERTICAL);
-    bt_box.set_orientation(Gtk::Orientation::VERTICAL);
-    vpn_box.set_orientation(Gtk::Orientation::VERTICAL);
-
-    mobile_networking.set_halign(Gtk::Align::END);
-    wifi_networking.set_halign(Gtk::Align::END);
-
-    global_networking.set_label("Networking");
-    wifi_networking.set_label("Wifi");
-    mobile_networking.set_label("Mobile");
-    mobile_networking.hide();
-
-    /* Connect to global widget cb */
-    signal_network = global_networking.signal_toggled().connect(
-        [this] ()
-    {
-        network_manager->networking_global_set(global_networking.get_active());
-    });
-    signal_wifi = wifi_networking.signal_toggled().connect(
-        [this] ()
-    {
-        network_manager->wifi_global_set(wifi_networking.get_active());
-    });
-    signal_mobile = mobile_networking.signal_toggled().connect(
-        [this] ()
-    {
-        network_manager->mobile_global_set(mobile_networking.get_active());
-    });
-    /* Connect changes to global state in NM */
     signals.push_back(network_manager->signal_global_toggle().connect(
         sigc::mem_fun(*this, &NetworkControlWidget::update_globals)));
 }
 
+NetworkControlWidget::NetworkControlWidget()
+{
+    add_css_class("network-control-center");
+    set_orientation(Gtk::Orientation::VERTICAL);
+    network_manager = NetworkManager::getInstance();
+
+    freebsd_mode = (std::strcmp(wf_platform_name(), "freebsd") == 0);
+    if (freebsd_mode)
+    {
+        setup_freebsd_ui();
+    } else
+    {
+        setup_linux_ui();
+    }
+}
+
 void NetworkControlWidget::update_globals()
 {
+    if (freebsd_mode)
+    {
+        return; /* no NM global toggles */
+    }
+
     auto [wifi_soft, wifi_hard]     = network_manager->wifi_global_enabled();
     auto [mobile_soft, mobile_hard] = network_manager->mobile_global_enabled();
     auto global = network_manager->networking_global_enabled();
@@ -468,6 +526,10 @@ void NetworkControlWidget::update_globals()
 
 void NetworkControlWidget::add_vpn(std::shared_ptr<VpnConfig> config)
 {
+    if (freebsd_mode)
+    {
+        return; /* VPN UI is NetworkManager-only */
+    }
     if (vpn_widgets.count(config->path) > 0)
     {
         return;
@@ -566,51 +628,64 @@ void NetworkControlWidget::remove_device(std::shared_ptr<Network> network)
 
 void NetworkControlWidget::nm_start()
 {
-    network_manager_failed.hide();
-    top.show();
-    /* Fill already existing devices */
-    for (auto & device : network_manager->get_all_devices())
+    if (freebsd_mode)
     {
-        add_device(device.second);
+        return;
     }
 
-    for (auto & it : network_manager->get_all_vpns())
+    network_manager_failed.hide();
+    top.show();
+    update_globals();
+    seed_devices();
+
+    for (auto& it : network_manager->get_all_vpns())
     {
         add_vpn(it.second);
     }
-
-    update_globals();
 }
 
 void NetworkControlWidget::nm_stop()
 {
+    if (freebsd_mode)
+    {
+        return;
+    }
+
     network_manager_failed.show();
     top.hide();
     widgets.clear();
-    for (auto & it : vpn_widgets)
+    for (auto& it : vpn_widgets)
     {
         vpn_box.remove(*it.second);
     }
-
     vpn_widgets.clear();
 }
 
 void NetworkControlWidget::mm_start()
 {
-    mobile_networking.show();
+    if (!freebsd_mode)
+    {
+        mobile_networking.show();
+    }
 }
 
 void NetworkControlWidget::mm_stop()
 {
-    mobile_networking.hide();
+    if (!freebsd_mode)
+    {
+        mobile_networking.hide();
+    }
 }
 
 NetworkControlWidget::~NetworkControlWidget()
 {
-    signal_network.disconnect();
-    signal_mobile.disconnect();
-    signal_wifi.disconnect();
-    for (auto signal : signals)
+    if (!freebsd_mode)
+    {
+        signal_network.disconnect();
+        signal_mobile.disconnect();
+        signal_wifi.disconnect();
+    }
+    for (auto& signal : signals)
     {
         signal.disconnect();
     }

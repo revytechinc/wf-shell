@@ -88,16 +88,10 @@ battery_icon_invert = 1
 battery_font = default
 
 
-# Configuration for the network widget
-# Whether to display connection details, for ex. Wifi AP name
-network_status = 1
-
-network_status_font = DejaVu Sans:style=Book 10
+# Network tray: icon only (click → popover). Tooltip has detail.
 # network_icon_size = 30
-network_icon_invert_color = 1
-
-# whether to colour the wifi signal strength
-network_status_use_color = yes
+# network_icon_invert_color = false
+# network_onclick_command = default
 
 # Show a list of application categories in menu
 menu_show_categories = false

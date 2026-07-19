@@ -107,11 +107,19 @@ void Network::toggle()
 
 void Network::disconnect()
 {
+    if (!device_proxy)
+    {
+        return; /* FreeBSD / null pseudo-devices */
+    }
     device_proxy->call("Disconnect");
 }
 
 bool Network::is_active()
 {
+    if (!device_proxy)
+    {
+        return false;
+    }
     Glib::Variant<std::string> val;
     device_proxy->get_cached_property(val, "ActiveConnection");
     return val.get() != "/";

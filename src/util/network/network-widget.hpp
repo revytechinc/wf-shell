@@ -1,13 +1,17 @@
 #pragma once
+
+#include <map>
 #include <memory>
-#include <sigc++/connection.h>
+#include <string>
+#include <vector>
+
 #include <gtkmm.h>
+#include <sigc++/connection.h>
 
 #include "gtkmm/overlay.h"
 #include "manager.hpp"
-#include "wifi-ap.hpp"
 #include "vpn.hpp"
-
+#include "wifi-ap.hpp"
 
 class AccessPointWidget : public Gtk::Box
 {
@@ -60,15 +64,28 @@ class VPNControlWidget : public Gtk::Box
     ~VPNControlWidget();
 };
 
+/**
+ * Network popover body.
+ * FreeBSD: interface list only (no NetworkManager chrome).
+ * Linux: NetworkManager toggles, VPN, modem, NM-not-running message.
+ */
 class NetworkControlWidget : public Gtk::Box
 {
+    /* Linux-only NM chrome (never shown on FreeBSD) */
     Gtk::Label network_manager_failed;
-    Gtk::Box wire_box, wifi_box, mobile_box, vpn_box, bt_box, top;
+    Gtk::Box top;
     Gtk::CheckButton global_networking, wifi_networking, mobile_networking;
+    sigc::connection signal_network, signal_wifi, signal_mobile;
+
+    Gtk::Box wire_box, wifi_box, mobile_box, vpn_box, bt_box;
     std::map<std::string, std::shared_ptr<DeviceControlWidget>> widgets;
     std::map<std::string, std::shared_ptr<VPNControlWidget>> vpn_widgets;
-    sigc::connection signal_network, signal_wifi, signal_mobile;
     std::vector<sigc::connection> signals;
+    bool freebsd_mode = false;
+
+    void setup_freebsd_ui();
+    void setup_linux_ui();
+    void seed_devices();
 
   public:
     NetworkControlWidget();

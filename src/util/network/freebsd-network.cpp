@@ -1,134 +1,81 @@
 #include "freebsd-network.hpp"
 
-#include <cstring>
 #include <cstdlib>
-#include <sys/types.h>
-#include <sys/socket.h>
 #include <sys/wait.h>
-#include <ifaddrs.h>
-#include <net/if.h>
 #include <unistd.h>
-#include <wordexp.h>
 
 #include <glibmm.h>
 
-/*
- * Check whether the current user can run a shell command without elevation.
- * Tries to expand tokens then executes `cmd --help 2>/dev/null`.
- * If that fails with EPERM/EACCES, the user lacks permission.
- */
-static bool check_command(const char *cmd)
+FreeBSDNetwork::FreeBSDNetwork(wf_net::InterfaceInfo info) :
+    Network(info.path, nullptr), info_(std::move(info))
 {
-    if (geteuid() == 0) {
-        return true; /* root can do anything */
-    }
-
-    wordexp_t we = {};
-    int err = wordexp(cmd, &we, WRDE_NOCMD);
-    if (err != 0) {
-        return false;
-    }
-    if (we.we_wordc == 0) {
-        wordfree(&we);
-        return false;
-    }
-
-    std::string expanded;
-    for (size_t i = 0; i < we.we_wordc; i++) {
-        if (i > 0) {
-            expanded += ' ';
-        }
-        expanded += we.we_wordv[i];
-    }
-    expanded += " --help 2>/dev/null";
-    wordfree(&we);
-
-    int status = system(expanded.c_str());
-    return WIFEXITED(status) && WEXITSTATUS(status) < 128;
+    this->interface = info_.name;
+    fingerprint_ = wf_net::interface_fingerprint(info_);
+    last_state = is_active() ? NM_DEVICE_STATE_ACTIVATED : NM_DEVICE_STATE_DISCONNECTED;
 }
 
-FreeBSDNetwork::FreeBSDNetwork(std::string path, std::string iface, bool wireless) :
-    Network(path, nullptr), is_wireless(wireless)
+bool FreeBSDNetwork::update_info(wf_net::InterfaceInfo info)
 {
-    this->interface = iface;
+    std::string fp = wf_net::interface_fingerprint(info);
+    if (fp == fingerprint_)
+    {
+        return false;
+    }
+    info_ = std::move(info);
+    fingerprint_ = std::move(fp);
+    this->interface = info_.name;
+    last_state = is_active() ? NM_DEVICE_STATE_ACTIVATED : NM_DEVICE_STATE_DISCONNECTED;
+    network_altered.emit();
+    return true;
 }
 
 std::string FreeBSDNetwork::get_name()
 {
-    return interface;
+    return wf_net::format_display_name(info_);
 }
 
 std::string FreeBSDNetwork::get_friendly_name()
 {
-    if (is_wireless) {
-        return "Wireless (" + interface + ")";
-    }
-    return "Ethernet (" + interface + ")";
+    return std::string(wf_net::kind_label(info_.kind)) + " (" + info_.name + ")";
+}
+
+std::string FreeBSDNetwork::get_interface()
+{
+    return info_.name;
 }
 
 std::vector<std::string> FreeBSDNetwork::get_css_classes()
 {
-    if (is_wireless) {
-        return {"wifi", "medium"};
-    }
-    return {"ethernet", "good"};
+    return wf_net::css_for_interface(info_);
 }
 
 bool FreeBSDNetwork::is_active()
 {
-    /* Walk all interfaces to find our interface */
-    struct ifaddrs *ifaddr, *ifa;
-    if (getifaddrs(&ifaddr) == -1) {
-        return false;
-    }
-
-    bool active = false;
-    for (ifa = ifaddr; ifa != nullptr; ifa = ifa->ifa_next) {
-        if (ifa->ifa_addr == nullptr) {
-            continue;
-        }
-        if (ifa->ifa_name != interface) {
-            continue;
-        }
-        /* IFF_UP means interface is enabled.
-         * IFF_RUNNING means cable plugged in / link detected.
-         * We treat IFF_UP as "available" and IFF_RUNNING as "active". */
-        if ((ifa->ifa_flags & IFF_UP) && (ifa->ifa_flags & IFF_RUNNING)) {
-            active = true;
-        }
-    }
-
-    freeifaddrs(ifaddr);
-    return active;
-}
-
-std::string FreeBSDNetwork::icon_for_state(bool active, bool wireless)
-{
-    if (wireless) {
-        return active ? "network-wireless-recommended" : "network-wireless-offline";
-    }
-    return active ? "network-wired" : "network-wired-offline";
+    return info_.up && info_.running;
 }
 
 std::string FreeBSDNetwork::get_icon_name()
 {
-    return icon_for_state(is_active(), is_wireless);
+    return wf_net::icon_for_interface(info_);
 }
 
 void FreeBSDNetwork::disconnect()
 {
-    /* On FreeBSD, bringing an interface down requires root.
-     * Attempt it anyway — if the user lacks permission it will silently fail. */
-    std::string cmd = "ifconfig " + interface + " down";
+    /* Best-effort; may need root. Fail soft. */
+    std::string cmd = "ifconfig " + info_.name + " down";
     (void)system(cmd.c_str());
+    info_.up = false;
+    info_.running = false;
+    fingerprint_ = wf_net::interface_fingerprint(info_);
     network_altered.emit();
 }
 
 bool FreeBSDNetwork::can_toggle()
 {
-    /* Check if user can run `ifconfig <iface> up` — the privilege needed to bring
-     * an interface up or down.  This covers both the direct case (root) and the
-     * sudo/doas case. */
-    std::string cmd = "ifconfig " + interface + " up";
-    return check_command(cmd.c_str());
+    if (geteuid() == 0)
+    {
+        return true;
+    }
+    /* Do not claim sudo/doas without a real check; tray stays honest. */
+    return false;
 }

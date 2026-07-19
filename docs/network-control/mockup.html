@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>wf-shell network — FreeBSD mockup (REVYTECH)</title>
+  <style>
+    :root {
+      --bg: #11111b; --surface: #1e1e2e; --surface2: #313244; --border: #45475a;
+      --text: #cdd6f4; --muted: #a6adc8; --dim: #6c7086;
+      --blue: #89b4fa; --green: #a6e3a1; --yellow: #f9e2af; --red: #f38ba8; --mauve: #cba6f7;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh;
+      font-family: system-ui, "Segoe UI", sans-serif;
+      background: radial-gradient(ellipse at 70% 0%, #1a2030 0%, var(--bg) 55%);
+      color: var(--text);
+    }
+    .desk { max-width: 1100px; margin: 0 auto; padding: 24px; }
+    h1 { font-size: 1.2rem; margin: 0 0 4px; }
+    .sub { color: var(--muted); font-size: 0.88rem; margin-bottom: 18px; line-height: 1.45; }
+    .sub code { font-size: 0.85em; color: var(--blue); }
+    .panel {
+      display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+      z-index: 5; position: relative;
+    }
+    .panel .grow { flex: 1; color: var(--dim); font-size: 12px; }
+    .icon-btn {
+      display: inline-flex; align-items: center; gap: 5px; border: 1px solid transparent;
+      background: transparent; color: var(--text); border-radius: 6px; padding: 3px 8px;
+      cursor: pointer; font: inherit; font-size: 12px;
+    }
+    .icon-btn:hover, .icon-btn.open { background: var(--surface2); border-color: var(--blue); }
+    /* Tray: icon only — colour by activity */
+    .icon-btn.net-online .tray-ico svg { stroke: var(--green); }
+    .icon-btn.net-online .tray-ico svg circle { fill: var(--green); }
+    .icon-btn.net-degraded .tray-ico svg { stroke: var(--yellow); }
+    .icon-btn.net-offline .tray-ico svg { stroke: var(--dim); }
+    .icon-btn.net-offline .tray-ico svg circle { fill: var(--dim); }
+    .stage {
+      margin-top: 20px; min-height: 520px; position: relative;
+      border: 1px dashed var(--border); border-radius: 12px; background: #0c0c14;
+      display: flex; align-items: flex-start; justify-content: flex-end; padding: 16px 20px;
+    }
+    .stage-hint {
+      position: absolute; left: 18px; top: 18px; color: var(--dim); font-size: 12px;
+      max-width: 340px; line-height: 1.5;
+    }
+    .stage-hint strong { color: var(--text); }
+    .stage-hint label { display: flex; align-items: center; gap: 8px; cursor: pointer; margin-top: 8px; }
+    .stage-hint .wire {
+      margin-top: 14px; padding: 10px; background: #12121c; border: 1px solid var(--surface2);
+      border-radius: 8px; font-size: 11px; color: var(--muted); font-family: ui-monospace, monospace;
+      white-space: pre-wrap; line-height: 1.4;
+    }
+    .popover {
+      width: 340px;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+      box-shadow: 0 16px 48px rgba(0,0,0,0.55); display: none; animation: pop 0.15s ease-out;
+    }
+    .popover.visible { display: block; }
+    @keyframes pop { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+    .pop-head { padding: 10px 12px; border-bottom: 1px solid var(--surface2); }
+    .pop-head h2 { margin: 0; font-size: 13px; display: flex; justify-content: space-between; align-items: center; }
+    .iface .sub { font-size: 10px; color: var(--muted); margin-top: 1px; line-height: 1.2; white-space: pre-line; }
+    .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
+    .dot.on { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .dot.off { background: var(--dim); }
+    .section { padding: 8px 12px; border-bottom: 1px solid var(--surface2); }
+    .section-title {
+      font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em;
+      color: var(--dim); margin-bottom: 6px;
+    }
+    .iface {
+      display: flex; align-items: flex-start; gap: 8px; padding: 8px;
+      border-radius: 8px; cursor: pointer; border: 1px solid transparent;
+      margin-bottom: 4px;
+    }
+    .iface:hover { background: var(--surface2); }
+    .iface.selected { border-color: var(--blue); background: #1a2030; }
+    .iface .ico {
+      width: 22px; height: 22px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .iface .ico svg, .tray-ico svg { width: 18px; height: 18px; display: block; }
+    .tray-ico { display: inline-flex; width: 18px; height: 18px; }
+    .iface .body { flex: 1; min-width: 0; }
+    .iface .title { font-size: 12px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .iface .sub { font-size: 10px; color: var(--muted); margin-top: 2px; line-height: 1.35; }
+    .badge {
+      font-size: 9px; text-transform: uppercase; letter-spacing: 0.04em;
+      padding: 1px 5px; border-radius: 4px; background: var(--surface2); color: var(--blue);
+    }
+    .badge.def { background: #1e3a2f; color: var(--green); }
+    .badge.down { color: var(--dim); }
+    .wifi-row {
+      display: flex; align-items: center; gap: 8px; padding: 6px 8px;
+      border-radius: 6px; cursor: pointer; font-size: 12px;
+    }
+    .wifi-row:hover { background: var(--surface2); }
+    .wifi-row .meta { flex: 1; min-width: 0; }
+    .wifi-row .ssid { font-size: 12px; }
+    .wifi-row .freq { font-size: 10px; color: var(--blue); line-height: 1.2; margin-top: 1px; font-variant-numeric: tabular-nums; }
+    .wifi-row .sig { color: var(--green); font-size: 10px; margin-left: auto; flex-shrink: 0; }
+    .foot {
+      padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; gap: 8px;
+    }
+    .btn {
+      border: 1px solid var(--border); background: var(--surface2); color: var(--text);
+      border-radius: 6px; padding: 6px 10px; font: inherit; font-size: 11px; cursor: pointer;
+    }
+    .btn:hover { border-color: var(--blue); }
+    .btn.ghost { background: transparent; color: var(--muted); }
+    .btn.primary { background: #313a55; border-color: var(--blue); color: var(--blue); }
+    .toast {
+      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+      background: var(--surface2); border: 1px solid var(--blue); color: var(--text);
+      padding: 8px 14px; border-radius: 8px; font-size: 12px; display: none; z-index: 40;
+    }
+    .toast.show { display: block; animation: pop 0.15s ease-out; }
+    .feat { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+    .feat span {
+      font-size: 10px; padding: 2px 7px; border-radius: 999px;
+      border: 1px solid var(--border); color: var(--dim);
+    }
+    .feat span.on { border-color: var(--green); color: var(--green); }
+    .feat span.off { opacity: 0.55; }
+    /* FreeBSD config editor modal */
+    .modal-backdrop {
+      display: none; position: fixed; inset: 0; z-index: 30;
+      background: rgba(0,0,0,0.55); align-items: center; justify-content: center;
+      padding: 24px;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal {
+      width: min(420px, 100%); max-height: 90vh; overflow: auto;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+    }
+    .modal-head {
+      padding: 12px 14px; border-bottom: 1px solid var(--surface2);
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .modal-head h3 { margin: 0; font-size: 14px; }
+    .modal-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+    .modal-body label.fld {
+      display: flex; flex-direction: column; gap: 4px;
+      font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--dim);
+    }
+    .modal-body input, .modal-body select {
+      appearance: none; background: var(--surface2); color: var(--text);
+      border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px;
+      font: inherit; font-size: 12px; text-transform: none; letter-spacing: normal;
+    }
+    .modal-body input:focus, .modal-body select:focus {
+      outline: none; border-color: var(--blue);
+    }
+    .modal-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .modal-foot {
+      padding: 10px 14px; border-top: 1px solid var(--surface2);
+      display: flex; justify-content: flex-end; gap: 8px;
+    }
+    .btn.danger { border-color: #5c3a42; color: var(--red); }
+    .btn.danger:hover { border-color: var(--red); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    /* Right-click context menu on interface rows */
+    .ctx {
+      display: none; position: fixed; z-index: 50; min-width: 180px;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+      box-shadow: 0 12px 32px rgba(0,0,0,0.5); padding: 4px; font-size: 12px;
+    }
+    .ctx.open { display: block; }
+    .ctx button {
+      display: block; width: 100%; text-align: left; border: 0; background: transparent;
+      color: var(--text); padding: 8px 10px; border-radius: 6px; font: inherit; cursor: pointer;
+    }
+    .ctx button:hover:not(:disabled) { background: var(--surface2); }
+    .ctx button:disabled { color: var(--dim); cursor: default; }
+    .ctx .sep { height: 1px; background: var(--surface2); margin: 4px 2px; }
+    .preflight {
+      font-size: 11px; padding: 8px 10px; border-radius: 6px; line-height: 1.35;
+      border: 1px solid var(--border); color: var(--muted);
+    }
+    .preflight.ok { border-color: #2d4a3a; color: var(--green); }
+    .preflight.bad { border-color: #5c3a42; color: var(--red); }
+    .preflight.warn { border-color: #5c5340; color: var(--yellow); }
+  </style>
+</head>
+<body>
+  <div class="desk">
+    <h1>Network — FreeBSD panel mockup</h1>
+    <p class="sub">
+      REVYTECH · <code>feature/panel-network</code> · same sparse UX as Sound Settings.
+      Data model mirrors <code>wf_net::probe_interfaces()</code> + default route primary.
+      Behaviour switches live in ini — not a wall of toggles here.
+    </p>
+
+    <div class="panel" id="panel">
+      <span class="grow">wayfire · FreeBSD seat</span>
+      <button type="button" class="icon-btn" id="btnNet" title="Network" aria-expanded="false">
+        <span class="tray-ico" id="trayIcon"></span>
+      </button>
+      <button type="button" class="icon-btn" title="Sound (shipped)" disabled style="opacity:0.55">
+        🔊
+      </button>
+    </div>
+
+    <div class="stage">
+      <div class="stage-hint">
+        <strong>Scenario knobs</strong> (autodetect simulation)
+        <label><input type="checkbox" id="optOnline" checked /> Default route up (aq0)</label>
+        <label><input type="checkbox" id="optWifi" /> Wi‑Fi present (wlan0 + wpa)</label>
+        <label><input type="checkbox" id="optBridge" checked /> Show bridge / tap</label>
+        <label>
+          Platform
+          <select id="optPlat" class="dd" style="margin-left:6px;padding:4px 8px;font-size:11px;
+            background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:6px">
+            <option value="freebsd" selected>FreeBSD (our editor)</option>
+            <option value="linux">Linux (networkmgr Advanced)</option>
+          </select>
+        </label>
+        <label><input type="checkbox" id="optGifMod" /> Simulate gif module missing</label>
+        <label class="dim" style="opacity:0.7">Tray icon-only · right-click ifaces for actions</label>
+
+        <div class="feat" id="featBits"></div>
+
+        <div class="wire" id="wireBox"></div>
+      </div>
+
+      <div class="popover visible" id="popover" role="dialog" aria-label="Network">
+        <div class="pop-head">
+          <h2>
+            <span>Network</span>
+            <button type="button" class="btn ghost" id="btnClose" aria-label="Close">✕</button>
+          </h2>
+        </div>
+
+        <div class="section">
+          <div class="section-title">Interfaces</div>
+          <div id="ifaceList"></div>
+        </div>
+
+        <div class="section" id="wifiSection" style="display:none">
+          <div class="section-title">Wi‑Fi</div>
+          <div id="wifiList"></div>
+        </div>
+
+        <div class="foot" style="justify-content:flex-end;gap:8px">
+          <button type="button" class="btn" id="btnCreate" style="display:none">Create…</button>
+          <button type="button" class="btn" id="btnEdit" style="display:none">Configure…</button>
+          <button type="button" class="btn" id="btnAdv" style="display:none">Advanced</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right-click menu (FreeBSD iface actions) -->
+  <div class="ctx" id="ctxMenu" role="menu">
+    <button type="button" id="ctxToggle" role="menuitem">Turn off</button>
+    <button type="button" id="ctxConfigure" role="menuitem">Configure…</button>
+    <div class="sep"></div>
+    <button type="button" id="ctxDelete" class="danger" role="menuitem">Delete interface…</button>
+  </div>
+
+  <!-- FreeBSD network config editor (rc.conf-oriented) -->
+  <div class="modal-backdrop" id="editorModal" role="dialog" aria-modal="true" aria-labelledby="editorTitle">
+    <div class="modal">
+      <div class="modal-head">
+        <h3 id="editorTitle">Configure interface</h3>
+        <button type="button" class="btn ghost" id="btnEditorClose" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <label class="fld">Interface
+          <select id="edIface"></select>
+        </label>
+        <label class="fld">IPv4 mode
+          <select id="edV4Mode">
+            <option value="dhcp">DHCP</option>
+            <option value="static" selected>Static</option>
+            <option value="none">Disabled</option>
+          </select>
+        </label>
+        <div class="modal-row" id="edV4Static">
+          <label class="fld">IPv4 address
+            <input id="edV4Addr" type="text" spellcheck="false" placeholder="192.168.1.10" />
+          </label>
+          <label class="fld">Prefix
+            <input id="edV4Pref" type="text" spellcheck="false" placeholder="24" />
+          </label>
+        </div>
+        <label class="fld" id="edV4GwWrap">IPv4 gateway (defaultrouter)
+          <input id="edV4Gw" type="text" spellcheck="false" placeholder="192.168.1.1" />
+        </label>
+        <label class="fld">IPv6 mode
+          <select id="edV6Mode">
+            <option value="accept_rtadv">SLAAC / accept_rtadv</option>
+            <option value="static" selected>Static</option>
+            <option value="none">Disabled</option>
+          </select>
+        </label>
+        <div class="modal-row" id="edV6Static">
+          <label class="fld">IPv6 address
+            <input id="edV6Addr" type="text" spellcheck="false" placeholder="2001:db8::10" />
+          </label>
+          <label class="fld">Prefix
+            <input id="edV6Pref" type="text" spellcheck="false" placeholder="64" />
+          </label>
+        </div>
+        <label class="fld" id="edV6GwWrap">IPv6 gateway (ipv6_defaultrouter)
+          <input id="edV6Gw" type="text" spellcheck="false" placeholder="fe80::1%aq0" />
+        </label>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn ghost" id="btnEditorCancel">Cancel</button>
+        <button type="button" class="btn primary" id="btnEditorSave">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create cloned interface (tap/bridge/gif/…) -->
+  <div class="modal-backdrop" id="createModal" role="dialog" aria-modal="true">
+    <div class="modal">
+      <div class="modal-head">
+        <h3>Create interface</h3>
+        <button type="button" class="btn ghost" id="btnCreateClose" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <label class="fld">Type
+          <select id="crType"></select>
+        </label>
+        <label class="fld">Name (optional)
+          <input id="crName" type="text" spellcheck="false" placeholder="auto (tap0, bridge0, …)" />
+        </label>
+        <div class="preflight" id="crPreflight">—</div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn ghost" id="btnCreateCancel">Cancel</button>
+        <button type="button" class="btn primary" id="btnCreateGo">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+(function () {
+  const DEFAULTS = Object.freeze({
+    online: true,
+    wifi: false,
+    bridge: true,
+    plat: "freebsd", /* freebsd | linux */
+    gifModuleMissing: false,
+  });
+
+  /**
+   * FreeBSD cloned-interface catalog (from ifconfig -C + typical modules).
+   * preflight: module name if needed (null = usually in kernel / always ok).
+   * destroyable: ifconfig destroy allowed for cloned types.
+   */
+  const CLONE_TYPES = [
+    { type: "tap",    label: "tap (virtual Ethernet)", module: "if_tap", destroyable: true },
+    { type: "tun",    label: "tun (point-to-point)",   module: "if_tuntap", destroyable: true },
+    { type: "bridge", label: "bridge",                 module: "if_bridge", destroyable: true },
+    { type: "gif",    label: "gif (tunnel)",           module: "if_gif", destroyable: true },
+    { type: "vlan",   label: "vlan",                   module: null, destroyable: true },
+    { type: "lagg",   label: "lagg (aggregation)",     module: null, destroyable: true },
+    { type: "epair",  label: "epair (pair)",           module: "if_epair", destroyable: true },
+    { type: "lo",     label: "lo (loopback clone)",    module: null, destroyable: true },
+  ];
+
+  /* Physical / permanent ifaces must not be destroyed */
+  function isDestroyable(iface) {
+    if (!iface) return false;
+    const n = iface.name;
+    if (/^(aq|igb|em|re|ix|ixl|bge|bnx|ue|wlan)\d+$/.test(n)) return false;
+    if (iface.kind === "Ethernet" && !/^(tap|tun|bridge|gif|vlan|lagg|epair|lo|vm-)/.test(n))
+      return false;
+    return /^(tap|tun|bridge|gif|vlan|lagg|epair|lo)\d+$/.test(n) ||
+      n.indexOf("vm-") === 0 || iface.kind === "Virtual" || iface.kind === "Bridge";
+  }
+
+  /** Mock kldstat / kernel: which modules are "available" */
+  function moduleAvailable(mod, gifMissing) {
+    if (!mod) return { ok: true, detail: "in kernel / no module required" };
+    if (mod === "if_gif" && gifMissing)
+      return { ok: false, detail: "module if_gif not loaded and not found" };
+    return { ok: true, detail: "module " + mod + " available" };
+  }
+
+  function preflightCreate(typeName, plat, gifMissing) {
+    const t = CLONE_TYPES.find((x) => x.type === typeName);
+    if (!t) return { ok: false, detail: "unknown type", canCreate: false };
+    if (plat !== "freebsd")
+      return { ok: false, detail: "create is FreeBSD-only", canCreate: false };
+    const m = moduleAvailable(t.module, gifMissing);
+    if (!m.ok)
+      return { ok: false, detail: m.detail + " — cannot create " + t.type, canCreate: false };
+    return { ok: true, detail: m.detail + " · ifconfig " + t.type + " create", canCreate: true, type: t };
+  }
+
+  /** Host-shaped sample + overrides (up/down/create/destroy in the mock). */
+  function buildIfaces(s) {
+    const list = [];
+    list.push({
+      name: "aq0", kind: "Ethernet", media: "10Gbase-T <full-duplex>",
+      ipv4: s.online ? ["99.48.162.238"] : [],
+      ipv6: s.online ? ["2600:1700:1c14:4040:b49b:83f6:0:55"] : [],
+      gateway4: s.online ? "99.48.162.254" : "",
+      gateway6: s.online ? "fe80::1" : "",
+      up: !!s.online, running: !!s.online, isDefault: !!s.online,
+      status: s.online ? "active" : "no carrier", permanent: true,
+    });
+    list.push({
+      name: "igb0", kind: "Ethernet", media: "1000baseT <full-duplex>",
+      ipv4: ["192.168.1.154"],
+      ipv6: ["fe80::2ef0:5dff:fe8b:e3b"],
+      up: true, running: true, isDefault: false,
+      status: "active", permanent: true,
+    });
+    if (s.bridge) {
+      list.push({
+        name: "vm-public", kind: "Bridge", media: "",
+        ipv4: [], up: true, running: true, isDefault: false, status: "active", permanent: false,
+      });
+      list.push({
+        name: "tap0", kind: "Virtual", media: "1000baseT",
+        ipv4: [], up: true, running: true, isDefault: false, status: "active", permanent: false,
+      });
+    }
+    if (s.wifi) {
+      list.push({
+        name: "wlan0", kind: "Wireless", media: "IEEE 802.11",
+        ipv4: ["10.0.0.42"], ipv6: [], ssid: "CloudBSD-Lab",
+        freqMhz: 5180, maxKbps: 1200000,
+        up: true, running: true, isDefault: !s.online,
+        status: "associated", permanent: true,
+      });
+    }
+    (s.extraIfaces || []).forEach((e) => {
+      if (!list.some((x) => x.name === e.name)) list.push(e);
+    });
+    /* Apply up/down/delete overrides */
+    const ov = s.ifaceOverrides || {};
+    return list
+      .filter((i) => !(ov[i.name] && ov[i.name].deleted))
+      .map((i) => (ov[i.name] && !ov[i.name].deleted ? Object.assign({}, i, ov[i.name]) : i));
+  }
+
+  const WIFI_APS = [
+    { ssid: "CloudBSD-Lab", sig: 92, secure: true, active: true, freqMhz: 5180, maxKbps: 1200000 },
+    { ssid: "Guest", sig: 71, secure: false, active: false, freqMhz: 2462, maxKbps: 144000 },
+    { ssid: "IoT-2.4", sig: 44, secure: true, active: false, freqMhz: 2412, maxKbps: 54000 },
+    { ssid: "Lab-6E", sig: 60, secure: true, active: false, freqMhz: 6115, maxKbps: 900000 },
+    { ssid: "Be-Router", sig: 80, secure: true, active: false, freqMhz: 5500, maxKbps: 2500000 },
+  ];
+
+  function wifiBand(mhz) {
+    if (!mhz) return "";
+    if (mhz > 2000 && mhz < 3000) return "2.4 GHz";
+    if (mhz >= 5000 && mhz < 6000) return "5 GHz";
+    if (mhz >= 6000 && mhz < 7000) return "6 GHz";
+    if (mhz > 800 && mhz < 1000) return "900 MHz";
+    return "";
+  }
+  function wifiGen(mhz, maxKbps) {
+    maxKbps = maxKbps || 0;
+    const b6 = mhz >= 6000 && mhz < 7000;
+    const b5 = mhz >= 5000 && mhz < 6000;
+    const b24 = mhz > 2000 && mhz < 3000;
+    if (maxKbps >= 2000000) return "Wi-Fi 7";
+    if (maxKbps >= 600000 || (b6 && maxKbps >= 100000)) return b6 ? "Wi-Fi 6E" : "Wi-Fi 6";
+    if (b6) return "Wi-Fi 6E";
+    if (maxKbps >= 200000 || (b5 && maxKbps >= 100000)) return "Wi-Fi 5";
+    if (maxKbps > 54000) return "Wi-Fi 4";
+    if (maxKbps > 0 && b24) return "Wi-Fi 3";
+    if (b5) return "Wi-Fi 5";
+    if (b24) return "Wi-Fi 4";
+    return "";
+  }
+  /** e.g. "5 GHz · Wi-Fi 6" */
+  function wifiRadioLabel(mhz, maxKbps) {
+    const band = wifiBand(mhz);
+    const gen = wifiGen(mhz, maxKbps);
+    if (band && gen) return band + " · " + gen;
+    return band || gen || (mhz ? mhz + " MHz" : "");
+  }
+
+  const state = {
+    online: DEFAULTS.online,
+    wifi: DEFAULTS.wifi,
+    bridge: DEFAULTS.bridge,
+    plat: DEFAULTS.plat,
+    gifModuleMissing: DEFAULTS.gifModuleMissing,
+    selected: "aq0",
+    open: true,
+    editorOpen: false,
+    createOpen: false,
+    ctxName: null,
+    extraIfaces: [], /* dynamically created in mock */
+  };
+
+  const $ = (id) => document.getElementById(id);
+
+  function features() {
+    const ifaces = buildIfaces(state);
+    const isFbsd = state.plat === "freebsd";
+    return {
+      physical_ifaces: ifaces.some((i) => i.kind === "Ethernet" || i.kind === "Wireless"),
+      default_route: ifaces.some((i) => i.isDefault),
+      wireless: state.wifi,
+      wpa: state.wifi,
+      advanced_gui: !isFbsd,
+      config_editor: isFbsd,
+      create_iface: isFbsd,
+    };
+  }
+
+  function ifaceByName(name) {
+    return buildIfaces(state).find((i) => i.name === name);
+  }
+
+  function primary(ifaces) {
+    return ifaces.find((i) => i.isDefault) || ifaces.find((i) => i.running) || ifaces[0];
+  }
+
+  function iconFor(i) {
+    if (!i) return "offline";
+    if (i.kind === "Wireless") return i.running ? "wifi" : "wifi-off";
+    if (i.kind === "Bridge") return i.running ? "bridge" : "offline";
+    if (i.kind === "Virtual") return i.running ? "virtual" : "offline";
+    return i.running ? "eth" : "eth-off";
+  }
+
+  /* Inline SVG — no emoji fonts required (FreeBSD often lacks noto-emoji). */
+  function svgIcon(kind) {
+    const c = "#cdd6f4";
+    const g = "#a6e3a1";
+    const d = "#6c7086";
+    const fill = (kind === "eth-off" || kind === "wifi-off" || kind === "offline") ? d : c;
+    const active = (kind === "eth" || kind === "wifi" || kind === "bridge" || kind === "virtual") ? g : fill;
+    const svgs = {
+      eth: `<svg viewBox="0 0 24 24" fill="none" stroke="${active}" stroke-width="1.8"><rect x="3" y="8" width="18" height="10" rx="2"/><path d="M8 8V6h8v2M7 12h2m3 0h2m3 0h2" stroke-linecap="round"/></svg>`,
+      "eth-off": `<svg viewBox="0 0 24 24" fill="none" stroke="${d}" stroke-width="1.8"><rect x="3" y="8" width="18" height="10" rx="2"/><path d="M4 4l16 16" stroke-linecap="round"/></svg>`,
+      wifi: `<svg viewBox="0 0 24 24" fill="none" stroke="${active}" stroke-width="1.8"><path d="M5 12.5a9 9 0 0114 0M8.5 16a5 5 0 017 0" stroke-linecap="round"/><circle cx="12" cy="19" r="1.2" fill="${active}" stroke="none"/></svg>`,
+      "wifi-off": `<svg viewBox="0 0 24 24" fill="none" stroke="${d}" stroke-width="1.8"><path d="M5 12.5a9 9 0 0114 0M4 4l16 16" stroke-linecap="round"/></svg>`,
+      /* bridge: two ports + bar (vm-public) */
+      bridge: `<svg viewBox="0 0 24 24" fill="none" stroke="${active}" stroke-width="1.8"><rect x="2" y="9" width="6" height="6" rx="1"/><rect x="16" y="9" width="6" height="6" rx="1"/><path d="M8 12h8" stroke-linecap="round"/><path d="M12 8v8" stroke-linecap="round" opacity="0.5"/></svg>`,
+      /* virtual/tap: box with arrow */
+      virtual: `<svg viewBox="0 0 24 24" fill="none" stroke="${active}" stroke-width="1.8"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="M9 12h6m0 0l-2-2m2 2l-2 2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+      offline: `<svg viewBox="0 0 24 24" fill="none" stroke="${d}" stroke-width="1.8"><circle cx="12" cy="12" r="8"/><path d="M8 8l8 8" stroke-linecap="round"/></svg>`,
+    };
+    return svgs[kind] || svgs.eth;
+  }
+
+  function toast(msg) {
+    const t = $("toast");
+    t.textContent = msg;
+    t.classList.add("show");
+    clearTimeout(toast._tm);
+    toast._tm = setTimeout(() => t.classList.remove("show"), 1800);
+  }
+
+  /** IPv4 / IPv6 on separate lines; omit missing; no extra blanks. */
+  function addrLines(i) {
+    const lines = [];
+    if (i.ipv4 && i.ipv4[0]) lines.push(i.ipv4[0]);
+    if (i.ipv6 && i.ipv6[0]) lines.push(i.ipv6[0]);
+    return lines;
+  }
+  function compactLabel(i) {
+    if (!i) return "";
+    let head = i.name + (i.isDefault ? " · default" : "");
+    if (i.ssid) head = i.ssid;
+    const lines = [];
+    if (i.ssid || i.kind === "Wireless") {
+      const radio = wifiRadioLabel(i.freqMhz, i.maxKbps);
+      if (radio) lines.push(radio);
+    }
+    addrLines(i).forEach((a) => lines.push(a));
+    return lines.length ? head + "\n" + lines.join("\n") : head;
+  }
+
+  function render() {
+    const ifaces = buildIfaces(state);
+    const feat = features();
+    const p = primary(ifaces);
+    if (p && !ifaces.find((i) => i.name === state.selected)) {
+      state.selected = p.name;
+    }
+
+    /* features chips */
+    $("featBits").innerHTML = [
+      ["physical", feat.physical_ifaces],
+      ["default_route", feat.default_route],
+      ["wireless", feat.wireless],
+      ["wpa", feat.wpa],
+      ["config_editor", feat.config_editor],
+      ["create_iface", feat.create_iface],
+      ["advanced_nm", feat.advanced_gui],
+    ].map(([k, on]) => `<span class="${on ? "on" : "off"}">${k}</span>`).join("");
+
+    /* wiring dump */
+    $("wireBox").textContent =
+      "platform → " + state.plat + "\n" +
+      "probe → InterfaceInfo[]\n" +
+      "route  → primary=" + (p ? p.name : "none") + "\n" +
+      (state.plat === "freebsd"
+        ? "Factory → FreeBSDNetworkBackend\nrclick → up/down · destroy\ncreate → preflight kld\n"
+        : "Factory → null poll · NM D-Bus\nAdvanced → networkmgr\n") +
+      "tray   ← icon only";
+
+    /* tray: icon only — colour by activity; details in title tooltip */
+    $("trayIcon").innerHTML = svgIcon(iconFor(p));
+    const btn = $("btnNet");
+    btn.classList.remove("net-online", "net-degraded", "net-offline");
+    if (p && p.running) {
+      btn.classList.add(p.isDefault || (p.ipv4 && p.ipv4[0]) ? "net-online" : "net-degraded");
+    } else {
+      btn.classList.add("net-offline");
+    }
+    btn.title = compactLabel(p) || "No connection";
+    btn.classList.toggle("open", state.open);
+
+    /* popover — title only; no status strip (iface rows already carry detail) */
+    $("popover").classList.toggle("visible", state.open);
+
+    /* interface list */
+    $("ifaceList").innerHTML = ifaces.map((i) => {
+      const sel = i.name === state.selected ? " selected" : "";
+      const badges = [];
+      if (i.isDefault) badges.push('<span class="badge def">default</span>');
+      if (!i.up) badges.push('<span class="badge down">admin down</span>');
+      else if (!i.running) badges.push('<span class="badge down">no carrier</span>');
+      else badges.push(`<span class="badge">${i.kind}</span>`);
+      const addrs = addrLines(i);
+      const media = i.media || "";
+      const sub = addrs.join("\n") + (media && addrs.length ? "\n" : "") + media;
+      return `<div class="iface${sel}" data-name="${i.name}">
+        <div class="ico">${svgIcon(iconFor(i))}</div>
+        <div class="body">
+          <div class="title"><strong>${i.name}</strong>${badges.join("")}</div>
+          ${sub ? `<div class="sub">${sub.replace(/</g, "&lt;")}</div>` : ""}
+        </div>
+      </div>`;
+    }).join("");
+
+    $("ifaceList").querySelectorAll(".iface").forEach((el) => {
+      el.addEventListener("click", () => {
+        state.selected = el.getAttribute("data-name");
+        hideCtx();
+        render();
+      });
+      el.addEventListener("contextmenu", (ev) => {
+        ev.preventDefault();
+        state.selected = el.getAttribute("data-name");
+        state.ctxName = state.selected;
+        showCtx(ev.clientX, ev.clientY, state.ctxName);
+        render();
+      });
+    });
+
+    /* wifi */
+    const showWifi = feat.wireless && feat.wpa;
+    $("wifiSection").style.display = showWifi ? "" : "none";
+    if (showWifi) {
+      $("wifiList").innerHTML = WIFI_APS.map((ap) => {
+        const radio = wifiRadioLabel(ap.freqMhz, ap.maxKbps);
+        return `<div class="wifi-row" data-ssid="${ap.ssid}">
+          <span>${ap.secure ? "🔒" : "📡"}</span>
+          <div class="meta">
+            <div class="ssid">${ap.ssid}${ap.active ? " · connected" : ""}</div>
+            ${radio ? `<div class="freq">${radio}</div>` : ""}
+          </div>
+          <span class="sig">${ap.sig}%</span>
+        </div>`;
+      }).join("");
+      $("wifiList").querySelectorAll(".wifi-row").forEach((el) => {
+        el.addEventListener("click", () => toast("wpa_cli connect “" + el.dataset.ssid + "” (v2)"));
+      });
+    }
+
+    /* Footer */
+    $("btnCreate").style.display = feat.create_iface ? "" : "none";
+    $("btnEdit").style.display = feat.config_editor ? "" : "none";
+    $("btnAdv").style.display = feat.advanced_gui ? "" : "none";
+
+    $("editorModal").classList.toggle("open", state.editorOpen);
+    if (state.editorOpen) fillEditor(ifaces);
+
+    $("createModal").classList.toggle("open", state.createOpen);
+    if (state.createOpen) syncCreatePreflight();
+  }
+
+  function showCtx(x, y, name) {
+    const i = ifaceByName(name);
+    const menu = $("ctxMenu");
+    const on = i && i.up;
+    $("ctxToggle").textContent = on ? "Turn off" : "Turn on";
+    $("ctxToggle").disabled = !i;
+    $("ctxDelete").disabled = !isDestroyable(i);
+    $("ctxConfigure").disabled = state.plat !== "freebsd";
+    menu.classList.add("open");
+    menu.style.left = Math.min(x, window.innerWidth - 200) + "px";
+    menu.style.top = Math.min(y, window.innerHeight - 140) + "px";
+  }
+
+  function hideCtx() {
+    $("ctxMenu").classList.remove("open");
+    state.ctxName = null;
+  }
+
+  function toggleIface(name) {
+    const i = ifaceByName(name);
+    if (!i) return;
+    state.ifaceOverrides = state.ifaceOverrides || {};
+    const next = Object.assign({}, i, state.ifaceOverrides[name] || {});
+    next.up = !i.up;
+    next.running = next.up;
+    if (!next.up) {
+      next.running = false;
+      next.isDefault = false;
+    }
+    state.ifaceOverrides[name] = next;
+    if (name === "aq0") state.online = next.up;
+    toast("would ifconfig " + name + " " + (next.up ? "up" : "down"));
+  }
+
+  function deleteIface(name) {
+    const i = ifaceByName(name);
+    if (!isDestroyable(i)) {
+      toast("cannot destroy " + name);
+      return;
+    }
+    state.ifaceOverrides = state.ifaceOverrides || {};
+    state.ifaceOverrides[name] = { deleted: true };
+    state.extraIfaces = state.extraIfaces.filter((e) => e.name !== name);
+    if (state.selected === name) state.selected = "aq0";
+    toast("would ifconfig " + name + " destroy");
+  }
+
+  function syncCreatePreflight() {
+    const sel = $("crType");
+    if (!sel.options.length) {
+      sel.innerHTML = CLONE_TYPES.map((t) =>
+        `<option value="${t.type}">${t.label}</option>`
+      ).join("");
+    }
+    const pf = preflightCreate(sel.value, state.plat, state.gifModuleMissing);
+    const el = $("crPreflight");
+    el.textContent = pf.detail;
+    el.className = "preflight " + (pf.canCreate ? "ok" : "bad");
+    $("btnCreateGo").disabled = !pf.canCreate;
+  }
+
+  function fillEditor(ifaces) {
+    const sel = $("edIface");
+    const prev = state.selected;
+    sel.innerHTML = ifaces.map((i) =>
+      `<option value="${i.name}"${i.name === prev ? " selected" : ""}>${i.name} · ${i.kind}</option>`
+    ).join("");
+    const i = ifaces.find((x) => x.name === sel.value) || ifaces[0];
+    if (!i) return;
+    $("editorTitle").textContent = "Configure " + i.name;
+    $("edV4Addr").value = (i.ipv4 && i.ipv4[0]) || "";
+    $("edV4Pref").value = i.name === "aq0" ? "25" : "24";
+    $("edV4Gw").value = i.gateway4 || "";
+    $("edV6Addr").value = (i.ipv6 && i.ipv6[0] && !String(i.ipv6[0]).startsWith("fe80")) ? i.ipv6[0] : ((i.ipv6 && i.ipv6[0]) || "");
+    $("edV6Pref").value = "64";
+    $("edV6Gw").value = i.gateway6 || "";
+    const dhcp = !$("edV4Addr").value;
+    $("edV4Mode").value = dhcp ? "dhcp" : "static";
+    $("edV6Mode").value = $("edV6Addr").value ? "static" : "accept_rtadv";
+    syncEditorModes();
+  }
+
+  function syncEditorModes() {
+    const v4 = $("edV4Mode").value;
+    const v6 = $("edV6Mode").value;
+    /* Address/prefix only for static. */
+    $("edV4Static").style.display = v4 === "static" ? "" : "none";
+    $("edV6Static").style.display = v6 === "static" ? "" : "none";
+    /*
+     * Gateway only for static. DHCP hands out defaultrouter via the lease;
+     * SLAAC/accept_rtadv installs routes from RAs — no manual gateway.
+     */
+    $("edV4GwWrap").style.display = v4 === "static" ? "" : "none";
+    $("edV6GwWrap").style.display = v6 === "static" ? "" : "none";
+  }
+
+  function openEditor() {
+    state.editorOpen = true;
+    state.createOpen = false;
+    state.open = true;
+    hideCtx();
+    render();
+  }
+
+  function closeEditor() {
+    state.editorOpen = false;
+    render();
+  }
+
+  function openCreate() {
+    state.createOpen = true;
+    state.editorOpen = false;
+    hideCtx();
+    render();
+  }
+
+  function closeCreate() {
+    state.createOpen = false;
+    render();
+  }
+
+  function nextCloneName(type) {
+    let n = 0;
+    const names = buildIfaces(state).map((i) => i.name);
+    while (names.indexOf(type + n) >= 0) n++;
+    return type + n;
+  }
+
+  function bind() {
+    $("btnNet").addEventListener("click", () => {
+      state.open = !state.open;
+      if (!state.open) {
+        state.editorOpen = false;
+        state.createOpen = false;
+        hideCtx();
+      }
+      $("btnNet").setAttribute("aria-expanded", state.open ? "true" : "false");
+      render();
+    });
+    $("btnClose").addEventListener("click", () => {
+      state.open = false;
+      state.editorOpen = false;
+      state.createOpen = false;
+      hideCtx();
+      render();
+    });
+    $("btnEdit").addEventListener("click", () => openEditor());
+    $("btnCreate").addEventListener("click", () => openCreate());
+    $("btnAdv").addEventListener("click", () => {
+      toast("Linux: spawn networkmgr");
+    });
+
+    $("btnEditorClose").addEventListener("click", closeEditor);
+    $("btnEditorCancel").addEventListener("click", closeEditor);
+    $("editorModal").addEventListener("click", (e) => {
+      if (e.target === $("editorModal")) closeEditor();
+    });
+    $("edIface").addEventListener("change", () => {
+      state.selected = $("edIface").value;
+      fillEditor(buildIfaces(state));
+    });
+    $("edV4Mode").addEventListener("change", syncEditorModes);
+    $("edV6Mode").addEventListener("change", syncEditorModes);
+    $("btnEditorSave").addEventListener("click", () => {
+      toast("would save config for " + $("edIface").value + " (planning)");
+      closeEditor();
+    });
+
+    $("btnCreateClose").addEventListener("click", closeCreate);
+    $("btnCreateCancel").addEventListener("click", closeCreate);
+    $("createModal").addEventListener("click", (e) => {
+      if (e.target === $("createModal")) closeCreate();
+    });
+    $("crType").addEventListener("change", syncCreatePreflight);
+    $("btnCreateGo").addEventListener("click", () => {
+      const t = $("crType").value;
+      const pf = preflightCreate(t, state.plat, state.gifModuleMissing);
+      if (!pf.canCreate) {
+        toast(pf.detail);
+        return;
+      }
+      const name = ($("crName").value.trim() || nextCloneName(t));
+      const kind = t === "bridge" ? "Bridge" : t === "tap" || t === "tun" || t === "epair" ? "Virtual" : "Other";
+      state.extraIfaces = state.extraIfaces.filter((e) => e.name !== name);
+      state.extraIfaces.push({
+        name: name, kind: kind, media: "", ipv4: [], ipv6: [],
+        up: true, running: true, isDefault: false, status: "active", permanent: false,
+      });
+      state.selected = name;
+      toast("would ifconfig " + t + " create → " + name);
+      closeCreate();
+    });
+
+    $("ctxToggle").addEventListener("click", () => {
+      const n = state.selected;
+      hideCtx();
+      toggleIface(n);
+      render();
+    });
+    $("ctxConfigure").addEventListener("click", () => {
+      hideCtx();
+      openEditor();
+    });
+    $("ctxDelete").addEventListener("click", () => {
+      const n = state.selected;
+      hideCtx();
+      deleteIface(n);
+      render();
+    });
+    document.addEventListener("click", (e) => {
+      if (!$("ctxMenu").contains(e.target)) hideCtx();
+    });
+
+    const map = {
+      optOnline: "online",
+      optWifi: "wifi",
+      optBridge: "bridge",
+    };
+    Object.keys(map).forEach((id) => {
+      $(id).addEventListener("change", (e) => {
+        state[map[id]] = e.target.checked;
+        render();
+      });
+    });
+    $("optGifMod").addEventListener("change", (e) => {
+      state.gifModuleMissing = e.target.checked;
+      if (state.createOpen) syncCreatePreflight();
+    });
+    $("optPlat").addEventListener("change", (e) => {
+      state.plat = e.target.value;
+      state.editorOpen = false;
+      state.createOpen = false;
+      hideCtx();
+      render();
+    });
+  }
+
+  bind();
+  render();
+})();
+  </script>
+</body>
+</html>
