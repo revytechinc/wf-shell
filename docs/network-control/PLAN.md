@@ -218,7 +218,7 @@ wpa_cli -i wlan0
 > set_network N wep_key0 "...."           # WEP only
 > enable_network N
 > select_network N
-> save_config                             # requires update_config=1 in conf
+> save_config                             # always — not a UI toggle
 ```
 
 | Security | wpa_supplicant fields |
@@ -227,11 +227,11 @@ wpa_cli -i wlan0
 | WPA/WPA2/WPA3-Personal | `key_mgmt=WPA-PSK` + `psk=` |
 | WEP | `key_mgmt=NONE` + `wep_key0=` + `wep_tx_keyidx=0` |
 
-**Persist:** `save_config` writes the conf used by the running daemon (often  
-`/etc/wpa_supplicant.conf` via `wpa_supplicant_conf` / `rc.conf`).  
-Host conf must have `update_config=1` for save to stick.  
-Elevation: same admin gate as other mutations when the control socket or conf  
-is root-owned.
+**Always persist:** every successful join/update runs `save_config` (no  
+“save to conf?” checkbox — that is the product’s job). Host conf should have  
+`update_config=1`. If save fails, still try runtime connect; surface a short  
+error only when needed.  
+Elevation: same admin gate when the control socket or conf is root-owned.
 
 **Do not** ship a project `doas.conf`; do not rewrite conf by hand if `wpa_cli`  
 works. Fail-soft on scan/join errors.
