@@ -352,12 +352,12 @@ std::string user_menu_icons_dir()
 
 /**
  * Theme id → pack SVG stem under ICONDIR/menu.
- * "default" uses the stock Wayfire icon name (always available via icon theme).
+ * "default" uses the classic Wayfire mark (ICONDIR/wayfire.png).
  */
 std::string theme_default_menu_icon_id(const std::string& theme_id)
 {
     static const std::map<std::string, std::string> map = {
-        {"default", "wayfire"}, /* safe stock name — not a pack file */
+        {"default", "wayfire"},
         {"win95", "win95-start"},
         {"system7", "system7-apple"},
         {"amiga-workbench", "amiga-wb"},
@@ -374,12 +374,42 @@ std::string theme_default_menu_icon_id(const std::string& theme_id)
     return it != map.end() ? it->second : "wayfire";
 }
 
+/** Classic Wayfire panel mark — same asset the menu used before theming. */
+std::string wayfire_menu_icon_file()
+{
+    std::error_code ec;
+    const std::string candidates[] = {
+        std::string(ICONDIR) + "/wayfire.png",
+        std::string(ICONDIR) + "/wayfire.svg",
+        std::string(RESOURCEDIR) + "/icons/wayfire.png",
+        std::string(RESOURCEDIR) + "/icons/scalable/wayfire.svg",
+        std::string(RESOURCEDIR) + "/wayfire.png",
+        /* hicolor installs from meson */
+        home_dir() + "/.local/share/icons/hicolor/scalable/apps/wayfire.svg",
+        home_dir() + "/.local/share/icons/hicolor/48x48/apps/wayfire.png",
+        "/usr/local/share/icons/hicolor/scalable/apps/wayfire.svg",
+        "/usr/local/share/icons/hicolor/48x48/apps/wayfire.png",
+        "/usr/share/icons/hicolor/scalable/apps/wayfire.svg",
+    };
+    for (const auto& p : candidates)
+    {
+        if (!p.empty() && std::filesystem::is_regular_file(p, ec))
+        {
+            return p;
+        }
+    }
+    return {};
+}
+
 std::string pack_icon_path(const std::string& id)
 {
-    if (id.empty() || id == "auto" || id == "wayfire")
+    if (id.empty() || id == "auto")
     {
-        /* wayfire is a freedesktop/hicolor name, not a pack file */
         return {};
+    }
+    if (id == "wayfire")
+    {
+        return wayfire_menu_icon_file();
     }
     std::error_code ec;
     const std::string dirs[] = {
@@ -468,28 +498,48 @@ bool set_menu_button_icon(Gtk::Image& image, const std::string& path_or_name, in
     }
 
     /* Icon theme / app-id name */
-    return IconProvider::image_set_icon(image, path_or_name);
+    if (IconProvider::image_set_icon(image, path_or_name))
+    {
+        return true;
+    }
+    /* has_icon() is sometimes wrong; still try the name (classic "wayfire"). */
+    try
+    {
+        image.set_from_icon_name(path_or_name);
+        return true;
+    } catch (...)
+    {}
+    return false;
 }
 
 /** Ordered candidates for the active theme, then universal safe defaults. */
 std::vector<std::string> menu_icon_candidates_for_theme()
 {
     std::vector<std::string> out;
-    const std::string tid = current_theme_id_live();
+    const std::string tid     = current_theme_id_live();
     const std::string pack_id = theme_default_menu_icon_id(tid);
 
+    /* 1) Theme pack file (or wayfire.png for default) */
     auto pack = pack_icon_path(pack_id);
     if (!pack.empty())
     {
         out.push_back(pack);
     }
-    /* Named icon when pack id is also a theme icon (e.g. wayfire) */
-    if (pack_id == "wayfire" || pack.empty())
+
+    /* 2) Always try the classic Wayfire file next for default / as backup */
+    auto wf = wayfire_menu_icon_file();
+    if (!wf.empty() && (out.empty() || out.front() != wf))
     {
-        out.push_back(pack_id);
+        if (pack_id == "wayfire")
+        {
+            out.insert(out.begin(), wf); /* default theme: wayfire first */
+        } else
+        {
+            out.push_back(wf);
+        }
     }
 
-    /* Always end with a chain that exists on FreeBSD/Linux desktops */
+    /* 3) Icon-theme names (recolorable symbolic + stock) */
     const char *safe[] = {
         "wayfire",
         "view-app-grid-symbolic",
@@ -497,7 +547,6 @@ std::vector<std::string> menu_icon_candidates_for_theme()
         "applications-menu",
         "start-here",
         "application-x-executable",
-        "image-missing",
     };
     for (auto *s : safe)
     {
@@ -514,13 +563,6 @@ std::vector<std::string> menu_icon_candidates_for_theme()
         {
             out.push_back(s);
         }
-    }
-
-    /* Pack start-grid as extra file candidate */
-    auto sg = pack_icon_path("start-grid");
-    if (!sg.empty())
-    {
-        out.insert(out.begin() + 1, sg); /* after theme pack */
     }
     return out;
 }
@@ -1255,11 +1297,10 @@ void WayfireMenu::on_popover_shown()
 
 bool WayfireMenu::update_icon()
 {
-    /* Theme-driven only — try pack art, then a hard safe default chain. */
+    /* Theme-driven only — pack art, then Wayfire file, then icon names. */
     int px = 32;
     try
     {
-        /* Prefer configured menu icon size when set (>0). */
         WfOption<int> sz{"panel/menu_icon_size"};
         if (sz.value() > 0)
         {
@@ -1279,13 +1320,21 @@ bool WayfireMenu::update_icon()
     }
     if (!ok)
     {
-        /* Last resort: never leave a blank plate */
-        main_image.set_from_icon_name("application-x-executable");
+        /* Never blank: force Wayfire name even if has_icon() lied */
+        try
+        {
+            main_image.set_from_icon_name("wayfire");
+            ok = true;
+        } catch (...)
+        {
+            main_image.set_from_icon_name("application-x-executable");
+        }
     }
 
     main_image.add_css_class("menu-icon");
     main_image.add_css_class("widget-icon");
     main_image.add_css_class("default-icon");
+    main_image.set_visible(true);
     return true;
 }
 
