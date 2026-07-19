@@ -1115,6 +1115,47 @@ std::vector<WifiScanEntry> wifi_scan(const std::string& wlan, int wait_ms)
     return final;
 }
 
+bool wifi_ssid_is_saved(const std::string& wlan, const std::string& ssid)
+{
+    if (!is_wlan_clone_name(wlan) || ssid.empty() || !ensure_wpa_running(wlan))
+    {
+        return false;
+    }
+    auto listed = parse_wpa_list_networks(wpa_cli_run(wlan, "list_networks"));
+    return wpa_pick_network_id_for_ssid(listed, ssid) >= 0;
+}
+
+std::vector<std::string> wifi_saved_ssids(const std::string& wlan)
+{
+    std::vector<std::string> out;
+    if (!is_wlan_clone_name(wlan) || !ensure_wpa_running(wlan))
+    {
+        return out;
+    }
+    auto listed = parse_wpa_list_networks(wpa_cli_run(wlan, "list_networks"));
+    for (const auto& row : listed)
+    {
+        if (row.ssid.empty())
+        {
+            continue;
+        }
+        bool have = false;
+        for (const auto& s : out)
+        {
+            if (s == row.ssid)
+            {
+                have = true;
+                break;
+            }
+        }
+        if (!have)
+        {
+            out.push_back(row.ssid);
+        }
+    }
+    return out;
+}
+
 WifiPowerResult wifi_join(const std::string& wlan, const std::string& ssid,
     const std::string& security, const std::string& key)
 {
@@ -1129,13 +1170,6 @@ WifiPowerResult wifi_join(const std::string& wlan, const std::string& ssid,
     if (!sv.ok)
     {
         r.detail = sv.message;
-        net_event_error("wifi.join", {field_str("error", r.detail)}, wlan);
-        return r;
-    }
-    auto cv = validate_wifi_credentials(security, key);
-    if (!cv.ok)
-    {
-        r.detail = cv.message;
         net_event_error("wifi.join", {field_str("error", r.detail)}, wlan);
         return r;
     }
@@ -1157,7 +1191,7 @@ WifiPowerResult wifi_join(const std::string& wlan, const std::string& ssid,
 
     /*
      * Reuse an existing network block for this SSID (and drop duplicates).
-     * Always add_network was creating CLOUDBSD/REVYNET clones on every join.
+     * Empty key + existing block = reconnect with saved PSK (no re-prompt).
      */
     auto listed = parse_wpa_list_networks(wpa_cli_run(wlan, "list_networks"));
     std::vector<int> remove_ids;
@@ -1173,6 +1207,32 @@ WifiPowerResult wifi_join(const std::string& wlan, const std::string& ssid,
     if (!remove_ids.empty())
     {
         (void)wpa_cli_ok(wlan, "save_config");
+    }
+
+    const bool use_saved_key = key.empty() && keep_id >= 0;
+    if (key.empty() && keep_id < 0)
+    {
+        std::string sec0 = security;
+        if (sec0 == "wpa2" || sec0 == "wpa3" || sec0 == "wpa-psk")
+        {
+            sec0 = "wpa";
+        }
+        if (sec0 != "open" && sec0 != "none")
+        {
+            r.detail = "password required (network not saved)";
+            net_event_error("wifi.join", {field_str("error", r.detail)}, wlan);
+            return r;
+        }
+    }
+    if (!use_saved_key)
+    {
+        auto cv = validate_wifi_credentials(security, key);
+        if (!cv.ok)
+        {
+            r.detail = cv.message;
+            net_event_error("wifi.join", {field_str("error", r.detail)}, wlan);
+            return r;
+        }
     }
 
     std::string net_id;
@@ -1221,9 +1281,24 @@ WifiPowerResult wifi_join(const std::string& wlan, const std::string& ssid,
     {
         sec = "wpa";
     }
-    if (sec == "open" || sec == "none")
+
+    if (use_saved_key)
+    {
+        /*
+         * Keep existing psk/key_mgmt in the conf block — only re-select.
+         * enable_network all siblings stay available for next roam.
+         */
+        (void)wpa_cli_ok(wlan, "enable_network " + net_id);
+        (void)wpa_cli_ok(wlan, "select_network " + net_id);
+        (void)wpa_cli_ok(wlan, "save_config");
+        (void)wpa_cli_ok(wlan, "reassociate");
+    } else if (sec == "open" || sec == "none")
     {
         (void)wpa_cli_ok(wlan, "set_network " + net_id + " key_mgmt NONE");
+        (void)wpa_cli_ok(wlan, "enable_network " + net_id);
+        (void)wpa_cli_ok(wlan, "select_network " + net_id);
+        (void)wpa_cli_ok(wlan, "save_config");
+        (void)wpa_cli_ok(wlan, "reassociate");
     } else if (sec == "sae")
     {
         (void)wpa_cli_ok(wlan, "set_network " + net_id + " key_mgmt SAE");
@@ -1234,6 +1309,10 @@ WifiPowerResult wifi_join(const std::string& wlan, const std::string& ssid,
             r.detail = "set psk failed";
             return r;
         }
+        (void)wpa_cli_ok(wlan, "enable_network " + net_id);
+        (void)wpa_cli_ok(wlan, "select_network " + net_id);
+        (void)wpa_cli_ok(wlan, "save_config");
+        (void)wpa_cli_ok(wlan, "reassociate");
     } else if (sec == "wep")
     {
         (void)wpa_cli_ok(wlan, "set_network " + net_id + " key_mgmt NONE");
@@ -1245,6 +1324,10 @@ WifiPowerResult wifi_join(const std::string& wlan, const std::string& ssid,
             r.detail = "set wep key failed";
             return r;
         }
+        (void)wpa_cli_ok(wlan, "enable_network " + net_id);
+        (void)wpa_cli_ok(wlan, "select_network " + net_id);
+        (void)wpa_cli_ok(wlan, "save_config");
+        (void)wpa_cli_ok(wlan, "reassociate");
     } else
     {
         /* WPA-PSK (covers WPA2 and mixed WPA2/SAE APs for most home nets) */
@@ -1264,12 +1347,11 @@ WifiPowerResult wifi_join(const std::string& wlan, const std::string& ssid,
             r.detail = "set psk failed";
             return r;
         }
+        (void)wpa_cli_ok(wlan, "enable_network " + net_id);
+        (void)wpa_cli_ok(wlan, "select_network " + net_id);
+        (void)wpa_cli_ok(wlan, "save_config");
+        (void)wpa_cli_ok(wlan, "reassociate");
     }
-
-    (void)wpa_cli_ok(wlan, "enable_network " + net_id);
-    (void)wpa_cli_ok(wlan, "select_network " + net_id);
-    (void)wpa_cli_ok(wlan, "save_config");
-    (void)wpa_cli_ok(wlan, "reassociate");
 
     /* Brief wait for association (background thread only). */
     for (int i = 0; i < 12; ++i)
@@ -1295,7 +1377,16 @@ WifiPowerResult wifi_join(const std::string& wlan, const std::string& ssid,
     const bool boot = wifi_persist_boot_config(wlan, resolve_parent_for_wlan(wlan));
 
     r.ok = true;
-    r.detail = reused ? ("Updated " + ssid) : ("Joined " + ssid);
+    if (use_saved_key)
+    {
+        r.detail = "Connected to saved network " + ssid;
+    } else if (reused)
+    {
+        r.detail = "Updated " + ssid;
+    } else
+    {
+        r.detail = "Joined " + ssid;
+    }
     if (boot)
     {
         r.detail += "; boot config saved";
@@ -1303,6 +1394,7 @@ WifiPowerResult wifi_join(const std::string& wlan, const std::string& ssid,
     net_event_info("wifi.join", {
         field_bool("ok", true),
         field_bool("reused", reused),
+        field_bool("use_saved_key", use_saved_key),
         field_bool("boot_persist", boot),
         field_int("removed_dupes", static_cast<long long>(remove_ids.size())),
         field_str("ssid", ssid),

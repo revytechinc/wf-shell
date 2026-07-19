@@ -24,9 +24,10 @@ class FreeBSDApRow : public Gtk::Box
 {
   public:
     FreeBSDApRow(std::string wlan, wf_net::WifiScanEntry entry,
-        bool is_connected = false);
+        bool is_connected = false, bool is_saved = false);
     const wf_net::WifiScanEntry& entry() const { return entry_; }
     bool is_connected() const { return connected_; }
+    bool is_saved() const { return saved_; }
 
     sigc::signal<void(const wf_net::WifiScanEntry&)>& signal_activated()
     {
@@ -37,6 +38,7 @@ class FreeBSDApRow : public Gtk::Box
     std::string wlan_;
     wf_net::WifiScanEntry entry_;
     bool connected_ = false;
+    bool saved_ = false;
     Gtk::Image icon_;
     Gtk::Image lock_;
     Gtk::Label ssid_;

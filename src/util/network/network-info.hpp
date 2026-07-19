@@ -93,10 +93,20 @@ std::vector<WifiScanEntry> wifi_scan(const std::string& wlan,
 /**
  * Join SSID on wlan via wpa_cli (add_network / set / enable / save_config).
  * security: open | wpa | wep | sae. key ignored for open.
- * Starts dhclient on success when no IPv4 yet.
+ * If key is empty and SSID already exists in wpa_supplicant, reuses that
+ * network block (no password re-entry). Starts dhclient when no IPv4 yet.
  */
 WifiPowerResult wifi_join(const std::string& wlan, const std::string& ssid,
     const std::string& security, const std::string& key);
+
+/**
+ * True if wpa_supplicant already has a configured network block for SSID
+ * (credentials known — UI should not prompt for the key again).
+ */
+bool wifi_ssid_is_saved(const std::string& wlan, const std::string& ssid);
+
+/** All SSIDs currently configured in wpa_supplicant for this wlan. */
+std::vector<std::string> wifi_saved_ssids(const std::string& wlan);
 
 /** True if wpa_cli can talk to the iface control socket. */
 bool wifi_wpa_ready(const std::string& wlan);

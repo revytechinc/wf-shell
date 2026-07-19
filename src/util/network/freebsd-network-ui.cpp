@@ -71,17 +71,22 @@ void ui_idle(F&& fn)
 /* ─── FreeBSDApRow ───────────────────────────────────────────────────────── */
 
 FreeBSDApRow::FreeBSDApRow(std::string wlan, wf_net::WifiScanEntry entry,
-    bool is_connected) :
+    bool is_connected, bool is_saved) :
     Gtk::Box(Gtk::Orientation::HORIZONTAL, 8),
     wlan_(std::move(wlan)),
     entry_(std::move(entry)),
-    connected_(is_connected)
+    connected_(is_connected),
+    saved_(is_saved)
 {
     add_css_class("access-point");
     if (connected_)
     {
         add_css_class("active");
         add_css_class("connected");
+    }
+    if (saved_ && !connected_)
+    {
+        add_css_class("saved");
     }
     if (entry_.security != "open")
     {
@@ -134,6 +139,12 @@ FreeBSDApRow::FreeBSDApRow(std::string wlan, wf_net::WifiScanEntry entry,
         badge_.set_text("Connected");
         badge_.add_css_class("ap-connected-badge");
         badge_.set_halign(Gtk::Align::END);
+    } else if (saved_)
+    {
+        badge_.set_text("Saved");
+        badge_.add_css_class("ap-saved-badge");
+        badge_.set_halign(Gtk::Align::END);
+        set_tooltip_text("Password saved — click to connect");
     }
 
     append(icon_);
@@ -142,7 +153,7 @@ FreeBSDApRow::FreeBSDApRow(std::string wlan, wf_net::WifiScanEntry entry,
         append(lock_);
     }
     append(ssid_);
-    if (connected_)
+    if (connected_ || saved_)
     {
         append(badge_);
     }
@@ -732,11 +743,25 @@ void FreeBSDIfaceRow::rebuild_ap_list(const std::vector<wf_net::WifiScanEntry>& 
             return a.signal_dbm > b.signal_dbm;
         });
 
+    /* SSIDs already in wpa_supplicant — no password prompt on click. */
+    std::vector<std::string> saved = wf_net::wifi_saved_ssids(wlan);
+    auto is_saved_ssid = [&] (const std::string& s) {
+        for (const auto& x : saved)
+        {
+            if (x == s)
+            {
+                return true;
+            }
+        }
+        return false;
+    };
+
     int shown = 0;
     for (const auto& ap : sorted)
     {
         const bool is_cur = iface_connected && ap.ssid == cur_ssid;
-        auto *row = Gtk::make_managed<FreeBSDApRow>(wlan, ap, is_cur);
+        const bool saved_ap = is_saved_ssid(ap.ssid);
+        auto *row = Gtk::make_managed<FreeBSDApRow>(wlan, ap, is_cur, saved_ap);
         if (!is_cur)
         {
             row->signal_activated().connect(
@@ -798,6 +823,45 @@ void FreeBSDIfaceRow::do_join(const wf_net::WifiScanEntry& ap)
     const std::string wlan = wlan_name();
     const std::string ssid = ap.ssid;
     const std::string security = ap.security;
+
+    auto apply_join_result = [this] (const std::string& joined_ssid,
+        const wf_net::WifiPowerResult& r) {
+        if (r.ok && net_)
+        {
+            auto i = net_->info();
+            i.wifi_ssid = joined_ssid;
+            i.up = true;
+            i.running = true;
+            i.wifi_wpa_state = "COMPLETED";
+            i.status = "associated";
+            net_->update_info(i);
+        }
+        refresh();
+        if (popover_open_)
+        {
+            do_scan();
+        }
+    };
+
+    /*
+     * Saved network in wpa_supplicant: connect with stored PSK — never
+     * re-prompt for the password.
+     */
+    if (security != "open" && wf_net::wifi_ssid_is_saved(wlan, ssid))
+    {
+        auto row_alive = alive_;
+        std::thread([this, row_alive, wlan, ssid, security, apply_join_result] () {
+            auto r = wf_net::wifi_join(wlan, ssid, security, ""); /* empty = use saved */
+            ui_idle([this, row_alive, ssid, r, apply_join_result] () {
+                if (!row_alive->load())
+                {
+                    return;
+                }
+                apply_join_result(ssid, r);
+            });
+        }).detach();
+        return;
+    }
 
     if (security != "open")
     {
@@ -896,10 +960,10 @@ void FreeBSDIfaceRow::do_join(const wf_net::WifiScanEntry& ap)
             auto row_alive = alive_;
             /* Capture only POD/strings for the worker — no Gtk widgets. */
             std::thread([this, row_alive, dlg_alive, finish, err, join,
-                ssid, security, wlan, k] () {
+                ssid, security, wlan, k, apply_join_result] () {
                 auto r = wf_net::wifi_join(wlan, ssid, security, k);
                 ui_idle([this, row_alive, dlg_alive, finish, err, join,
-                    ssid, r] () {
+                    ssid, r, apply_join_result] () {
                     if (!dlg_alive->load())
                     {
                         return;
@@ -910,20 +974,9 @@ void FreeBSDIfaceRow::do_join(const wf_net::WifiScanEntry& ap)
                         join->set_sensitive(true);
                         return;
                     }
-                    if (row_alive->load() && net_)
+                    if (row_alive->load())
                     {
-                        auto i = net_->info();
-                        i.wifi_ssid = ssid;
-                        i.up = true;
-                        i.running = true;
-                        i.wifi_wpa_state = "COMPLETED";
-                        i.status = "associated";
-                        net_->update_info(i);
-                        refresh();
-                        if (popover_open_)
-                        {
-                            do_scan();
-                        }
+                        apply_join_result(ssid, r);
                     }
                     finish();
                 });
@@ -936,28 +989,14 @@ void FreeBSDIfaceRow::do_join(const wf_net::WifiScanEntry& ap)
 
     /* Open network — strings only on the worker */
     auto row_alive = alive_;
-    std::thread([this, row_alive, wlan, ssid] () {
+    std::thread([this, row_alive, wlan, ssid, apply_join_result] () {
         auto r = wf_net::wifi_join(wlan, ssid, "open", "");
-        ui_idle([this, row_alive, ssid, r] () {
+        ui_idle([this, row_alive, ssid, r, apply_join_result] () {
             if (!row_alive->load())
             {
                 return;
             }
-            if (r.ok && net_)
-            {
-                auto i = net_->info();
-                i.wifi_ssid = ssid;
-                i.up = true;
-                i.running = true;
-                i.wifi_wpa_state = "COMPLETED";
-                i.status = "associated";
-                net_->update_info(i);
-            }
-            refresh();
-            if (popover_open_)
-            {
-                do_scan();
-            }
+            apply_join_result(ssid, r);
         });
     }).detach();
 }

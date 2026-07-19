@@ -276,6 +276,11 @@ text-shadow: 1px  1px 0 var(--bcol),
     color: #a6e3a1;
     margin-right: 6px;
 }
+.network-control-center .access-point.saved .ap-saved-badge {
+    font-size: 0.8em;
+    color: #89b4fa;
+    margin-right: 6px;
+}
 
 /* Wi‑Fi join password field — room for full glyphs when shown */
 .wifi-password-entry {
