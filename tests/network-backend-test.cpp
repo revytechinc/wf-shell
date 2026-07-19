@@ -102,10 +102,53 @@ TEST(NetworkTypes, WifiConnectionStateAndAddresses)
     w.wifi_wpa_state.clear();
     EXPECT_EQ(format_wifi_connection_state(w), "Off");
 
+    /* Parent radio / non-wifi / connecting / disconnect paths */
+    InterfaceInfo parent;
+    parent.kind = InterfaceKind::Wireless;
+    parent.wifi_role = WifiRole::ParentRadio;
+    parent.wifi_needs_clone = true;
+    EXPECT_EQ(format_wifi_connection_state(parent), "No wlan interface");
+    parent.wifi_needs_clone = false;
+    EXPECT_EQ(format_wifi_connection_state(parent), "Radio");
+    InterfaceInfo eth;
+    eth.kind = InterfaceKind::Ethernet;
+    EXPECT_TRUE(format_wifi_connection_state(eth).empty());
+
+    w.up = true;
+    w.wifi_wpa_state = "4WAY_HANDSHAKE";
+    w.wifi_ssid = "X";
+    EXPECT_EQ(format_wifi_connection_state(w), "Connecting");
+    w.wifi_wpa_state = "COMPLETED";
+    w.wifi_ssid.clear();
+    w.ipv4.clear();
+    w.ipv6.clear();
+    EXPECT_EQ(format_wifi_connection_state(w), "Associated");
+    w.wifi_wpa_state = "DISCONNECTED";
+    EXPECT_EQ(format_wifi_connection_state(w), "Disconnected");
+    w.wifi_wpa_state.clear();
+    w.status = "no carrier";
+    EXPECT_EQ(format_wifi_connection_state(w), "Disconnected");
+    w.status = "associated";
+    w.wifi_ssid = "OnlyIfconfig";
+    w.ipv4 = {"10.0.0.2"};
+    EXPECT_EQ(format_wifi_connection_state(w), "Connected");
+    w.ipv4.clear();
+    EXPECT_EQ(format_wifi_connection_state(w), "Associated");
+
     /* Signal → icon tiers (-30≈100, -35≈91 → excellent) */
-    EXPECT_GE(wifi_signal_to_percent(-35), 80);
+    EXPECT_EQ(wifi_signal_to_percent(0), 0);
     EXPECT_EQ(wifi_signal_to_percent(-30), 100);
-    EXPECT_TRUE(wifi_signal_icon_base(90).find("excellent") != std::string::npos);
+    EXPECT_EQ(wifi_signal_to_percent(-90), 0);
+    EXPECT_GE(wifi_signal_to_percent(-35), 80);
+    EXPECT_EQ(wifi_signal_icon_base(90), "network-wireless-signal-excellent");
+    EXPECT_EQ(wifi_signal_icon_base(60), "network-wireless-signal-good");
+    EXPECT_EQ(wifi_signal_icon_base(40), "network-wireless-signal-ok");
+    EXPECT_EQ(wifi_signal_icon_base(10), "network-wireless-signal-weak");
+    EXPECT_EQ(wifi_signal_icon_base(0), "network-wireless-signal-none");
+    EXPECT_EQ(wifi_rssi_to_percent(0), 0);
+    EXPECT_EQ(wifi_rssi_to_percent(63.0), 63);
+    EXPECT_EQ(wifi_rssi_to_percent(100.0), 100);
+    EXPECT_EQ(wifi_rssi_to_percent(150.0), 100);
     double rssi = 0;
     EXPECT_TRUE(parse_ifconfig_list_sta_rssi(
         "ADDR AID CHAN RATE RSSI IDLE\n"
@@ -128,6 +171,45 @@ TEST(NetworkTypes, WifiConnectionStateAndAddresses)
     strong.wifi_signal_pct = 40;
     strong.wifi_signal_dbm = 0;
     EXPECT_EQ(icon_for_interface(strong), "network-wireless-signal-ok");
+}
+
+TEST(NetworkTypes, WpaBssDetailEdges)
+{
+    EXPECT_FALSE(parse_wpa_bss_detail("").ok);
+    EXPECT_FALSE(parse_wpa_bss_detail("FAIL\n").ok);
+    auto d = parse_wpa_bss_detail(
+        "bssid=aa:bb:cc:dd:ee:ff\n"
+        "freq=notanumber\n"
+        "level=bogus\n"
+        "est_throughput=abc\n"
+        "ssid=Test\n");
+    EXPECT_TRUE(d.ok);
+    EXPECT_EQ(d.ssid, "Test");
+    EXPECT_EQ(d.freq_mhz, 0u);
+    EXPECT_EQ(d.est_throughput_mbps, 0u);
+
+    WifiScanEntry e;
+    e.ssid = "Keep";
+    e.freq_mhz = 5180;
+    apply_wpa_bss_detail(e, WpaBssDetail{}); /* no-op when !ok */
+    EXPECT_EQ(e.ssid, "Keep");
+    EXPECT_EQ(e.freq_mhz, 5180u);
+
+    WpaBssDetail fill;
+    fill.ok = true;
+    fill.bssid = "11:22:33:44:55:66";
+    fill.freq_mhz = 2412;
+    fill.signal_dbm = -50;
+    fill.flags = "[WPA2-PSK-CCMP][ESS]";
+    fill.est_throughput_mbps = 300;
+    e.bssid.clear();
+    e.freq_mhz = 0;
+    apply_wpa_bss_detail(e, fill);
+    EXPECT_EQ(e.bssid, "11:22:33:44:55:66");
+    EXPECT_EQ(e.freq_mhz, 2412u);
+    EXPECT_EQ(e.signal_dbm, -50);
+    EXPECT_EQ(e.security, "wpa");
+    EXPECT_EQ(e.est_throughput_mbps, 300u);
 }
 
 TEST(NetworkTypes, WpaScanResultsParse)
@@ -595,8 +677,23 @@ TEST(NetworkTypes, FormatAndIcon)
     wifi.kind = InterfaceKind::Wireless;
     wifi.up = true;
     wifi.running = true;
+    /* No RSSI yet → mid-good (not excellent; that requires real strength). */
+    EXPECT_EQ(icon_for_interface(wifi), "network-wireless-signal-good");
+    wifi.wifi_signal_pct = 90;
     EXPECT_EQ(icon_for_interface(wifi), "network-wireless-signal-excellent");
+    wifi.wifi_signal_pct = 0;
+    wifi.wifi_signal_dbm = -35; /* excellent class via dBm map */
+    EXPECT_GE(wifi_signal_to_percent(-35), 80);
+    EXPECT_EQ(icon_for_interface(wifi), "network-wireless-signal-excellent");
+    wifi.wifi_signal_dbm = -70;
+    wifi.wifi_signal_pct = 0;
+    EXPECT_EQ(icon_for_interface(wifi), "network-wireless-signal-ok");
     wifi.running = false;
+    EXPECT_EQ(icon_for_interface(wifi), "network-wireless-offline");
+    wifi.running = true;
+    wifi.status = "no carrier";
+    wifi.wifi_signal_dbm = 0;
+    wifi.wifi_signal_pct = 0;
     EXPECT_EQ(icon_for_interface(wifi), "network-wireless-offline");
 
     InterfaceInfo offline_br;
@@ -629,15 +726,31 @@ TEST(NetworkTypes, FormatAndIcon)
     wifi_css.up = true;
     wifi_css.running = true;
     wifi_css.is_default_route = true;
+    /* No signal sample → good + default (not fake excellent). */
     auto wcss = css_for_interface(wifi_css);
     EXPECT_NE(std::find(wcss.begin(), wcss.end(), "wifi"), wcss.end());
-    EXPECT_NE(std::find(wcss.begin(), wcss.end(), "excellent"), wcss.end());
+    EXPECT_NE(std::find(wcss.begin(), wcss.end(), "good"), wcss.end());
+    EXPECT_NE(std::find(wcss.begin(), wcss.end(), "default"), wcss.end());
 
     wifi_css.is_default_route = false;
+    wifi_css.wifi_signal_pct = 90;
+    wcss = css_for_interface(wifi_css);
+    EXPECT_NE(std::find(wcss.begin(), wcss.end(), "excellent"), wcss.end());
+
+    wifi_css.wifi_signal_pct = 60;
     wcss = css_for_interface(wifi_css);
     EXPECT_NE(std::find(wcss.begin(), wcss.end(), "good"), wcss.end());
 
+    wifi_css.wifi_signal_pct = 40;
+    wcss = css_for_interface(wifi_css);
+    EXPECT_NE(std::find(wcss.begin(), wcss.end(), "medium"), wcss.end());
+
+    wifi_css.wifi_signal_pct = 10;
+    wcss = css_for_interface(wifi_css);
+    EXPECT_NE(std::find(wcss.begin(), wcss.end(), "weak"), wcss.end());
+
     wifi_css.running = false;
+    wifi_css.wifi_signal_pct = 0;
     wcss = css_for_interface(wifi_css);
     EXPECT_NE(std::find(wcss.begin(), wcss.end(), "medium"), wcss.end());
 

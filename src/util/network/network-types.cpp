@@ -828,9 +828,13 @@ std::vector<std::string> css_for_interface(const InterfaceInfo& info)
         } else if (pct >= 5)
         {
             c.push_back("weak");
+        } else if (info.status == "no carrier")
+        {
+            c.push_back("none");
         } else
         {
-            c.push_back(info.status == "associated" ? "good" : "none");
+            /* No RSSI sample yet while radio is live — match icon mid-good. */
+            c.push_back("good");
         }
         if (info.is_default_route)
         {
