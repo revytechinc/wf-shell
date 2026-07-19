@@ -247,7 +247,7 @@ flowchart TB
 | **Delete interface…** | `is_destroyable_iface(name)` | `ifconfig IF destroy` | `can_admin` + destroyable |
 
 Label comes from **live probe flags**, not a stale toggle. Status is **colour**, not text:  
-green = up · red + greyed row = down/disabled · amber = no link (still on). Never “admin down”.
+**green = up** · **red + greyed row = down**. Never “admin down” wording.
 
 ### Destroyable vs permanent
 

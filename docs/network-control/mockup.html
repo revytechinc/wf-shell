@@ -80,10 +80,10 @@
     }
     .iface:hover { background: var(--surface2); }
     .iface.selected { border-color: var(--blue); background: #1a2030; }
-    /* Green = up · Red = down · Greyed row when disabled/down */
+    /* Green = up · Red = down · greyed out when down/disabled */
     .iface.is-up .state-dot {
       background: var(--green);
-      box-shadow: 0 0 0 2px rgba(166, 227, 161, 0.2);
+      box-shadow: 0 0 0 2px rgba(166, 227, 161, 0.25);
     }
     .iface.is-up .ico svg { stroke: var(--green); }
     .iface.is-up .ico svg circle { fill: var(--green); }
@@ -96,12 +96,6 @@
     .iface.is-down .title strong,
     .iface.is-down .sub { color: var(--dim); }
     .iface.is-down .badge { opacity: 0.7; }
-    /* Admin up but no carrier — still “on”, not greyed; amber indicator */
-    .iface.is-nolink .state-dot {
-      background: var(--yellow);
-      box-shadow: 0 0 0 2px rgba(249, 226, 175, 0.15);
-    }
-    .iface.is-nolink .ico svg { stroke: var(--yellow); }
     .iface .state-dot {
       width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
       margin-top: 5px;
@@ -866,18 +860,20 @@
     /* popover — title only; no status strip (iface rows already carry detail) */
     $("popover").classList.toggle("visible", state.open);
 
-    /* interface list */
+    /* interface list — status by colour (green up / red down+greyed / amber no-link) */
     $("ifaceList").innerHTML = ifaces.map((i) => {
       const sel = i.name === state.selected ? " selected" : "";
+      let st = "is-down";
+      if (i.up && i.running) st = "is-up";
+      else if (i.up) st = "is-nolink";
       const badges = [];
       if (i.isDefault) badges.push('<span class="badge def">default</span>');
-      if (!i.up) badges.push('<span class="badge down">Down</span>');
-      else if (!i.running) badges.push('<span class="badge down">No link</span>');
-      else badges.push(`<span class="badge">${i.kind}</span>`);
+      if (i.kind) badges.push(`<span class="badge">${i.kind}</span>`);
       const addrs = addrLines(i);
       const media = i.media || "";
       const sub = addrs.join("\n") + (media && addrs.length ? "\n" : "") + media;
-      return `<div class="iface${sel}" data-name="${i.name}">
+      return `<div class="iface ${st}${sel}" data-name="${i.name}">
+        <span class="state-dot" aria-hidden="true"></span>
         <div class="ico">${svgIcon(iconFor(i))}</div>
         <div class="body">
           <div class="title"><strong>${i.name}</strong>${badges.join("")}</div>

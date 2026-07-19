@@ -23,11 +23,13 @@
         </div>
         <!-- permanent NIC, currently down -->
         <div style="position:relative;background:#1e1e2e;border:1px solid #45475a;border-radius:12px;padding:8px 0 0;min-height:200px;">
-          <div style="padding:0 10px 6px;font-size:9px;color:#6c7086;text-transform:uppercase;">igb0 · permanent · down</div>
-          <div style="margin:0 10px 8px;padding:8px;border-radius:8px;border:1px solid #45475a;background:#1a1a24;">
-            <strong style="font-size:12px;">igb0</strong>
-            <span style="font-size:9px;margin-left:4px;padding:1px 5px;border-radius:4px;background:#3a2a30;color:#f38ba8;">Down</span>
-            <div style="font-size:10px;color:#a6adc8;margin-top:2px;">1000baseT</div>
+          <div style="padding:0 10px 6px;font-size:9px;color:#6c7086;text-transform:uppercase;">igb0 · down (red + greyed)</div>
+          <div style="margin:0 10px 8px;padding:8px;border-radius:8px;border:1px solid #45475a;background:#1a1a24;display:flex;gap:8px;align-items:center;opacity:0.5;filter:grayscale(0.35);">
+            <span style="width:8px;height:8px;border-radius:50%;background:#f38ba8;flex-shrink:0;"></span>
+            <div>
+              <strong style="font-size:12px;color:#6c7086;">igb0</strong>
+              <span style="font-size:9px;margin-left:4px;padding:1px 5px;border-radius:4px;background:#313244;color:#89b4fa;opacity:0.7;">ETHERNET</span>
+            </div>
           </div>
           <div style="margin:0 10px;min-width:160px;background:#181825;border:1px solid #45475a;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.45);padding:4px;font-size:12px;">
             <div style="padding:8px 10px;border-radius:6px;background:#313244;">Turn on</div>
