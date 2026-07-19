@@ -850,9 +850,9 @@ void FreeBSDIfaceRow::do_join(const wf_net::WifiScanEntry& ap)
     if (security != "open" && wf_net::wifi_ssid_is_saved(wlan, ssid))
     {
         auto row_alive = alive_;
-        std::thread([this, row_alive, wlan, ssid, security, apply_join_result] () {
+        std::thread([row_alive, wlan, ssid, security, apply_join_result] () {
             auto r = wf_net::wifi_join(wlan, ssid, security, ""); /* empty = use saved */
-            ui_idle([this, row_alive, ssid, r, apply_join_result] () {
+            ui_idle([row_alive, ssid, r, apply_join_result] () {
                 if (!row_alive->load())
                 {
                     return;
@@ -943,7 +943,8 @@ void FreeBSDIfaceRow::do_join(const wf_net::WifiScanEntry& ap)
         }, false);
 
         join->signal_clicked().connect(
-            [this, entry, err, join, ssid, security, wlan, finish, dlg_alive] () {
+            [this, entry, err, join, ssid, security, wlan, finish, dlg_alive,
+                apply_join_result] () {
             if (!dlg_alive->load())
             {
                 return;
@@ -959,10 +960,10 @@ void FreeBSDIfaceRow::do_join(const wf_net::WifiScanEntry& ap)
             join->set_sensitive(false);
             auto row_alive = alive_;
             /* Capture only POD/strings for the worker — no Gtk widgets. */
-            std::thread([this, row_alive, dlg_alive, finish, err, join,
+            std::thread([row_alive, dlg_alive, finish, err, join,
                 ssid, security, wlan, k, apply_join_result] () {
                 auto r = wf_net::wifi_join(wlan, ssid, security, k);
-                ui_idle([this, row_alive, dlg_alive, finish, err, join,
+                ui_idle([row_alive, dlg_alive, finish, err, join,
                     ssid, r, apply_join_result] () {
                     if (!dlg_alive->load())
                     {
@@ -989,9 +990,9 @@ void FreeBSDIfaceRow::do_join(const wf_net::WifiScanEntry& ap)
 
     /* Open network — strings only on the worker */
     auto row_alive = alive_;
-    std::thread([this, row_alive, wlan, ssid, apply_join_result] () {
+    std::thread([row_alive, wlan, ssid, apply_join_result] () {
         auto r = wf_net::wifi_join(wlan, ssid, "open", "");
-        ui_idle([this, row_alive, ssid, r, apply_join_result] () {
+        ui_idle([row_alive, ssid, r, apply_join_result] () {
             if (!row_alive->load())
             {
                 return;
