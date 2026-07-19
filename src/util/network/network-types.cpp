@@ -478,7 +478,7 @@ CreatePreflight evaluate_create_preflight(
     const CloneTypeInfo *spec = find_clone_type(type);
     if (!spec)
     {
-        r.detail = "unknown interface type";
+        r.detail = "unknown_type";
         return r;
     }
     if (spec->module)
@@ -487,7 +487,7 @@ CreatePreflight evaluate_create_preflight(
     }
     if (!has_admin)
     {
-        r.detail = "no admin privileges (information-only) — cannot create " + type;
+        r.detail = "no_admin";
         return r;
     }
 
@@ -495,8 +495,8 @@ CreatePreflight evaluate_create_preflight(
         != clone_catalog.end();
 
     /*
-     * Module not required (nullptr) or already offered by ifconfig -C:
-     * kernel already knows the type → create is allowed.
+     * Success ⇒ can_create only (detail stays empty).
+     * UI presents the type; that is the signal that preflight passed.
      */
     if (!spec->module)
     {
@@ -504,45 +504,387 @@ CreatePreflight evaluate_create_preflight(
         {
             /* empty catalog = caller skipped live -C (unit test / optimistic) */
             r.can_create = true;
-            r.detail = std::string("in kernel / no module required · ifconfig ") +
-                type + " create";
             return r;
         }
-        r.detail = "type " + type + " not offered by ifconfig -C";
+        r.detail = "not_in_catalog";
         return r;
     }
 
-    if (in_catalog)
+    if (in_catalog || module_loaded || module_file_exists)
     {
         r.can_create = true;
-        r.detail = std::string("module ") + spec->module +
-            " available · ifconfig " + type + " create";
         return r;
     }
 
-    if (module_loaded)
-    {
-        r.can_create = true;
-        r.detail = std::string("module ") + spec->module +
-            " loaded · ifconfig " + type + " create";
-        return r;
-    }
-
-    if (module_file_exists)
-    {
-        /*
-         * Module on disk but not in -C yet — create/kldload may still work
-         * under admin. Allow Create; apply path will load or fail soft.
-         */
-        r.can_create = true;
-        r.detail = std::string("module ") + spec->module +
-            ".ko present (not loaded) · ifconfig " + type + " create";
-        return r;
-    }
-
-    r.detail = std::string("module ") + spec->module +
-        " not loaded and not found — cannot create " + type;
+    r.detail = "module_unavailable";
     return r;
+}
+
+/* ─── Input validation ───────────────────────────────────────────────────── */
+
+namespace
+{
+
+std::string trim_copy(const std::string& s)
+{
+    size_t a = 0;
+    while (a < s.size() && std::isspace(static_cast<unsigned char>(s[a])))
+    {
+        ++a;
+    }
+    size_t b = s.size();
+    while (b > a && std::isspace(static_cast<unsigned char>(s[b - 1])))
+    {
+        --b;
+    }
+    return s.substr(a, b - a);
+}
+
+bool is_hex_digit(char c)
+{
+    return std::isxdigit(static_cast<unsigned char>(c)) != 0;
+}
+
+} // namespace
+
+ValidationResult validate_iface_name(const std::string& name, bool allow_empty)
+{
+    const std::string s = trim_copy(name);
+    if (s.empty())
+    {
+        return allow_empty ? validation_ok() : validation_fail("Name is required");
+    }
+    /* FreeBSD IFNAMSIZ is 16 including NUL */
+    if (s.size() > 15)
+    {
+        return validation_fail("Name is too long (max 15 characters)");
+    }
+    if (!std::isalpha(static_cast<unsigned char>(s[0])))
+    {
+        return validation_fail("Name must start with a letter");
+    }
+    for (char c : s)
+    {
+        const unsigned char u = static_cast<unsigned char>(c);
+        if (std::isalnum(u) || c == '_' || c == '-' || c == '.')
+        {
+            continue;
+        }
+        return validation_fail("Name has invalid characters");
+    }
+    /* Block shell / path injection shapes */
+    if (s.find("..") != std::string::npos || s.find('/') != std::string::npos)
+    {
+        return validation_fail("Name has invalid characters");
+    }
+    return validation_ok();
+}
+
+ValidationResult validate_ipv4_address(const std::string& text, bool allow_empty)
+{
+    const std::string s = trim_copy(text);
+    if (s.empty())
+    {
+        return allow_empty ? validation_ok() : validation_fail("IPv4 address is required");
+    }
+    int parts = 0;
+    size_t i = 0;
+    while (i < s.size())
+    {
+        if (parts > 0)
+        {
+            if (s[i] != '.')
+            {
+                return validation_fail("Invalid IPv4 address");
+            }
+            ++i;
+        }
+        if (i >= s.size() || !std::isdigit(static_cast<unsigned char>(s[i])))
+        {
+            return validation_fail("Invalid IPv4 address");
+        }
+        int val = 0;
+        int digits = 0;
+        while (i < s.size() && std::isdigit(static_cast<unsigned char>(s[i])))
+        {
+            val = val * 10 + (s[i] - '0');
+            ++digits;
+            ++i;
+            if (digits > 3 || val > 255)
+            {
+                return validation_fail("Invalid IPv4 address");
+            }
+        }
+        if (digits == 0)
+        {
+            return validation_fail("Invalid IPv4 address");
+        }
+        ++parts;
+    }
+    if (parts != 4)
+    {
+        return validation_fail("Invalid IPv4 address");
+    }
+    return validation_ok();
+}
+
+ValidationResult validate_ipv6_address(const std::string& text, bool allow_empty)
+{
+    std::string s = trim_copy(text);
+    if (s.empty())
+    {
+        return allow_empty ? validation_ok() : validation_fail("IPv6 address is required");
+    }
+    /* Optional zone: addr%ifname */
+    const size_t pct = s.find('%');
+    if (pct != std::string::npos)
+    {
+        const std::string zone = s.substr(pct + 1);
+        s = s.substr(0, pct);
+        if (s.empty())
+        {
+            return validation_fail("Invalid IPv6 address");
+        }
+        if (!validate_iface_name(zone, false).ok)
+        {
+            return validation_fail("Invalid IPv6 zone id");
+        }
+    }
+    if (s.find_first_not_of("0123456789abcdefABCDEF:.") != std::string::npos)
+    {
+        return validation_fail("Invalid IPv6 address");
+    }
+    if (s.find(':') == std::string::npos)
+    {
+        return validation_fail("Invalid IPv6 address");
+    }
+
+    /* At most one "::" compression */
+    const size_t dc = s.find("::");
+    const bool compressed = (dc != std::string::npos);
+    if (compressed && s.find("::", dc + 2) != std::string::npos)
+    {
+        return validation_fail("Invalid IPv6 address");
+    }
+    /* No single leading/trailing colon unless part of :: */
+    if (!compressed)
+    {
+        if (s.front() == ':' || s.back() == ':')
+        {
+            return validation_fail("Invalid IPv6 address");
+        }
+    }
+
+    auto valid_hextet = [] (const std::string& part) -> bool {
+        if (part.empty() || part.size() > 4)
+        {
+            return false;
+        }
+        for (char c : part)
+        {
+            if (!is_hex_digit(c))
+            {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    auto count_side = [&] (const std::string& side) -> int {
+        if (side.empty())
+        {
+            return 0;
+        }
+        int n = 0;
+        size_t start = 0;
+        for (size_t i = 0; i <= side.size(); ++i)
+        {
+            if (i == side.size() || side[i] == ':')
+            {
+                const std::string part = side.substr(start, i - start);
+                if (part.find('.') != std::string::npos)
+                {
+                    if (!validate_ipv4_address(part, false).ok)
+                    {
+                        return -1;
+                    }
+                    n += 2;
+                }
+                else
+                {
+                    if (!valid_hextet(part))
+                    {
+                        return -1;
+                    }
+                    ++n;
+                }
+                start = i + 1;
+            }
+        }
+        return n;
+    };
+
+    int groups = 0;
+    if (compressed)
+    {
+        const std::string left = s.substr(0, dc);
+        const std::string right = s.substr(dc + 2);
+        const int L = count_side(left);
+        const int R = count_side(right);
+        if (L < 0 || R < 0)
+        {
+            return validation_fail("Invalid IPv6 address");
+        }
+        groups = L + R;
+        if (groups > 7)
+        {
+            return validation_fail("Invalid IPv6 address");
+        }
+    }
+    else
+    {
+        groups = count_side(s);
+        if (groups != 8)
+        {
+            return validation_fail("Invalid IPv6 address");
+        }
+    }
+    return validation_ok();
+}
+
+ValidationResult validate_prefix_length(const std::string& text, int max_bits,
+    bool allow_empty)
+{
+    const std::string s = trim_copy(text);
+    if (s.empty())
+    {
+        return allow_empty ? validation_ok() : validation_fail("Prefix length is required");
+    }
+    if (max_bits <= 0 || max_bits > 128)
+    {
+        return validation_fail("Invalid prefix length");
+    }
+    if (s.size() > 3)
+    {
+        return validation_fail("Invalid prefix length");
+    }
+    int val = 0;
+    for (char c : s)
+    {
+        if (!std::isdigit(static_cast<unsigned char>(c)))
+        {
+            return validation_fail("Invalid prefix length");
+        }
+        val = val * 10 + (c - '0');
+        if (val > max_bits)
+        {
+            return validation_fail("Prefix must be 0–" + std::to_string(max_bits));
+        }
+    }
+    return validation_ok();
+}
+
+ValidationResult validate_admin_password(const std::string& password)
+{
+    if (password.empty())
+    {
+        return validation_fail("Password is required");
+    }
+    if (password.size() > 512)
+    {
+        return validation_fail("Password is too long");
+    }
+    return validation_ok();
+}
+
+ConfigFormErrors validate_config_form(const ConfigFormInput& in)
+{
+    ConfigFormErrors e;
+    if (in.v4_mode == "static")
+    {
+        auto a = validate_ipv4_address(in.v4_addr, false);
+        if (!a.ok)
+        {
+            e.ok = false;
+            e.v4_addr = a.message;
+        }
+        auto p = validate_prefix_length(in.v4_prefix, 32, false);
+        if (!p.ok)
+        {
+            e.ok = false;
+            e.v4_prefix = p.message;
+        }
+        auto g = validate_ipv4_address(in.v4_gateway, true);
+        if (!g.ok)
+        {
+            e.ok = false;
+            e.v4_gateway = g.message;
+        }
+    }
+    else if (in.v4_mode != "dhcp" && in.v4_mode != "none")
+    {
+        e.ok = false;
+        e.v4_addr = "Invalid IPv4 mode";
+    }
+
+    if (in.v6_mode == "static")
+    {
+        auto a = validate_ipv6_address(in.v6_addr, false);
+        if (!a.ok)
+        {
+            e.ok = false;
+            e.v6_addr = a.message;
+        }
+        auto p = validate_prefix_length(in.v6_prefix, 128, false);
+        if (!p.ok)
+        {
+            e.ok = false;
+            e.v6_prefix = p.message;
+        }
+        auto g = validate_ipv6_address(in.v6_gateway, true);
+        if (!g.ok)
+        {
+            e.ok = false;
+            e.v6_gateway = g.message;
+        }
+    }
+    else if (in.v6_mode != "accept_rtadv" && in.v6_mode != "none")
+    {
+        e.ok = false;
+        e.v6_addr = "Invalid IPv6 mode";
+    }
+    return e;
+}
+
+CreateFormErrors validate_create_form(const CreateFormInput& in,
+    const std::vector<std::string>& existing_names)
+{
+    CreateFormErrors e;
+    if (!find_clone_type(in.type))
+    {
+        e.ok = false;
+        e.type = "Choose an interface type";
+    }
+    auto n = validate_iface_name(in.name, true);
+    if (!n.ok)
+    {
+        e.ok = false;
+        e.name = n.message;
+    }
+    else if (!trim_copy(in.name).empty())
+    {
+        const std::string name = trim_copy(in.name);
+        for (const auto& ex : existing_names)
+        {
+            if (ex == name)
+            {
+                e.ok = false;
+                e.name = "Name is already in use";
+                break;
+            }
+        }
+    }
+    return e;
 }
 
 } // namespace wf_net

@@ -146,16 +146,19 @@ flowchart TB
 ```mermaid
 flowchart LR
   A[Start mutation?] --> B{geteuid == 0?}
-  B -->|yes| OK[AdminPrivilege Root]
-  B -->|no| C{doas -n true?}
-  C -->|yes| D[AdminPrivilege Doas]
-  C -->|no| E{sudo -n true?}
-  E -->|yes| F[AdminPrivilege Sudo]
-  E -->|no| G[AdminPrivilege None]
-  OK --> H[can_admin mutations]
+  B -->|yes| OK[Root]
+  B -->|no| C{doas -n?}
+  C -->|yes| D[Doas]
+  C -->|no| E{sudo -n?}
+  E -->|yes| F[Sudo]
+  E -->|no| P{doas or sudo installed?}
+  P -->|yes| NP[NeedsPassword<br/>auth dialog]
+  P -->|no| G[None · information-only]
+  OK --> H[mutations]
   D --> H
   F --> H
-  G --> I[information-only mode<br/>list + tooltip only]
+  NP --> H
+  G --> I[list + tooltip only]
 ```
 
 ### Autodetect features (same idea as audio `features()`)
@@ -166,7 +169,9 @@ flowchart LR
 | `default_route` | `route get default` has interface | tray primary |
 | `wireless` | any `wlanN` present | Wi‑Fi section |
 | `wpa` | `wpa_cli` + control socket | scan/join controls |
-| `can_admin` | root / `doas -n` / `sudo -n` | mutations; else **information-only** |
+| `can_admin` | root / doas / sudo present (including password-required) | mutations offered |
+| `needs_password` | elevator exists but `-n` fails | **auth dialog** before apply |
+| information-only | no root and no doas/sudo binary | list + tooltip only |
 | `config_editor` | FreeBSD **and** `can_admin` | **Configure…** modal |
 | `create_iface` | FreeBSD **and** `can_admin` | **Create…** + preflight |
 | `advanced_gui` | Linux + `networkmgr` / ini | **Advanced** (hidden on FreeBSD) |
@@ -306,18 +311,41 @@ flowchart TB
 Pure decision: `evaluate_create_preflight(...)`.  
 Live: `probe_create_preflight(type)` / `probe_create_catalog()`.
 
-**Never** enable Create when preflight fails. Show the reason string in the modal strip (green OK / red blocked). Mockup knob: “Simulate gif module missing”.
+**Sparse UI rule:** if a type is listed in Create… and Create is enabled, preflight already passed.  
+**Do not** show “module X available · ifconfig …” (or any green status strip).  
+Types that fail preflight are **omitted** from the menu (not shown disabled with a lecture).  
+Mockup knob “Simulate gif module missing” simply drops `gif` from the Type list.
+
+### Password dialog (NeedsPassword)
+
+When `doas`/`sudo` exists but non-interactive (`-n`) fails:
+
+1. Still show Configure / Create / context actions (not information-only).  
+2. On first mutation (Save, Create, Turn on/off, Delete), open **Authentication required**.  
+3. Validate password non-empty; on success continue the pending action (ticket/cache later).  
+4. Cancel abandons the pending action.  
+
+No doas/sudo at all → information-only (no dialog).
+
+### Input validation (all editable fields)
+
+| Surface | Rules (pure helpers) |
+|---------|----------------------|
+| Create name | empty=auto; else IFNAMSIZ iface name; not already taken |
+| Configure IPv4 static | address required + dotted quad; prefix 0–32; gateway optional IPv4 |
+| Configure IPv6 static | address required + IPv6 (`%zone` ok); prefix 0–128; gateway optional |
+| Configure DHCP / SLAAC / none | address/gateway fields not required (hidden) |
+| Auth password | non-empty (max length) |
+
+Invalid fields: inline error under the field, **Save/Create/Authenticate disabled path** (button no-op until valid).  
+Never ship shell/command strings as validation copy.
 
 ### Apply path (deferred — not in this milestone)
 
-| Action | Command (host policy via doas/sudo) |
-|--------|-------------------------------------|
-| Up | `ifconfig IF up` |
-| Down | `ifconfig IF down` |
-| Destroy | `ifconfig IF destroy` |
-| Create | `ifconfig TYPE create` [name] |
+Backend still uses base tools under the hood.  
+**UI never displays those commands** as instructional text, titles, or success banners.
 
-Elevation: reuse `AdminPrivilege` (root / `doas -n` / `sudo -n`). Host `doas.conf` is **not** in this repo. Fail-soft: toast/error string; never crash.
+Elevation: `AdminPrivilege` including `NeedsPassword` + dialog. Host policy not in repo. Fail-soft; never crash.
 
 ### Pure API surface (implemented)
 
@@ -370,7 +398,8 @@ flowchart TB
 | [diagrams/popover-interfaces.svg](diagrams/popover-interfaces.svg) | FreeBSD popover (no NM / no status strip) |
 | [diagrams/popover-context-menu.svg](diagrams/popover-context-menu.svg) | Right-click: up/down · configure · delete |
 | [diagrams/modal-configure.svg](diagrams/modal-configure.svg) | Configure… static/DHCP editor |
-| [diagrams/modal-create-preflight.svg](diagrams/modal-create-preflight.svg) | Create… + module preflight OK/blocked |
+| [diagrams/modal-create-preflight.svg](diagrams/modal-create-preflight.svg) | Create… lists only available types |
+| [diagrams/modal-auth-password.svg](diagrams/modal-auth-password.svg) | Password when doas/sudo needs it |
 | [diagrams/information-only.svg](diagrams/information-only.svg) | No doas/sudo — read-only list |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Factory/Builder + Mermaid wiring |
 
@@ -402,11 +431,14 @@ firefox docs/network-control/mockup.html
 
 - [x] Design: right-click Turn on/off from live `up` flag  
 - [x] Design: Delete only when `is_destroyable_iface`  
-- [x] Design: Create catalog + preflight (module / ifconfig -C)  
-- [x] Mockup exercises context menu + Create + gif-missing / no-admin  
-- [x] Pure gtest: destroyable rules, clone parse, preflight decision  
-- [ ] UI wires context menu + Create modal to live probe  
-- [ ] Apply: `ifconfig up|down|destroy|create` via admin (after sign-off)  
+- [x] Design: Create catalog + preflight (omit unavailable; no command banners)  
+- [x] Design: password dialog when doas/sudo needs a password  
+- [x] Pure input validation (names, IPv4/6, prefix, config/create, password)  
+- [x] Mockup: context menu · Create · auth · validation · admin modes  
+- [x] Pure gtest: destroyable, preflight, validation, privilege helpers  
+- [x] Coverage script `docs/network-control/tests/coverage.sh` (~96% pure/probe)  
+- [ ] UI wires context menu + Create + auth + validation to live GTK  
+- [ ] Apply path via admin (after sign-off)  
 
 ---
 

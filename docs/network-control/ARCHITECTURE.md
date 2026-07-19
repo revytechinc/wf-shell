@@ -103,11 +103,18 @@ flowchart TB
   PF[probe_features]
   PF --> AD[probe_admin_privilege]
   AD --> R{AdminPrivilege}
-  R -->|Root / Doas / Sudo| CA[can_admin true]
+  R -->|Root / Doas / Sudo| CA[can_admin · ready]
+  R -->|NeedsPassword| PW[can_admin · needs_password]
   R -->|None| IO[information-only]
   CA --> MUT[Configure · Create · up/down · destroy]
-  IO --> RO[List + tooltip only<br/>mutations hidden/disabled]
+  PW --> DLG[Auth dialog on mutation]
+  DLG --> MUT
+  IO --> RO[List + tooltip only]
 ```
+
+Input validation (pure): `validate_iface_name`, `validate_ipv4/6_address`,
+`validate_prefix_length`, `validate_config_form`, `validate_create_form`,
+`validate_admin_password`.
 
 ---
 
@@ -134,15 +141,18 @@ flowchart LR
   AD --> CR
   C --> PF[evaluate_create_preflight]
   K --> PF
-  PF -->|can_create + detail| CR
+  PF -->|can_create only| CR
 ```
+
+**UI:** list only types with `can_create`; no module/command success text.  
+**detail** on `CreatePreflight` is diagnostics (`module_unavailable`, …), not chrome.
 
 | Pure (gtest) | Live probe | Apply (deferred) |
 |--------------|------------|------------------|
-| `is_destroyable_iface` | flags from `getifaddrs` | `ifconfig up/down/destroy` |
-| `evaluate_create_preflight` | `probe_create_preflight` | `ifconfig TYPE create` |
+| `is_destroyable_iface` | flags from `getifaddrs` | elevate + ifconfig |
+| `evaluate_create_preflight` | `probe_create_preflight` | elevate + create |
 | `parse_ifconfig_clone_list` | `ifconfig -C` | — |
-| `kldstat_has_module` | `kldstat` | optional `kldload` |
+| `kldstat_has_module` | `kldstat` | optional kldload |
 
 Domain types: `CloneTypeInfo`, `CreatePreflight` in `network-types.hpp`.
 
@@ -169,7 +179,8 @@ flowchart LR
 | [diagrams/popover-interfaces.svg](diagrams/popover-interfaces.svg) | Interface list + Configure/Create |
 | [diagrams/popover-context-menu.svg](diagrams/popover-context-menu.svg) | Right-click actions |
 | [diagrams/modal-configure.svg](diagrams/modal-configure.svg) | Address editor modal |
-| [diagrams/modal-create-preflight.svg](diagrams/modal-create-preflight.svg) | Create + kld preflight |
+| [diagrams/modal-create-preflight.svg](diagrams/modal-create-preflight.svg) | Create (available types only) |
+| [diagrams/modal-auth-password.svg](diagrams/modal-auth-password.svg) | Password when elevator needs it |
 | [diagrams/information-only.svg](diagrams/information-only.svg) | No admin privileges |
 
 Interactive twin: [mockup.html](mockup.html).
@@ -180,8 +191,13 @@ Interactive twin: [mockup.html](mockup.html).
 
 ```sh
 meson test -C build --suite unit   # includes network-backend-test
+# Line coverage of pure/probe units (like audio):
+docs/network-control/tests/coverage.sh
 ```
 
-Pure: classify, route parse, ifconfig media parse, primary pick, privilege helpers,
-destroyable rules, clone catalog, create preflight decision.  
-Live FreeBSD: probe non-empty + default route + create catalog (host-dependent).
+**Covered (~96% of pure/probe .cpp):** classify, display/icon/css, fingerprint,
+destroyable, clone/preflight, input validation, route/ifconfig parse, primary pick,
+admin privilege + create preflight via `InfoHooks`, FreeBSDNetwork snapshot, factory.
+
+**Not unit-covered (integration):** `network-widget.cpp`, `manager.cpp` NM D-Bus,
+panel tray chrome. Residual misses: `geteuid()==0`, popen/getifaddrs hard failures.

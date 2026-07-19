@@ -36,10 +36,10 @@
         </div>
       </div>
       <div style="margin-top:14px;font-size:10px;color:#6c7086;line-height:1.55;">
-        <div><span style="color:#cdd6f4;">Turn on / Turn off</span> — label from live <code style="color:#a6adc8;">IFF_UP</code> · apply: <code style="color:#a6adc8;">ifconfig IF up|down</code></div>
-        <div><span style="color:#cdd6f4;">Delete</span> — only destroyable clones (tap/bridge/gif/…) · permanent NICs disabled</div>
-        <div><span style="color:#cdd6f4;">Create…</span> — footer button · preflight kld / ifconfig -C before enable</div>
-        <div><span style="color:#cdd6f4;">information-only</span> — all mutation items disabled if no doas/sudo/root</div>
+        <div><span style="color:#cdd6f4;">Turn on / Turn off</span> — label from live admin state</div>
+        <div><span style="color:#cdd6f4;">Delete</span> — only for destroyable clones; permanent NICs stay disabled</div>
+        <div><span style="color:#cdd6f4;">Create…</span> — only lists types that pass preflight (no command banners)</div>
+        <div><span style="color:#cdd6f4;">information-only</span> — mutations disabled if no admin</div>
       </div>
     </div>
   </foreignObject>

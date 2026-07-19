@@ -186,6 +186,14 @@
     .preflight.ok { border-color: #2d4a3a; color: var(--green); }
     .preflight.bad { border-color: #5c3a42; color: var(--red); }
     .preflight.warn { border-color: #5c5340; color: var(--yellow); }
+    .fld input.invalid, .fld select.invalid {
+      border-color: var(--red);
+    }
+    .field-err {
+      display: none; font-size: 10px; color: var(--red); margin-top: 4px; line-height: 1.3;
+    }
+    .field-err.show { display: block; }
+    .auth-note { font-size: 12px; color: var(--muted); line-height: 1.4; margin: 0 0 10px; }
   </style>
 </head>
 <body>
@@ -222,8 +230,16 @@
           </select>
         </label>
         <label><input type="checkbox" id="optGifMod" /> Simulate gif module missing</label>
-        <label><input type="checkbox" id="optNoAdmin" /> No sudo/doas (information-only)</label>
-        <label class="dim" style="opacity:0.7">Tray icon-only · right-click ifaces for actions</label>
+        <label>
+          Admin
+          <select id="optAdmin" class="dd" style="margin-left:6px;padding:4px 8px;font-size:11px;
+            background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:6px">
+            <option value="ready" selected>Ready (nopass / root)</option>
+            <option value="password">doas/sudo needs password</option>
+            <option value="none">No doas/sudo (information-only)</option>
+          </select>
+        </label>
+        <label class="dim" style="opacity:0.7">Tray icon-only · right-click ifaces · validate all fields</label>
 
         <div class="feat" id="featBits"></div>
 
@@ -285,14 +301,17 @@
         </label>
         <div class="modal-row" id="edV4Static">
           <label class="fld">IPv4 address
-            <input id="edV4Addr" type="text" spellcheck="false" placeholder="192.168.1.10" />
+            <input id="edV4Addr" type="text" spellcheck="false" placeholder="192.168.1.10" autocomplete="off" />
+            <span class="field-err" id="errV4Addr"></span>
           </label>
           <label class="fld">Prefix
-            <input id="edV4Pref" type="text" spellcheck="false" placeholder="24" />
+            <input id="edV4Pref" type="text" spellcheck="false" placeholder="24" inputmode="numeric" />
+            <span class="field-err" id="errV4Pref"></span>
           </label>
         </div>
-        <label class="fld" id="edV4GwWrap">IPv4 gateway (defaultrouter)
-          <input id="edV4Gw" type="text" spellcheck="false" placeholder="192.168.1.1" />
+        <label class="fld" id="edV4GwWrap">IPv4 gateway
+          <input id="edV4Gw" type="text" spellcheck="false" placeholder="192.168.1.1" autocomplete="off" />
+          <span class="field-err" id="errV4Gw"></span>
         </label>
         <label class="fld">IPv6 mode
           <select id="edV6Mode">
@@ -303,14 +322,17 @@
         </label>
         <div class="modal-row" id="edV6Static">
           <label class="fld">IPv6 address
-            <input id="edV6Addr" type="text" spellcheck="false" placeholder="2001:db8::10" />
+            <input id="edV6Addr" type="text" spellcheck="false" placeholder="2001:db8::10" autocomplete="off" />
+            <span class="field-err" id="errV6Addr"></span>
           </label>
           <label class="fld">Prefix
-            <input id="edV6Pref" type="text" spellcheck="false" placeholder="64" />
+            <input id="edV6Pref" type="text" spellcheck="false" placeholder="64" inputmode="numeric" />
+            <span class="field-err" id="errV6Pref"></span>
           </label>
         </div>
-        <label class="fld" id="edV6GwWrap">IPv6 gateway (ipv6_defaultrouter)
-          <input id="edV6Gw" type="text" spellcheck="false" placeholder="fe80::1%aq0" />
+        <label class="fld" id="edV6GwWrap">IPv6 gateway
+          <input id="edV6Gw" type="text" spellcheck="false" placeholder="fe80::1%aq0" autocomplete="off" />
+          <span class="field-err" id="errV6Gw"></span>
         </label>
       </div>
       <div class="modal-foot">
@@ -332,13 +354,36 @@
           <select id="crType"></select>
         </label>
         <label class="fld">Name (optional)
-          <input id="crName" type="text" spellcheck="false" placeholder="auto (tap0, bridge0, …)" />
+          <input id="crName" type="text" spellcheck="false" placeholder="auto (tap0, bridge0, …)" autocomplete="off" />
+          <span class="field-err" id="errCrName"></span>
         </label>
-        <div class="preflight" id="crPreflight">—</div>
+        <!-- No success strip: listed types already passed preflight. -->
+        <div class="preflight bad" id="crPreflight" style="display:none"></div>
       </div>
       <div class="modal-foot">
         <button type="button" class="btn ghost" id="btnCreateCancel">Cancel</button>
         <button type="button" class="btn primary" id="btnCreateGo">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Admin password when doas/sudo needs a password (not information-only) -->
+  <div class="modal-backdrop" id="authModal" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+    <div class="modal" style="max-width:360px">
+      <div class="modal-head">
+        <h3 id="authTitle">Authentication required</h3>
+        <button type="button" class="btn ghost" id="btnAuthClose" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="auth-note" id="authNote">Administrator access is required to change network settings.</p>
+        <label class="fld">Password
+          <input id="authPass" type="password" autocomplete="current-password" />
+          <span class="field-err" id="errAuthPass"></span>
+        </label>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn ghost" id="btnAuthCancel">Cancel</button>
+        <button type="button" class="btn primary" id="btnAuthGo">Authenticate</button>
       </div>
     </div>
   </div>
@@ -353,8 +398,129 @@
     bridge: true,
     plat: "freebsd", /* freebsd | linux */
     gifModuleMissing: false,
-    noAdmin: false, /* information-only when true */
+    /* ready | password | none — mirrors AdminPrivilege probe */
+    adminMode: "ready",
   });
+
+  const $ = (id) => document.getElementById(id);
+
+  /* ─── Input validation (mirrors wf_net pure validators) ─────────────── */
+  function trim(s) { return String(s || "").trim(); }
+
+  function validateIfaceName(name, allowEmpty) {
+    const s = trim(name);
+    if (!s) return allowEmpty ? { ok: true } : { ok: false, message: "Name is required" };
+    if (s.length > 15) return { ok: false, message: "Name is too long (max 15 characters)" };
+    if (!/^[A-Za-z]/.test(s)) return { ok: false, message: "Name must start with a letter" };
+    if (!/^[A-Za-z][A-Za-z0-9_.-]*$/.test(s) || s.indexOf("..") >= 0)
+      return { ok: false, message: "Name has invalid characters" };
+    return { ok: true };
+  }
+
+  function validateIPv4(text, allowEmpty) {
+    const s = trim(text);
+    if (!s) return allowEmpty ? { ok: true } : { ok: false, message: "IPv4 address is required" };
+    const parts = s.split(".");
+    if (parts.length !== 4) return { ok: false, message: "Invalid IPv4 address" };
+    for (let i = 0; i < 4; i++) {
+      if (!/^\d{1,3}$/.test(parts[i])) return { ok: false, message: "Invalid IPv4 address" };
+      const n = Number(parts[i]);
+      if (n > 255) return { ok: false, message: "Invalid IPv4 address" };
+    }
+    return { ok: true };
+  }
+
+  function validateIPv6(text, allowEmpty) {
+    let s = trim(text);
+    if (!s) return allowEmpty ? { ok: true } : { ok: false, message: "IPv6 address is required" };
+    const pct = s.indexOf("%");
+    if (pct >= 0) {
+      const zone = s.slice(pct + 1);
+      s = s.slice(0, pct);
+      if (!s || !validateIfaceName(zone, false).ok)
+        return { ok: false, message: "Invalid IPv6 address" };
+    }
+    if (!/^[0-9a-fA-F:.]+$/.test(s)) return { ok: false, message: "Invalid IPv6 address" };
+    if ((s.match(/::/g) || []).length > 1) return { ok: false, message: "Invalid IPv6 address" };
+    /* Light shape check — full rules in C++ */
+    if (s.indexOf(":") < 0 && s.indexOf(".") < 0) return { ok: false, message: "Invalid IPv6 address" };
+    return { ok: true };
+  }
+
+  function validatePrefix(text, maxBits, allowEmpty) {
+    const s = trim(text);
+    if (!s) return allowEmpty ? { ok: true } : { ok: false, message: "Prefix length is required" };
+    if (!/^\d{1,3}$/.test(s)) return { ok: false, message: "Invalid prefix length" };
+    const n = Number(s);
+    if (n > maxBits) return { ok: false, message: "Prefix must be 0–" + maxBits };
+    return { ok: true };
+  }
+
+  function validatePassword(pw) {
+    if (!pw) return { ok: false, message: "Password is required" };
+    if (pw.length > 512) return { ok: false, message: "Password is too long" };
+    return { ok: true };
+  }
+
+  function setFieldErr(inputId, errId, message) {
+    const input = $(inputId);
+    const err = $(errId);
+    if (!input || !err) return;
+    if (message) {
+      input.classList.add("invalid");
+      err.textContent = message;
+      err.classList.add("show");
+    } else {
+      input.classList.remove("invalid");
+      err.textContent = "";
+      err.classList.remove("show");
+    }
+  }
+
+  function validateConfigForm() {
+    const v4m = $("edV4Mode").value;
+    const v6m = $("edV6Mode").value;
+    let ok = true;
+    const clear = [
+      ["edV4Addr", "errV4Addr"], ["edV4Pref", "errV4Pref"], ["edV4Gw", "errV4Gw"],
+      ["edV6Addr", "errV6Addr"], ["edV6Pref", "errV6Pref"], ["edV6Gw", "errV6Gw"],
+    ];
+    clear.forEach(([a, b]) => setFieldErr(a, b, ""));
+
+    if (v4m === "static") {
+      let r = validateIPv4($("edV4Addr").value, false);
+      if (!r.ok) { setFieldErr("edV4Addr", "errV4Addr", r.message); ok = false; }
+      r = validatePrefix($("edV4Pref").value, 32, false);
+      if (!r.ok) { setFieldErr("edV4Pref", "errV4Pref", r.message); ok = false; }
+      r = validateIPv4($("edV4Gw").value, true);
+      if (!r.ok) { setFieldErr("edV4Gw", "errV4Gw", r.message); ok = false; }
+    }
+    if (v6m === "static") {
+      let r = validateIPv6($("edV6Addr").value, false);
+      if (!r.ok) { setFieldErr("edV6Addr", "errV6Addr", r.message); ok = false; }
+      r = validatePrefix($("edV6Pref").value, 128, false);
+      if (!r.ok) { setFieldErr("edV6Pref", "errV6Pref", r.message); ok = false; }
+      r = validateIPv6($("edV6Gw").value, true);
+      if (!r.ok) { setFieldErr("edV6Gw", "errV6Gw", r.message); ok = false; }
+    }
+    return ok;
+  }
+
+  function validateCreateForm() {
+    setFieldErr("crName", "errCrName", "");
+    const name = trim($("crName").value);
+    let r = validateIfaceName(name, true);
+    if (!r.ok) { setFieldErr("crName", "errCrName", r.message); return false; }
+    if (name) {
+      const names = buildIfaces(state).map((i) => i.name);
+      if (names.indexOf(name) >= 0) {
+        setFieldErr("crName", "errCrName", "Name is already in use");
+        return false;
+      }
+    }
+    if (!$("crType").value) return false;
+    return true;
+  }
 
   /**
    * FreeBSD cloned-interface catalog (mirrors wf_net::known_clone_types).
@@ -389,25 +555,20 @@
     return iface.kind === "Virtual" || iface.kind === "Bridge";
   }
 
-  /** Mock kldstat / kernel: which modules are "available" */
-  function moduleAvailable(mod, gifMissing) {
-    if (!mod) return { ok: true, detail: "in kernel / no module required" };
-    if (mod === "if_gif" && gifMissing)
-      return { ok: false, detail: "module if_gif not loaded and not found" };
-    return { ok: true, detail: "module " + mod + " available" };
+  /** Mock preflight: ok types are listed; failures stay out of the menu. */
+  function preflightCreate(typeName, plat, gifMissing, adminMode) {
+    const t = CLONE_TYPES.find((x) => x.type === typeName);
+    if (!t) return { canCreate: false };
+    if (plat !== "freebsd" || adminMode === "none") return { canCreate: false, type: t };
+    if (t.module === "if_gif" && gifMissing) return { canCreate: false, type: t };
+    return { canCreate: true, type: t };
   }
 
-  function preflightCreate(typeName, plat, gifMissing, noAdmin) {
-    const t = CLONE_TYPES.find((x) => x.type === typeName);
-    if (!t) return { ok: false, detail: "unknown type", canCreate: false };
-    if (plat !== "freebsd")
-      return { ok: false, detail: "create is FreeBSD-only", canCreate: false };
-    if (noAdmin)
-      return { ok: false, detail: "no admin privileges (information-only) — cannot create " + t.type, canCreate: false };
-    const m = moduleAvailable(t.module, gifMissing);
-    if (!m.ok)
-      return { ok: false, detail: m.detail + " — cannot create " + t.type, canCreate: false };
-    return { ok: true, detail: m.detail + " · ifconfig " + t.type + " create", canCreate: true, type: t };
+  /** Only types that pass preflight appear in the Type menu. */
+  function availableCloneTypes() {
+    return CLONE_TYPES.filter((t) =>
+      preflightCreate(t.type, state.plat, state.gifModuleMissing, state.adminMode).canCreate
+    );
   }
 
   /** Host-shaped sample + overrides (up/down/create/destroy in the mock). */
@@ -503,34 +664,62 @@
     bridge: DEFAULTS.bridge,
     plat: DEFAULTS.plat,
     gifModuleMissing: DEFAULTS.gifModuleMissing,
-    noAdmin: DEFAULTS.noAdmin,
+    adminMode: DEFAULTS.adminMode, /* ready | password | none */
+    sessionAuthed: false, /* after password dialog succeeds (mock) */
+    pendingAction: null, /* { kind, name? } after auth */
     selected: "aq0",
     open: true,
     editorOpen: false,
     createOpen: false,
+    authOpen: false,
     ctxName: null,
     extraIfaces: [], /* dynamically created in mock */
     ifaceOverrides: {}, /* up/down/delete from context menu */
   };
 
-  const $ = (id) => document.getElementById(id);
-
   function features() {
     const ifaces = buildIfaces(state);
     const isFbsd = state.plat === "freebsd";
-    const canAdmin = !state.noAdmin; /* real app: root || doas -n || sudo -n */
+    const infoOnly = state.adminMode === "none";
+    const needsPw = state.adminMode === "password" && !state.sessionAuthed;
+    const canAdmin = !infoOnly; /* mutations offered (may still prompt) */
     return {
       physical_ifaces: ifaces.some((i) => i.kind === "Ethernet" || i.kind === "Wireless"),
       default_route: ifaces.some((i) => i.isDefault),
       wireless: state.wifi,
       wpa: state.wifi,
       can_admin: canAdmin,
-      information_only: !canAdmin,
+      needs_password: needsPw,
+      information_only: infoOnly,
       advanced_gui: !isFbsd,
       config_editor: isFbsd && canAdmin,
       create_iface: isFbsd && canAdmin,
-      mutate_iface: isFbsd && canAdmin, /* up/down/destroy */
+      mutate_iface: isFbsd && canAdmin,
     };
+  }
+
+  /** Run action now, or open password dialog first when needed. */
+  function withAdmin(action) {
+    const feat = features();
+    if (!feat.can_admin) return;
+    if (feat.needs_password) {
+      state.pendingAction = action;
+      openAuth();
+      return;
+    }
+    runPending(action);
+  }
+
+  function runPending(action) {
+    if (!action) return;
+    if (action.kind === "toggle") toggleIface(action.name);
+    else if (action.kind === "delete") deleteIface(action.name);
+    else if (action.kind === "save") doSaveConfig();
+    else if (action.kind === "create") doCreateIface();
+    else if (action.kind === "open_editor") { state.editorOpen = true; state.createOpen = false; }
+    else if (action.kind === "open_create") { state.createOpen = true; state.editorOpen = false; }
+    state.pendingAction = null;
+    render();
   }
 
   function ifaceByName(name) {
@@ -613,6 +802,7 @@
       ["wireless", feat.wireless],
       ["wpa", feat.wpa],
       ["can_admin", feat.can_admin],
+      ["needs_pw", feat.needs_password],
       ["info_only", feat.information_only],
       ["config_editor", feat.config_editor],
       ["create_iface", feat.create_iface],
@@ -622,14 +812,17 @@
     /* wiring dump */
     $("wireBox").textContent =
       "platform → " + state.plat + "\n" +
-      "admin   → " + (feat.can_admin ? "doas/sudo/root" : "NONE (information-only)") + "\n" +
+      "admin   → " + state.adminMode +
+        (state.sessionAuthed ? " (session authed)" : "") + "\n" +
       "probe → InterfaceInfo[]\n" +
       "route  → primary=" + (p ? p.name : "none") + "\n" +
       (state.plat === "freebsd"
         ? "Factory → FreeBSDNetworkBackend\n" +
-          (feat.can_admin
-            ? "rclick → up/down · destroy\ncreate → preflight kld\n"
-            : "mutations disabled\n")
+          (feat.information_only
+            ? "mutations disabled\n"
+            : (feat.needs_password
+              ? "mutations → password dialog first\n"
+              : "mutations ready\n"))
         : "Factory → null poll · NM D-Bus\nAdvanced → networkmgr\n") +
       "tray   ← icon only";
 
@@ -699,7 +892,7 @@
         </div>`;
       }).join("");
       $("wifiList").querySelectorAll(".wifi-row").forEach((el) => {
-        el.addEventListener("click", () => toast("wpa_cli connect “" + el.dataset.ssid + "” (v2)"));
+        el.addEventListener("click", () => toast("Connect " + el.dataset.ssid + " (v2)"));
       });
     }
 
@@ -713,6 +906,8 @@
 
     $("createModal").classList.toggle("open", state.createOpen);
     if (state.createOpen) syncCreatePreflight();
+
+    $("authModal").classList.toggle("open", state.authOpen);
   }
 
   function showCtx(x, y, name) {
@@ -720,18 +915,14 @@
     const menu = $("ctxMenu");
     const feat = features();
     const on = i && i.up;
-    /* Live IFF_UP → label (mirrors toggle_action_label) */
+    /* Live IFF_UP → label; no command-line tooltips (sparse) */
     $("ctxToggle").textContent = on ? "Turn off" : "Turn on";
-    $("ctxToggle").title = on
-      ? "ifconfig " + name + " down"
-      : "ifconfig " + name + " up";
+    $("ctxToggle").removeAttribute("title");
     /* Information-only: no mutations */
     $("ctxToggle").disabled = !i || !feat.mutate_iface;
     const canDel = feat.mutate_iface && isDestroyable(i);
     $("ctxDelete").disabled = !canDel;
-    $("ctxDelete").title = !feat.mutate_iface
-      ? "requires admin (doas/sudo/root)"
-      : (canDel ? "ifconfig " + name + " destroy" : name + " is permanent — cannot destroy");
+    $("ctxDelete").removeAttribute("title");
     $("ctxConfigure").disabled = !feat.config_editor;
     menu.classList.add("open");
     menu.style.left = Math.min(x, window.innerWidth - 200) + "px";
@@ -756,34 +947,38 @@
     }
     state.ifaceOverrides[name] = next;
     if (name === "aq0") state.online = next.up;
-    toast("would ifconfig " + name + " " + (next.up ? "up" : "down"));
+    toast(next.up ? name + " on" : name + " off");
   }
 
   function deleteIface(name) {
     const i = ifaceByName(name);
-    if (!isDestroyable(i)) {
-      toast("cannot destroy " + name);
-      return;
-    }
+    if (!isDestroyable(i)) return;
     state.ifaceOverrides = state.ifaceOverrides || {};
     state.ifaceOverrides[name] = { deleted: true };
     state.extraIfaces = state.extraIfaces.filter((e) => e.name !== name);
     if (state.selected === name) state.selected = "aq0";
-    toast("would ifconfig " + name + " destroy");
+    toast(name + " removed");
   }
 
   function syncCreatePreflight() {
     const sel = $("crType");
-    if (!sel.options.length) {
-      sel.innerHTML = CLONE_TYPES.map((t) =>
-        `<option value="${t.type}">${t.label}</option>`
-      ).join("");
-    }
-    const pf = preflightCreate(sel.value, state.plat, state.gifModuleMissing, state.noAdmin);
+    const prev = sel.value;
+    const avail = availableCloneTypes();
+    sel.innerHTML = avail.map((t) =>
+      `<option value="${t.type}">${t.label}</option>`
+    ).join("");
+    if (prev && avail.some((t) => t.type === prev)) sel.value = prev;
     const el = $("crPreflight");
-    el.textContent = pf.detail;
-    el.className = "preflight " + (pf.canCreate ? "ok" : "bad");
-    $("btnCreateGo").disabled = !pf.canCreate;
+    /* Empty catalog only when gif-missing left nothing (or no admin closed Create). */
+    if (!avail.length) {
+      el.style.display = "";
+      el.textContent = "No interface types available";
+      $("btnCreateGo").disabled = true;
+    } else {
+      el.style.display = "none";
+      el.textContent = "";
+      $("btnCreateGo").disabled = false;
+    }
   }
 
   function fillEditor(ifaces) {
@@ -822,28 +1017,79 @@
   }
 
   function openEditor() {
-    state.editorOpen = true;
-    state.createOpen = false;
     state.open = true;
     hideCtx();
+    /* Opening editor is not privileged; Save is. */
+    state.editorOpen = true;
+    state.createOpen = false;
+    state.authOpen = false;
     render();
   }
 
   function closeEditor() {
     state.editorOpen = false;
+    ["edV4Addr", "edV4Pref", "edV4Gw", "edV6Addr", "edV6Pref", "edV6Gw"].forEach((id) => {
+      const el = $(id);
+      if (el) el.classList.remove("invalid");
+    });
+    ["errV4Addr", "errV4Pref", "errV4Gw", "errV6Addr", "errV6Pref", "errV6Gw"].forEach((id) => {
+      const el = $(id);
+      if (el) { el.textContent = ""; el.classList.remove("show"); }
+    });
     render();
   }
 
   function openCreate() {
+    hideCtx();
     state.createOpen = true;
     state.editorOpen = false;
-    hideCtx();
+    state.authOpen = false;
     render();
   }
 
   function closeCreate() {
     state.createOpen = false;
+    setFieldErr("crName", "errCrName", "");
     render();
+  }
+
+  function openAuth() {
+    state.authOpen = true;
+    $("authPass").value = "";
+    setFieldErr("authPass", "errAuthPass", "");
+    const method = "doas/sudo";
+    $("authNote").textContent =
+      "Administrator access is required to change network settings.";
+    $("authTitle").textContent = "Authentication required";
+    render();
+    setTimeout(() => $("authPass").focus(), 50);
+  }
+
+  function closeAuth(cancel) {
+    state.authOpen = false;
+    $("authPass").value = "";
+    setFieldErr("authPass", "errAuthPass", "");
+    if (cancel) state.pendingAction = null;
+    render();
+  }
+
+  function doSaveConfig() {
+    toast("Saved " + $("edIface").value);
+    closeEditor();
+  }
+
+  function doCreateIface() {
+    const t = $("crType").value;
+    const name = (trim($("crName").value) || nextCloneName(t));
+    const kind = t === "bridge" ? "Bridge" : t === "tap" || t === "tun" || t === "epair" ? "Virtual" : "Other";
+    state.extraIfaces = state.extraIfaces.filter((e) => e.name !== name);
+    state.extraIfaces.push({
+      name: name, kind: kind, media: "", ipv4: [], ipv6: [],
+      up: true, running: true, isDefault: false, status: "active", permanent: false,
+    });
+    state.selected = name;
+    toast(name + " created");
+    closeCreate();
   }
 
   function nextCloneName(type) {
@@ -859,6 +1105,7 @@
       if (!state.open) {
         state.editorOpen = false;
         state.createOpen = false;
+        state.authOpen = false;
         hideCtx();
       }
       $("btnNet").setAttribute("aria-expanded", state.open ? "true" : "false");
@@ -868,13 +1115,14 @@
       state.open = false;
       state.editorOpen = false;
       state.createOpen = false;
+      state.authOpen = false;
       hideCtx();
       render();
     });
     $("btnEdit").addEventListener("click", () => openEditor());
     $("btnCreate").addEventListener("click", () => openCreate());
     $("btnAdv").addEventListener("click", () => {
-      toast("Linux: spawn networkmgr");
+      toast("Open Advanced…");
     });
 
     $("btnEditorClose").addEventListener("click", closeEditor);
@@ -886,11 +1134,14 @@
       state.selected = $("edIface").value;
       fillEditor(buildIfaces(state));
     });
-    $("edV4Mode").addEventListener("change", syncEditorModes);
-    $("edV6Mode").addEventListener("change", syncEditorModes);
+    $("edV4Mode").addEventListener("change", () => { syncEditorModes(); validateConfigForm(); });
+    $("edV6Mode").addEventListener("change", () => { syncEditorModes(); validateConfigForm(); });
+    ["edV4Addr", "edV4Pref", "edV4Gw", "edV6Addr", "edV6Pref", "edV6Gw"].forEach((id) => {
+      $(id).addEventListener("input", () => validateConfigForm());
+    });
     $("btnEditorSave").addEventListener("click", () => {
-      toast("would save config for " + $("edIface").value + " (planning)");
-      closeEditor();
+      if (!validateConfigForm()) return;
+      withAdmin({ kind: "save" });
     });
 
     $("btnCreateClose").addEventListener("click", closeCreate);
@@ -899,30 +1150,41 @@
       if (e.target === $("createModal")) closeCreate();
     });
     $("crType").addEventListener("change", syncCreatePreflight);
+    $("crName").addEventListener("input", () => validateCreateForm());
     $("btnCreateGo").addEventListener("click", () => {
       const t = $("crType").value;
-      const pf = preflightCreate(t, state.plat, state.gifModuleMissing, state.noAdmin);
-      if (!pf.canCreate) {
-        toast(pf.detail);
+      const pf = preflightCreate(t, state.plat, state.gifModuleMissing, state.adminMode);
+      if (!pf.canCreate) return;
+      if (!validateCreateForm()) return;
+      withAdmin({ kind: "create" });
+    });
+
+    $("btnAuthClose").addEventListener("click", () => closeAuth(true));
+    $("btnAuthCancel").addEventListener("click", () => closeAuth(true));
+    $("authModal").addEventListener("click", (e) => {
+      if (e.target === $("authModal")) closeAuth(true);
+    });
+    $("authPass").addEventListener("input", () => setFieldErr("authPass", "errAuthPass", ""));
+    $("authPass").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") $("btnAuthGo").click();
+    });
+    $("btnAuthGo").addEventListener("click", () => {
+      const r = validatePassword($("authPass").value);
+      if (!r.ok) {
+        setFieldErr("authPass", "errAuthPass", r.message);
         return;
       }
-      const name = ($("crName").value.trim() || nextCloneName(t));
-      const kind = t === "bridge" ? "Bridge" : t === "tap" || t === "tun" || t === "epair" ? "Virtual" : "Other";
-      state.extraIfaces = state.extraIfaces.filter((e) => e.name !== name);
-      state.extraIfaces.push({
-        name: name, kind: kind, media: "", ipv4: [], ipv6: [],
-        up: true, running: true, isDefault: false, status: "active", permanent: false,
-      });
-      state.selected = name;
-      toast("would ifconfig " + t + " create → " + name);
-      closeCreate();
+      /* Mock: any non-empty password authenticates the session */
+      state.sessionAuthed = true;
+      const pending = state.pendingAction;
+      closeAuth(false);
+      runPending(pending);
     });
 
     $("ctxToggle").addEventListener("click", () => {
       const n = state.selected;
       hideCtx();
-      toggleIface(n);
-      render();
+      withAdmin({ kind: "toggle", name: n });
     });
     $("ctxConfigure").addEventListener("click", () => {
       hideCtx();
@@ -931,8 +1193,7 @@
     $("ctxDelete").addEventListener("click", () => {
       const n = state.selected;
       hideCtx();
-      deleteIface(n);
-      render();
+      withAdmin({ kind: "delete", name: n });
     });
     document.addEventListener("click", (e) => {
       if (!$("ctxMenu").contains(e.target)) hideCtx();
@@ -953,11 +1214,13 @@
       state.gifModuleMissing = e.target.checked;
       if (state.createOpen) syncCreatePreflight();
     });
-    $("optNoAdmin").addEventListener("change", (e) => {
-      state.noAdmin = e.target.checked;
-      if (state.noAdmin) {
+    $("optAdmin").addEventListener("change", (e) => {
+      state.adminMode = e.target.value;
+      state.sessionAuthed = false;
+      if (state.adminMode === "none") {
         state.editorOpen = false;
         state.createOpen = false;
+        state.authOpen = false;
       }
       hideCtx();
       render();
@@ -966,6 +1229,7 @@
       state.plat = e.target.value;
       state.editorOpen = false;
       state.createOpen = false;
+      state.authOpen = false;
       hideCtx();
       render();
     });

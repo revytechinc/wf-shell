@@ -393,7 +393,7 @@ AdminPrivilege probe_admin_privilege(std::string *method_out)
         }
         return AdminPrivilege::Root;
     }
-    /* -n: non-interactive; fails if a password would be required */
+    /* -n: non-interactive; succeeds if nopass or cached credentials */
     if (run_cmd_ok("doas -n true 2>/dev/null"))
     {
         if (method_out)
@@ -409,6 +409,26 @@ AdminPrivilege probe_admin_privilege(std::string *method_out)
             *method_out = "sudo";
         }
         return AdminPrivilege::Sudo;
+    }
+    /*
+     * Elevator exists but password required: not information-only —
+     * UI shows an auth dialog when the user starts a mutation.
+     */
+    if (run_cmd_ok("command -v doas >/dev/null 2>&1"))
+    {
+        if (method_out)
+        {
+            *method_out = "doas";
+        }
+        return AdminPrivilege::NeedsPassword;
+    }
+    if (run_cmd_ok("command -v sudo >/dev/null 2>&1"))
+    {
+        if (method_out)
+        {
+            *method_out = "sudo";
+        }
+        return AdminPrivilege::NeedsPassword;
     }
     return AdminPrivilege::None;
 }
@@ -441,6 +461,7 @@ NetworkStackFeatures probe_features(const ProbeOptions& opts)
     std::string method;
     f.admin = probe_admin_privilege(&method);
     f.can_admin = (f.admin != AdminPrivilege::None);
+    f.needs_password = (f.admin == AdminPrivilege::NeedsPassword);
     f.admin_method = method;
     return f;
 }

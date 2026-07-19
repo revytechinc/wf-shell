@@ -136,10 +136,11 @@ struct ProbeOptions
  */
 enum class AdminPrivilege
 {
-    None,   /**< information-only UI */
-    Root,   /**< already euid 0 */
-    Doas,   /**< doas -n succeeds (passwordless or already authenticated) */
-    Sudo,   /**< sudo -n succeeds */
+    None,           /**< no root/doas/sudo — information-only UI */
+    NeedsPassword,  /**< doas or sudo present, but -n fails (password required) */
+    Root,           /**< already euid 0 */
+    Doas,           /**< doas -n succeeds (nopass or already authenticated) */
+    Sudo,           /**< sudo -n succeeds */
 };
 
 /** Stack capabilities for UI gating (autodetect — never invent). */
@@ -149,16 +150,31 @@ struct NetworkStackFeatures
     bool default_route   = false;
     bool wireless        = false;
     bool wpa             = false;
-    /** FreeBSD config editor / create / destroy / up-down require admin. */
+    /**
+     * Mutations may be offered (root, nopass doas/sudo, or elevators that need a password).
+     * False only when no elevators exist → information-only.
+     */
     bool can_admin       = false;
+    /**
+     * True when doas/sudo exists but a password is required before each elevated action
+     * (or until the ticket cache is warm). UI shows an auth dialog — not information-only.
+     */
+    bool needs_password  = false;
     AdminPrivilege admin = AdminPrivilege::None;
-    /** How admin was detected (for diagnostics; empty if none). */
+    /** Elevator name for dialogs/diagnostics: root | doas | sudo (empty if none). */
     std::string admin_method;
 };
 
+/** No elevators at all — list/tooltip only. */
 inline bool is_information_only(const NetworkStackFeatures& f)
 {
-    return !f.can_admin;
+    return f.admin == AdminPrivilege::None || !f.can_admin;
+}
+
+/** Show password dialog before mutation (doas/sudo present, not yet authenticated). */
+inline bool needs_admin_password(const NetworkStackFeatures& f)
+{
+    return f.needs_password || f.admin == AdminPrivilege::NeedsPassword;
 }
 
 /* ─── Clone / destroy / create preflight (pure; apply path deferred) ───── */
@@ -207,13 +223,17 @@ std::vector<std::string> parse_ifconfig_clone_list(const std::string& text);
  */
 bool kldstat_has_module(const std::string& kldstat_text, const std::string& module_name);
 
-/** Result of create preflight (UI gate + reason string). */
+/**
+ * Result of create preflight (gate only).
+ * UI: if can_create, present the type as editable — no success narration.
+ * detail is diagnostics only (logs/tests), never a green “module OK” banner.
+ */
 struct CreatePreflight
 {
     bool can_create = false;
     std::string type;
     std::string module;   /**< empty if none required / unknown */
-    std::string detail;   /**< human-readable reason for UI strip */
+    std::string detail;   /**< fail reason for logs; empty when can_create */
 };
 
 /**
@@ -231,6 +251,94 @@ CreatePreflight evaluate_create_preflight(
     bool module_loaded,
     bool module_file_exists,
     bool has_admin);
+
+/* ─── Input validation (pure; UI blocks save/create until ok) ─────────── */
+
+/** One field check: ok + short user message (never shell/command text). */
+struct ValidationResult
+{
+    bool ok = true;
+    std::string message;
+};
+
+inline ValidationResult validation_ok()
+{
+    return ValidationResult{true, {}};
+}
+
+inline ValidationResult validation_fail(const std::string& message)
+{
+    return ValidationResult{false, message};
+}
+
+/**
+ * FreeBSD interface name: 1…15 chars (IFNAMSIZ-1), starts with letter,
+ * then alnum / _ / - / .  Empty allowed when allow_empty (Create “auto”).
+ */
+ValidationResult validate_iface_name(const std::string& name, bool allow_empty = false);
+
+/** Dotted IPv4 (e.g. 192.168.1.10). Empty → fail unless allow_empty. */
+ValidationResult validate_ipv4_address(const std::string& text, bool allow_empty = false);
+
+/**
+ * IPv6 address; optional zone id after '%' (fe80::1%aq0).
+ * Empty → fail unless allow_empty.
+ */
+ValidationResult validate_ipv6_address(const std::string& text, bool allow_empty = false);
+
+/** Decimal prefix length in [0, max_bits] (32 or 128). */
+ValidationResult validate_prefix_length(const std::string& text, int max_bits,
+    bool allow_empty = false);
+
+/** Auth dialog: non-empty, length cap (no format rules beyond that). */
+ValidationResult validate_admin_password(const std::string& password);
+
+/** Configure modal field bundle (modes: dhcp|static|none / accept_rtadv|static|none). */
+struct ConfigFormInput
+{
+    std::string v4_mode = "dhcp";
+    std::string v4_addr;
+    std::string v4_prefix;
+    std::string v4_gateway;
+    std::string v6_mode = "accept_rtadv";
+    std::string v6_addr;
+    std::string v6_prefix;
+    std::string v6_gateway;
+};
+
+/** Per-field messages; empty string = that field is fine. */
+struct ConfigFormErrors
+{
+    bool ok = true;
+    std::string v4_addr;
+    std::string v4_prefix;
+    std::string v4_gateway;
+    std::string v6_addr;
+    std::string v6_prefix;
+    std::string v6_gateway;
+};
+
+ConfigFormErrors validate_config_form(const ConfigFormInput& in);
+
+/**
+ * Create modal: type must be known; name empty (auto) or valid + not taken.
+ * @param existing_names  current interface names (case-sensitive)
+ */
+struct CreateFormInput
+{
+    std::string type;
+    std::string name; /**< empty = auto-assign */
+};
+
+struct CreateFormErrors
+{
+    bool ok = true;
+    std::string type;
+    std::string name;
+};
+
+CreateFormErrors validate_create_form(const CreateFormInput& in,
+    const std::vector<std::string>& existing_names);
 
 /**
  * Wi‑Fi RF helpers (centre frequency in MHz from NM / wpa / ifconfig).

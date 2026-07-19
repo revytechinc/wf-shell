@@ -52,10 +52,11 @@ void parse_ifconfig_detail(const std::string& text, InterfaceInfo& info);
 
 /**
  * Detect whether the current user can elevate for network mutations.
- * Order: already root → doas -n → sudo -n. Fail-soft → AdminPrivilege::None
- * (information-only mode). Never throws.
+ * Order: root → doas -n → sudo -n → doas/sudo present but needs password
+ * → none (information-only). Fail-soft. Never throws.
  *
  * Host doas/sudo policy is system config, not part of this repo.
+ * When NeedsPassword, UI presents an auth dialog (not information-only).
  */
 AdminPrivilege probe_admin_privilege(std::string *method_out = nullptr);
 

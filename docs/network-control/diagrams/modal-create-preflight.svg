@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 440 380" width="100%" preserveAspectRatio="xMidYMid meet">
-  <foreignObject x="0" y="0" width="440" height="380">
-    <div xmlns="http://www.w3.org/1999/xhtml" style="position:relative;width:440px;height:380px;box-sizing:border-box;font-family:system-ui,Sans,sans-serif;background:#0c0c14;color:#cdd6f4;padding:16px;">
-      <div style="font-size:11px;color:#a6adc8;margin-bottom:10px;">Create… modal — preflight kernel module before enable Create</div>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 440 340" width="100%" preserveAspectRatio="xMidYMid meet">
+  <foreignObject x="0" y="0" width="440" height="340">
+    <div xmlns="http://www.w3.org/1999/xhtml" style="position:relative;width:440px;height:340px;box-sizing:border-box;font-family:system-ui,Sans,sans-serif;background:#0c0c14;color:#cdd6f4;padding:16px;">
+      <div style="font-size:11px;color:#a6adc8;margin-bottom:10px;">Create… — only list types that pass preflight (no module/command banners)</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-        <!-- ok -->
+        <!-- ok: clean form -->
         <div style="background:#1e1e2e;border:1px solid #45475a;border-radius:12px;overflow:hidden;">
           <div style="padding:10px 12px;border-bottom:1px solid #313244;font-size:13px;font-weight:600;">Create interface</div>
           <div style="padding:12px;display:flex;flex-direction:column;gap:8px;font-size:12px;">
@@ -14,10 +14,7 @@
             </div>
             <div>
               <div style="font-size:10px;color:#6c7086;text-transform:uppercase;margin-bottom:4px;">Name</div>
-              <div style="background:#313244;border:1px solid #45475a;border-radius:6px;padding:8px;color:#a6adc8;">auto (tap1)</div>
-            </div>
-            <div style="font-size:11px;padding:8px 10px;border-radius:6px;border:1px solid #2d4a3a;color:#a6e3a1;line-height:1.35;">
-              module if_tap available · ifconfig tap create
+              <div style="background:#313244;border:1px solid #45475a;border-radius:6px;padding:8px;color:#a6adc8;">auto</div>
             </div>
           </div>
           <div style="padding:10px 12px;border-top:1px solid #313244;display:flex;justify-content:flex-end;gap:8px;">
@@ -25,29 +22,31 @@
             <span style="border:1px solid #89b4fa;border-radius:6px;padding:6px 10px;font-size:11px;background:#313a55;color:#89b4fa;">Create</span>
           </div>
         </div>
-        <!-- blocked -->
+        <!-- gif missing: simply not in the list -->
         <div style="background:#1e1e2e;border:1px solid #45475a;border-radius:12px;overflow:hidden;">
           <div style="padding:10px 12px;border-bottom:1px solid #313244;font-size:13px;font-weight:600;">Create interface</div>
           <div style="padding:12px;display:flex;flex-direction:column;gap:8px;font-size:12px;">
             <div>
               <div style="font-size:10px;color:#6c7086;text-transform:uppercase;margin-bottom:4px;">Type</div>
-              <div style="background:#313244;border:1px solid #45475a;border-radius:6px;padding:8px;">gif (tunnel) ▾</div>
+              <div style="background:#313244;border:1px solid #45475a;border-radius:6px;padding:8px;line-height:1.4;">
+                tap · bridge · vlan · …<br/>
+                <span style="color:#6c7086;font-size:10px;">gif omitted (not available)</span>
+              </div>
             </div>
             <div>
               <div style="font-size:10px;color:#6c7086;text-transform:uppercase;margin-bottom:4px;">Name</div>
               <div style="background:#313244;border:1px solid #45475a;border-radius:6px;padding:8px;color:#a6adc8;">auto</div>
             </div>
-            <div style="font-size:11px;padding:8px 10px;border-radius:6px;border:1px solid #5c3a42;color:#f38ba8;line-height:1.35;">
-              module if_gif not loaded and not found — cannot create gif
-            </div>
           </div>
           <div style="padding:10px 12px;border-top:1px solid #313244;display:flex;justify-content:flex-end;gap:8px;">
             <span style="border:1px solid #45475a;border-radius:6px;padding:6px 10px;font-size:11px;color:#a6adc8;">Cancel</span>
-            <span style="border:1px solid #45475a;border-radius:6px;padding:6px 10px;font-size:11px;opacity:0.4;">Create</span>
+            <span style="border:1px solid #89b4fa;border-radius:6px;padding:6px 10px;font-size:11px;background:#313a55;color:#89b4fa;">Create</span>
           </div>
         </div>
       </div>
-      <div style="font-size:10px;color:#6c7086;margin-top:12px;">Catalog from ifconfig -C · preflight kldstat / if_*.ko · planned apply path</div>
+      <div style="font-size:10px;color:#6c7086;margin-top:12px;line-height:1.45;">
+        Listed + Create enabled = good to go. No “module available · ifconfig …” copy.
+      </div>
     </div>
   </foreignObject>
 </svg>
