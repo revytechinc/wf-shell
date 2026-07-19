@@ -29,6 +29,7 @@ util = static_library(
         'background-gl.cpp',
         'platform.cpp',
         'theme-defaults.cpp',
+        'session-env.cpp',
         'power-controller.cpp',
         'power-controller-linux.cpp',
         'power-controller-bsd.cpp',

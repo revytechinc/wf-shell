@@ -1,4 +1,5 @@
 #include "wf-shell-app.hpp"
+#include "session-env.hpp"
 #include <glibmm/main.h>
 #include <sys/inotify.h>
 #include <gdk/wayland/gdkwayland.h>
@@ -186,6 +187,19 @@ void WayfireShellApp::on_activate()
     if (activated)
     {
         return;
+    }
+
+    /*
+     * Pre-flight: discover missing session env (WAYLAND_DISPLAY, XDG_RUNTIME_DIR,
+     * DBUS_SESSION_BUS_ADDRESS, PATH, …) so menu/launcher children inherit a
+     * runnable environment even when the panel was started with a minimal env.
+     */
+    try
+    {
+        wf_shell::ensure_session_env(true);
+    } catch (...)
+    {
+        std::cerr << "wf-shell: session-env preflight failed (continuing)\n";
     }
 
     activated = true;

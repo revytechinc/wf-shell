@@ -16,6 +16,7 @@
 #include "platform.hpp"
 #include "wf-shell-app.hpp"
 #include "theme-defaults.hpp"
+#include "session-env.hpp"
 #include <gdkmm/pixbuf.h>
 #include <algorithm>
 #include <cctype>
@@ -866,6 +867,11 @@ WfMenuItem::WfMenuItem(WayfireMenu *_menu, Glib::RefPtr<Gio::DesktopAppInfo> app
         signals.push_back(action_obj->signal_activate().connect(
             [this, action] (Glib::VariantBase vb)
         {
+            try
+            {
+                wf_shell::ensure_session_env(true);
+            } catch (...)
+            {}
             auto ctx = Gdk::Display::get_default()->get_app_launch_context();
             app_info->launch_action(action, ctx);
             menu->hide_menu();
@@ -900,6 +906,12 @@ WfMenuItem::~WfMenuItem()
 void WfMenuItem::on_click()
 {
     std::cerr << "DEBUG: WfMenuItem::on_click() called, app=" << app_info->get_name() << std::endl;
+    /* Re-run preflight so children always inherit a complete session env. */
+    try
+    {
+        wf_shell::ensure_session_env(true);
+    } catch (...)
+    {}
     auto ctx = Gdk::Display::get_default()->get_app_launch_context();
     try
     {

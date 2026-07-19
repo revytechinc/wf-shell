@@ -61,6 +61,20 @@ test(
     suite: ['unit', 'theme'],
 )
 
+test_exec_session_env = executable(
+    'session-env-test',
+    'session-env-test.cpp',
+    dependencies: [gtest_dep, libutil],
+    include_directories: test_includes,
+    link_with: util,
+)
+
+test(
+    'session-env-test',
+    test_exec_session_env,
+    suite: ['unit', 'session-env'],
+)
+
 # Docs / config red-green (python)
 py3 = find_program('python3')
 audio_defaults_py = join_paths(meson.current_source_dir(),

@@ -1,4 +1,5 @@
 #include "launchers.hpp"
+#include "session-env.hpp"
 
 #include <giomm/file.h>
 #include <glibmm/spawn.h>
@@ -79,6 +80,11 @@ void WfLauncherButton::launch()
     if (app_info)
     {
         std::cerr << "DEBUG: WfLauncherButton::launch() called, app=" << app_info->get_name() << std::endl;
+        try
+        {
+            wf_shell::ensure_session_env(true);
+        } catch (...)
+        {}
         auto ctx = Gdk::Display::get_default()->get_app_launch_context();
         try
         {
