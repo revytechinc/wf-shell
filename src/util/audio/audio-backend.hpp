@@ -128,6 +128,7 @@ class AudioBackendBuilder
     std::string control_device_ = "/dev/vdsp.ctl";
     bool prefer_virtual_oss_ = true;
     std::string pactl_binary_ = "pactl";
+    /* Bare name; run_capture resolves via /sbin:/usr/sbin… so minimal PATH still works. */
     std::string virtual_oss_cmd_binary_ = "virtual_oss_cmd";
 };
 

@@ -21,14 +21,11 @@ static bool in_wheel_group(void)
     if (WFPowerController::is_root()) {
         return true;
     }
-    gid_t wheel_gid = 0;
     struct group *gr = getgrnam("wheel");
-    if (gr) {
-        wheel_gid = gr->gr_gid;
-    }
-    if (wheel_gid == 0) {
+    if (!gr) {
         return false;
     }
+    gid_t wheel_gid = gr->gr_gid;
 
     gid_t groups[64];
     int ngroups = getgroups(64, groups);

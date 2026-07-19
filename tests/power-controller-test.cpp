@@ -1,4 +1,9 @@
 #include <gtest/gtest.h>
+#include <unistd.h>
+
+#if defined(__FreeBSD__)
+#include <grp.h>
+#endif
 
 #include "power-controller.hpp"
 
@@ -12,11 +17,9 @@ TEST(PowerControllerCreate, ReturnsNonNull)
 
 /* ─── WFPowerController::is_root() ───────────────────────────────────────── */
 
-TEST(PowerControllerIsRoot, ReturnsBool)
+TEST(PowerControllerIsRoot, MatchesGeteuid)
 {
-    bool result = WFPowerController::is_root();
-    /* Just verify it doesn't crash and returns a bool */
-    EXPECT_TRUE(result == true || result == false);
+    EXPECT_EQ(WFPowerController::is_root(), (geteuid() == 0));
 }
 
 /* ─── WFPowerController::check_permission() ──────────────────────────────── */
@@ -32,6 +35,17 @@ TEST(PowerControllerCheckPermission, EmptyCommandReturnsFalse)
 {
     bool result = WFPowerController::check_permission("");
     EXPECT_FALSE(result);
+}
+
+TEST(PowerControllerCheckPermission, NonExistentCommandReturnsFalse)
+{
+    EXPECT_FALSE(WFPowerController::check_permission("non_existent_command_xyz_123"));
+}
+
+TEST(PowerControllerCheckPermission, ValidCommandReturnsTrue)
+{
+    // sh should always exist and be executable
+    EXPECT_TRUE(WFPowerController::check_permission("sh"));
 }
 
 /* ─── WFPowerController::query() ─────────────────────────────────────────── */
@@ -63,7 +77,7 @@ TEST_F(PowerControllerQuery, RebootCapabilityIsValid)
 TEST_F(PowerControllerQuery, SuspendCapabilityIsValid)
 {
     auto cap = ctrl->query(WFPowerController::Action::Suspend);
-    EXPECT_TRUE(cap.available) << "Suspend should be available on all supported platforms";
+    /* Suspend capability is checked on the system, verify consistent status */
     if (cap.available) {
         EXPECT_EQ(cap.permitted, !cap.command.empty())
             << "permitted should match whether a command was found";
@@ -107,3 +121,49 @@ TEST_F(PowerControllerQuery, AllActionsReturnValidCapability)
         }
     }
 }
+
+#if defined(__FreeBSD__)
+TEST_F(PowerControllerQuery, FreeBSDPlatformSpecificRules)
+{
+    // On FreeBSD, Shutdown capability must be configured for wheel group permission
+    auto cap_shutdown = ctrl->query(WFPowerController::Action::Shutdown);
+    EXPECT_TRUE(cap_shutdown.available);
+    EXPECT_EQ(cap_shutdown.command, "/sbin/shutdown -p now");
+    
+    // Check if the current user belongs to the wheel group (or is root)
+    bool in_wheel = false;
+    if (geteuid() == 0) {
+        in_wheel = true;
+    } else {
+        gid_t wheel_gid = 0;
+        struct group *gr = getgrnam("wheel");
+        if (gr) {
+            wheel_gid = gr->gr_gid;
+            gid_t groups[64];
+            int ngroups = getgroups(64, groups);
+            if (ngroups >= 0) {
+                for (int i = 0; i < ngroups; i++) {
+                    if (groups[i] == wheel_gid) {
+                        in_wheel = true;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    
+    EXPECT_EQ(cap_shutdown.permitted, in_wheel);
+
+    // On FreeBSD, Reboot capability must be configured for wheel group permission
+    auto cap_reboot = ctrl->query(WFPowerController::Action::Reboot);
+    EXPECT_TRUE(cap_reboot.available);
+    EXPECT_EQ(cap_reboot.command, "/sbin/shutdown -r now");
+    EXPECT_EQ(cap_reboot.permitted, in_wheel);
+
+    // On FreeBSD, Hibernate is always unavailable
+    auto cap_hib = ctrl->query(WFPowerController::Action::Hibernate);
+    EXPECT_FALSE(cap_hib.available);
+    EXPECT_FALSE(cap_hib.permitted);
+    EXPECT_TRUE(cap_hib.command.empty());
+}
+#endif

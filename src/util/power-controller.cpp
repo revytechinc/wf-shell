@@ -55,5 +55,5 @@ bool WFPowerController::check_permission(const char *command)
     expanded += " 2>/dev/null";
 
     int exit_code = system(expanded.c_str());
-    return WIFEXITED(exit_code) && WEXITSTATUS(exit_code) < 128;
+    return WIFEXITED(exit_code) && WEXITSTATUS(exit_code) < 126;
 }

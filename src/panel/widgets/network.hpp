@@ -19,11 +19,14 @@ class WayfireNetworkInfo : public WayfireWidget
 {
     void on_click();
     void apply_activity_classes(const std::vector<std::string>& classes);
+    void show_right_click_menu();
+    void run_connection_editor();
 
     std::vector<sigc::connection> signals;
     std::shared_ptr<NetworkManager> network_manager;
     std::unique_ptr<WayfireMenuWidget> button;
     Gtk::Image icon;
+    Gtk::PopoverMenu popover_menu;
 
     WfOption<std::string> click_command_opt{"panel/network_onclick_command"};
     /* Kept for wcm/ini compatibility; tray is always icon-only. */
