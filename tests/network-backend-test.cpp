@@ -212,6 +212,38 @@ TEST(NetworkTypes, WpaBssDetailEdges)
     EXPECT_EQ(e.est_throughput_mbps, 300u);
 }
 
+TEST(NetworkTypes, WpaListNetworksDedupe)
+{
+    const char *sample =
+        "network id / ssid / bssid / flags\n"
+        "3\tCLOUDBSD\tany\t[CURRENT]\n"
+        "4\tCLOUDBSD\tany\t\n"
+        "5\tREVYNET\tany\t\n"
+        "6\tREVYNET\tany\t[DISABLED]\n"
+        "7\tOther\tany\t\n";
+    auto rows = parse_wpa_list_networks(sample);
+    ASSERT_EQ(rows.size(), 5u);
+    EXPECT_EQ(rows[0].id, 3);
+    EXPECT_EQ(rows[0].ssid, "CLOUDBSD");
+    EXPECT_TRUE(rows[0].current);
+    EXPECT_TRUE(rows[3].disabled);
+
+    std::vector<int> rem;
+    EXPECT_EQ(wpa_pick_network_id_for_ssid(rows, "CLOUDBSD", &rem), 3);
+    ASSERT_EQ(rem.size(), 1u);
+    EXPECT_EQ(rem[0], 4);
+
+    rem.clear();
+    EXPECT_EQ(wpa_pick_network_id_for_ssid(rows, "REVYNET", &rem), 5);
+    ASSERT_EQ(rem.size(), 1u);
+    EXPECT_EQ(rem[0], 6); /* keep lower id when neither CURRENT */
+
+    rem.clear();
+    EXPECT_EQ(wpa_pick_network_id_for_ssid(rows, "Missing", &rem), -1);
+    EXPECT_TRUE(rem.empty());
+    EXPECT_EQ(wpa_pick_network_id_for_ssid(rows, "Other", &rem), 7);
+}
+
 TEST(NetworkTypes, WpaScanResultsParse)
 {
     const char *sample =

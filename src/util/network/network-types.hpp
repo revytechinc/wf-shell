@@ -562,6 +562,31 @@ struct WifiScanEntry
  */
 std::vector<WifiScanEntry> parse_wpa_scan_results(const std::string& text);
 
+/** One row from `wpa_cli list_networks` (pure). */
+struct WpaNetworkRow
+{
+    int id = -1;
+    std::string ssid;
+    std::string bssid; /**< often "any" */
+    std::string flags; /**< e.g. [CURRENT][DISABLED] */
+    bool current  = false;
+    bool disabled = false;
+};
+
+/**
+ * Parse `wpa_cli list_networks` body (with or without header). Pure.
+ * Tab-separated: id, ssid, bssid, flags.
+ */
+std::vector<WpaNetworkRow> parse_wpa_list_networks(const std::string& text);
+
+/**
+ * For a target SSID, pick which network id to keep and which to remove.
+ * Prefers [CURRENT], else lowest id. Pure.
+ * @return keep_id (-1 if none), remove ids filled.
+ */
+int wpa_pick_network_id_for_ssid(const std::vector<WpaNetworkRow>& rows,
+    const std::string& ssid, std::vector<int> *remove_ids = nullptr);
+
 /**
  * Parse 802.11 Information Elements from a hex dump (`wpa_cli bss` ie= field). Pure.
  * Detects HT / VHT / HE / EHT / Multi-Link.

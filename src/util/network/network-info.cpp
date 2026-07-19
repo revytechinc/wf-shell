@@ -581,6 +581,8 @@ static std::string resolve_wlan_for_power(const std::string& iface_or_parent)
     return create_wlan_for_parent(iface_or_parent, wlans);
 }
 
+static int wifi_dedupe_saved_networks(const std::string& wlan);
+
 WifiPowerResult wifi_turn_on(const std::string& iface_or_parent)
 {
     WifiPowerResult r;
@@ -627,6 +629,8 @@ WifiPowerResult wifi_turn_on(const std::string& iface_or_parent)
     bool wpa = ensure_wpa_running(wlan);
     if (wpa)
     {
+        /* Collapse duplicate SSID blocks left by older always-add joins. */
+        (void)wifi_dedupe_saved_networks(wlan);
         /* Enable all saved networks and poke reassociate (no-op if none). */
         (void)wpa_cli_ok(wlan, "reconfigure");
         (void)wpa_cli_ok(wlan, "enable_network all");
@@ -756,6 +760,57 @@ static std::string wpa_cli_run(const std::string& wlan, const std::string& args)
         return {};
     }
     return run_cmd("wpa_cli -i " + wlan + " " + args + " 2>/dev/null");
+}
+
+/**
+ * Drop duplicate network blocks (same SSID) from the live wpa_supplicant
+ * config and persist. Keeps CURRENT, else lowest id. Safe no-op if none.
+ */
+static int wifi_dedupe_saved_networks(const std::string& wlan)
+{
+    if (!is_wlan_clone_name(wlan) || !wpa_cli_ok(wlan, "ping"))
+    {
+        return 0;
+    }
+    auto listed = parse_wpa_list_networks(wpa_cli_run(wlan, "list_networks"));
+    std::map<std::string, std::vector<WpaNetworkRow>> by_ssid;
+    for (const auto& row : listed)
+    {
+        if (row.ssid.empty())
+        {
+            continue;
+        }
+        by_ssid[row.ssid].push_back(row);
+    }
+    int removed = 0;
+    for (auto& it : by_ssid)
+    {
+        if (it.second.size() < 2)
+        {
+            continue;
+        }
+        std::vector<int> rem;
+        (void)wpa_pick_network_id_for_ssid(it.second, it.first, &rem);
+        for (int rid : rem)
+        {
+            if (wpa_cli_ok(wlan, "remove_network " + std::to_string(rid)))
+            {
+                ++removed;
+                net_event_info("wifi.network.dedupe", {
+                    field_str("ssid", it.first),
+                    field_int("removed_id", rid),
+                }, wlan);
+            }
+        }
+    }
+    if (removed > 0)
+    {
+        (void)wpa_cli_ok(wlan, "save_config");
+        net_event_info("wifi.network.dedupe.done", {
+            field_int("removed", removed),
+        }, wlan);
+    }
+    return removed;
 }
 
 /**
@@ -899,30 +954,58 @@ WifiPowerResult wifi_join(const std::string& wlan, const std::string& ssid,
         return r;
     }
 
-    /* add_network → id */
-    std::string add_out = trim_ws(wpa_cli_run(wlan, "add_network"));
-    if (add_out.empty() || add_out == "FAIL")
+    /*
+     * Reuse an existing network block for this SSID (and drop duplicates).
+     * Always add_network was creating CLOUDBSD/REVYNET clones on every join.
+     */
+    auto listed = parse_wpa_list_networks(wpa_cli_run(wlan, "list_networks"));
+    std::vector<int> remove_ids;
+    int keep_id = wpa_pick_network_id_for_ssid(listed, ssid, &remove_ids);
+    for (int rid : remove_ids)
     {
-        r.detail = "add_network failed";
-        net_event_error("wifi.join", {field_str("error", r.detail)}, wlan);
-        return r;
+        (void)wpa_cli_ok(wlan, "remove_network " + std::to_string(rid));
+        net_event_info("wifi.network.dedupe", {
+            field_str("ssid", ssid),
+            field_int("removed_id", rid),
+        }, wlan);
     }
-    /* Response is just the network id number */
+    if (!remove_ids.empty())
+    {
+        (void)wpa_cli_ok(wlan, "save_config");
+    }
+
     std::string net_id;
-    for (char c : add_out)
+    bool reused = false;
+    if (keep_id >= 0)
     {
-        if (std::isdigit(static_cast<unsigned char>(c)))
+        net_id = std::to_string(keep_id);
+        reused = true;
+        /* Clear disabled bit if prior join left the block off. */
+        (void)wpa_cli_ok(wlan, "enable_network " + net_id);
+    } else
+    {
+        std::string add_out = trim_ws(wpa_cli_run(wlan, "add_network"));
+        if (add_out.empty() || add_out == "FAIL")
         {
-            net_id.push_back(c);
-        } else if (!net_id.empty())
-        {
-            break;
+            r.detail = "add_network failed";
+            net_event_error("wifi.join", {field_str("error", r.detail)}, wlan);
+            return r;
         }
-    }
-    if (net_id.empty())
-    {
-        r.detail = "bad network id";
-        return r;
+        for (char c : add_out)
+        {
+            if (std::isdigit(static_cast<unsigned char>(c)))
+            {
+                net_id.push_back(c);
+            } else if (!net_id.empty())
+            {
+                break;
+            }
+        }
+        if (net_id.empty())
+        {
+            r.detail = "bad network id";
+            return r;
+        }
     }
 
     /* SSID as hex — no shell quoting issues */
@@ -1010,9 +1093,11 @@ WifiPowerResult wifi_join(const std::string& wlan, const std::string& ssid,
     }
 
     r.ok = true;
-    r.detail = "Joined " + ssid;
+    r.detail = reused ? ("Updated " + ssid) : ("Joined " + ssid);
     net_event_info("wifi.join", {
         field_bool("ok", true),
+        field_bool("reused", reused),
+        field_int("removed_dupes", static_cast<long long>(remove_ids.size())),
         field_str("ssid", ssid),
         field_str("security", security),
         field_str("detail", r.detail),

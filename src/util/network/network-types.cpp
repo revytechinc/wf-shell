@@ -1880,6 +1880,162 @@ void apply_wpa_bss_detail(WifiScanEntry& entry, const WpaBssDetail& d)
     }
 }
 
+std::vector<WpaNetworkRow> parse_wpa_list_networks(const std::string& text)
+{
+    std::vector<WpaNetworkRow> out;
+    std::istringstream iss(text);
+    std::string line;
+    while (std::getline(iss, line))
+    {
+        if (!line.empty() && line.back() == '\r')
+        {
+            line.pop_back();
+        }
+        if (line.empty())
+        {
+            continue;
+        }
+        if (line.rfind("network id", 0) == 0 ||
+            line.rfind("Selected interface", 0) == 0)
+        {
+            continue;
+        }
+        std::vector<std::string> cols;
+        if (line.find('\t') != std::string::npos)
+        {
+            std::string cur;
+            for (char c : line)
+            {
+                if (c == '\t')
+                {
+                    cols.push_back(cur);
+                    cur.clear();
+                } else
+                {
+                    cur.push_back(c);
+                }
+            }
+            cols.push_back(cur);
+        } else
+        {
+            std::istringstream ls(line);
+            std::string a, b, c, d;
+            if (!(ls >> a >> b >> c))
+            {
+                continue;
+            }
+            std::getline(ls, d);
+            while (!d.empty() && (d[0] == ' ' || d[0] == '\t'))
+            {
+                d.erase(d.begin());
+            }
+            cols = {a, b, c, d};
+        }
+        if (cols.size() < 2)
+        {
+            continue;
+        }
+        WpaNetworkRow row;
+        try
+        {
+            row.id = std::stoi(cols[0]);
+        } catch (...)
+        {
+            continue;
+        }
+        if (row.id < 0)
+        {
+            continue;
+        }
+        row.ssid = cols[1];
+        if (cols.size() >= 3)
+        {
+            row.bssid = cols[2];
+        }
+        if (cols.size() >= 4)
+        {
+            row.flags = cols[3];
+        }
+        row.current  = row.flags.find("CURRENT") != std::string::npos;
+        row.disabled = row.flags.find("DISABLED") != std::string::npos;
+        out.push_back(std::move(row));
+    }
+    return out;
+}
+
+int wpa_pick_network_id_for_ssid(const std::vector<WpaNetworkRow>& rows,
+    const std::string& ssid, std::vector<int> *remove_ids)
+{
+    if (remove_ids)
+    {
+        remove_ids->clear();
+    }
+    if (ssid.empty())
+    {
+        return -1;
+    }
+    int keep = -1;
+    bool keep_current = false;
+    for (const auto& r : rows)
+    {
+        if (r.ssid != ssid)
+        {
+            continue;
+        }
+        if (keep < 0)
+        {
+            keep = r.id;
+            keep_current = r.current;
+            continue;
+        }
+        /* Prefer CURRENT; else keep lower id, remove the other. */
+        if (r.current && !keep_current)
+        {
+            if (remove_ids)
+            {
+                remove_ids->push_back(keep);
+            }
+            keep = r.id;
+            keep_current = true;
+        } else if (r.current && keep_current)
+        {
+            /* Two CURRENT shouldn't happen; keep lower id */
+            if (r.id < keep)
+            {
+                if (remove_ids)
+                {
+                    remove_ids->push_back(keep);
+                }
+                keep = r.id;
+            } else if (remove_ids)
+            {
+                remove_ids->push_back(r.id);
+            }
+        } else if (!r.current && keep_current)
+        {
+            if (remove_ids)
+            {
+                remove_ids->push_back(r.id);
+            }
+        } else
+        {
+            /* Neither current: keep lowest id */
+            if (r.id < keep)
+            {
+                if (remove_ids)
+                {
+                    remove_ids->push_back(keep);
+                }
+                keep = r.id;
+            } else if (remove_ids)
+            {
+                remove_ids->push_back(r.id);
+            }
+        }
+    }
+    return keep;
+}
+
 std::vector<WifiScanEntry> parse_wpa_scan_results(const std::string& text)
 {
     std::vector<WifiScanEntry> out;
