@@ -435,7 +435,7 @@
         <button type="button" class="btn ghost" id="btnWifiJoinClose" aria-label="Close">✕</button>
       </div>
       <div class="modal-body">
-        <p class="auth-note" id="wifiJoinNote">Saves a network block to wpa_supplicant and selects it.</p>
+        <p class="auth-note" id="wifiJoinNote">Connects and updates wpa_supplicant.</p>
         <label class="fld">Network name (SSID)
           <input id="wifiSsid" type="text" spellcheck="false" autocomplete="off" maxlength="32" />
           <span class="field-err" id="errWifiSsid"></span>
@@ -871,7 +871,7 @@
     else if (action.kind === "save") doSaveConfig();
     else if (action.kind === "create") doCreateIface();
     else if (action.kind === "wifi_join")
-      doWifiJoin(action.ssid, action.security, action.key, action.save);
+      doWifiJoin(action.ssid, action.security, action.key);
     else if (action.kind === "open_editor") { state.editorOpen = true; state.createOpen = false; }
     else if (action.kind === "open_create") { state.createOpen = true; state.editorOpen = false; }
     state.pendingAction = null;
@@ -1117,7 +1117,7 @@
             return;
           }
           if (sec === "open") {
-            doWifiJoin(ssid, "open", "", true);
+            doWifiJoin(ssid, "open", "");
             return;
           }
           openWifiJoin(ssid, sec);
@@ -1155,7 +1155,6 @@
     $("wifiKey").value = "";
     $("wifiKeyShow").checked = false;
     $("wifiKey").type = "password";
-    $("wifiSaveConf").checked = true;
     setFieldErr("wifiSsid", "errWifiSsid", "");
     setFieldErr("wifiKey", "errWifiKey", "");
     const err = $("wifiJoinErr");
@@ -1166,11 +1165,11 @@
       err.textContent = "The saved password is no longer valid. Enter the new network key.";
       $("wifiJoinTitle").textContent = ssid ? ("Update password for “" + ssid + "”") : "Join Wi‑Fi network";
       $("wifiJoinNote").textContent =
-        "Authentication failed (wrong or changed key). Update wpa_supplicant and try again.";
+        "Authentication failed (wrong or changed key). Enter the new key and connect again.";
     } else {
       $("wifiJoinTitle").textContent = ssid ? ("Join “" + ssid + "”") : "Join Wi‑Fi network";
       $("wifiJoinNote").textContent =
-        "Updates wpa_supplicant (wpa_cli set_network) and optionally saves the config.";
+        "Connects and updates wpa_supplicant.";
     }
     /* Forget only when this SSID is already in wpa_supplicant */
     $("btnWifiForget").style.display = saved ? "" : "none";
@@ -1200,10 +1199,10 @@
   }
 
   /**
-   * Mock apply: wpa_cli add/set/enable/select/save_config.
+   * Mock apply: wpa_cli add/set/enable/select + always save_config.
    * Auth failure when key does not match AP (common: password changed).
    */
-  function doWifiJoin(ssid, security, key, saveConf) {
+  function doWifiJoin(ssid, security, key) {
     if (security !== "open") {
       const expect = WIFI_CORRECT_KEYS[ssid];
       /* Unknown mock APs accept any valid-format key; known APs check */
@@ -1258,9 +1257,7 @@
         auth: "ok", security: security, storedKey: key,
       });
     }
-    toast(saveConf
-      ? ("Connected to " + ssid + " · wpa_supplicant saved")
-      : ("Connected to " + ssid));
+    toast("Connected to " + ssid);
     closeWifiJoin();
     return true;
   }
@@ -1603,17 +1600,16 @@
       const ssid = $("wifiSsid").value;
       const sec = $("wifiSec").value;
       const key = $("wifiKey").value;
-      const save = $("wifiSaveConf").checked;
-      /* Saving wpa_supplicant.conf may need admin — prompt if required */
-      if (save && features().needs_password) {
+      /* Always update + save_config; elevates if admin needs a password */
+      if (features().needs_password) {
         state.pendingAction = {
           kind: "wifi_join",
-          ssid: ssid, security: sec, key: key, save: save,
+          ssid: ssid, security: sec, key: key,
         };
         openAuth();
         return;
       }
-      doWifiJoin(ssid, sec, key, save);
+      doWifiJoin(ssid, sec, key);
     });
     $("btnWifiForget").addEventListener("click", () => {
       const ssid = $("wifiSsid").value;

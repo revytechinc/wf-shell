@@ -2,7 +2,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 420" width="100%" preserveAspectRatio="xMidYMid meet">
   <foreignObject x="0" y="0" width="400" height="420">
     <div xmlns="http://www.w3.org/1999/xhtml" style="width:400px;height:420px;box-sizing:border-box;font-family:system-ui,sans-serif;background:#0c0c14;color:#cdd6f4;padding:16px;">
-      <div style="font-size:11px;color:#a6adc8;margin-bottom:10px;">Join Wi‑Fi — WPA/WEP key → wpa_supplicant</div>
+      <div style="font-size:11px;color:#a6adc8;margin-bottom:10px;">Join Wi‑Fi — key entry · always persists via wpa_supplicant</div>
       <div style="background:#1e1e2e;border:1px solid #45475a;border-radius:12px;overflow:hidden;max-width:360px;">
         <div style="padding:10px 12px;border-bottom:1px solid #313244;font-size:13px;font-weight:600;">Join “CloudBSD-Lab”</div>
         <div style="padding:12px;display:flex;flex-direction:column;gap:10px;font-size:12px;">
