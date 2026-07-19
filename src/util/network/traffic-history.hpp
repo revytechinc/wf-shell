@@ -27,6 +27,21 @@ inline constexpr int k_traffic_sample_ms   = 1000;
 inline constexpr size_t k_traffic_history_cap =
     static_cast<size_t>(k_traffic_history_sec);
 
+/**
+ * Traffic graph styles (same family as sound meters: volume_graph_style).
+ * Null-terminated list of stable ids for UI combos + ini.
+ */
+inline constexpr const char *TRAFFIC_GRAPH_STYLES[] = {
+    "bars", "wave", "wave-fill", "mirror", "scope", "spectrum", "dots", "ribbon",
+    nullptr
+};
+
+/** Return @s if known, else "bars". Pure. */
+std::string safe_traffic_graph_style(const std::string& s);
+
+/** Human label for a style id (empty if unknown). Pure. */
+const char *traffic_graph_style_label(const std::string& s);
+
 /** After this many consecutive failed polls, re-baseline rates (iface gone/back). */
 inline constexpr int k_traffic_miss_reset = 3;
 

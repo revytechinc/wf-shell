@@ -58,6 +58,28 @@ TEST(NetworkTypes, ClassifyIfaceNames)
 
 /* ─── Traffic history: pure + collector (red/green + integration) ───────── */
 
+TEST(TrafficHistory, GraphStylesLikeSound)
+{
+    /* Same family of ids as audio volume_graph_style */
+    EXPECT_EQ(safe_traffic_graph_style("bars"), "bars");
+    EXPECT_EQ(safe_traffic_graph_style("wave"), "wave");
+    EXPECT_EQ(safe_traffic_graph_style("wave-fill"), "wave-fill");
+    EXPECT_EQ(safe_traffic_graph_style("mirror"), "mirror");
+    EXPECT_EQ(safe_traffic_graph_style("scope"), "scope");
+    EXPECT_EQ(safe_traffic_graph_style("spectrum"), "spectrum");
+    EXPECT_EQ(safe_traffic_graph_style("dots"), "dots");
+    EXPECT_EQ(safe_traffic_graph_style("ribbon"), "ribbon");
+    EXPECT_EQ(safe_traffic_graph_style("nope"), "bars");
+    EXPECT_EQ(safe_traffic_graph_style(""), "bars");
+    EXPECT_STREQ(traffic_graph_style_label("wave-fill"), "wave-fill");
+    int n = 0;
+    for (int i = 0; TRAFFIC_GRAPH_STYLES[i]; ++i)
+    {
+        ++n;
+    }
+    EXPECT_EQ(n, 8);
+}
+
 TEST(TrafficHistory, PureRingRateIfnameNetstat)
 {
     EXPECT_EQ(k_traffic_history_sec, 300);

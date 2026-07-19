@@ -300,7 +300,7 @@ gateways, state) and a live **RX/TX histogram** with auto-scaled units
 
 | Rule | Detail |
 |------|--------|
-| Window | **Last 300 s only** (ring @ 1 Hz) |
+| Window | **Last 300 s only** (ring @ 1 Hz) — UI may seed a full window for first paint |
 | Sample | `netstat -I IF -b -n` Link row; rate from delta |
 | Thread | `TrafficCollector` worker — I/O **never** on GTK main loop |
 | UI | `snapshot(ifname)` mutex copy only |
@@ -309,12 +309,19 @@ gateways, state) and a live **RX/TX histogram** with auto-scaled units
 | Bad name | rejected (`is_valid_traffic_ifname`) — no shell injection |
 | Counter reset | rate 0 that interval; no crash |
 
-**Tests (red/green + integration):** ring/rate/parse edge cases; dynamic  
-sync add/remove; miss streak; hooks simulation; concurrent churn under  
-running thread; FreeBSD live netstat (`TrafficHistory.*`).
+**Graph styles** (same ids as Sound Settings meters):
+
+`bars` · `wave` · `wave-fill` · `mirror` · `scope` · `spectrum` · `dots` · `ribbon`  
+
+`safe_traffic_graph_style()`; default **wave-fill**. Independent per Details view  
+(persist later as e.g. `panel/network_traffic_graph_style`).
+
+**Tests (red/green + integration):** ring/rate/parse; dynamic add/remove; miss  
+streak; hooks; concurrent thread; live FreeBSD netstat; graph style ids  
+(`TrafficHistory.*`).
 
 Pure helpers: `traffic_ring_push`, `traffic_rate_Bps`, `parse_netstat_if_bytes`,  
-`is_valid_traffic_ifname`, byte/bit formatters.
+`is_valid_traffic_ifname`, graph style helpers, byte/bit formatters.
 
 Label comes from **live probe flags**, not a stale toggle. Status is **colour**, not text:  
 **green = up** · **red + greyed row = down**. Never “admin down” wording.

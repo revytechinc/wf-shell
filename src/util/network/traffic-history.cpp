@@ -10,6 +10,32 @@
 namespace wf_net
 {
 
+std::string safe_traffic_graph_style(const std::string& s)
+{
+    for (int i = 0; TRAFFIC_GRAPH_STYLES[i]; ++i)
+    {
+        if (s == TRAFFIC_GRAPH_STYLES[i])
+        {
+            return s;
+        }
+    }
+    return "bars";
+}
+
+const char *traffic_graph_style_label(const std::string& s)
+{
+    const std::string id = safe_traffic_graph_style(s);
+    /* ids are already human-readable (match sound meter combo labels) */
+    for (int i = 0; TRAFFIC_GRAPH_STYLES[i]; ++i)
+    {
+        if (id == TRAFFIC_GRAPH_STYLES[i])
+        {
+            return TRAFFIC_GRAPH_STYLES[i];
+        }
+    }
+    return "bars";
+}
+
 bool is_valid_traffic_ifname(const std::string& name)
 {
     if (name.empty() || name.size() > 15) /* IFNAMSIZ-1 */

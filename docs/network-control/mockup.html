@@ -135,7 +135,7 @@
       background: #181825; border: 1px solid var(--border); border-radius: 8px;
       padding: 8px 8px 4px;
     }
-    .hist-wrap canvas { width: 100%; height: 120px; display: block; }
+    .hist-wrap canvas { width: 100%; height: 140px; display: block; }
     .hist-legend {
       display: flex; gap: 14px; justify-content: flex-end;
       font-size: 10px; color: var(--muted); padding: 4px 2px 2px;
@@ -146,6 +146,12 @@
     }
     .hist-legend .leg.rx::before { background: #89b4fa; }
     .hist-legend .leg.tx::before { background: #a6e3a1; }
+    select.graph-dd {
+      font: inherit; font-size: 10px; padding: 2px 6px;
+      background: var(--surface2); color: var(--text);
+      border: 1px solid var(--border); border-radius: 4px; cursor: pointer;
+    }
+    select.graph-dd:hover { border-color: var(--blue); }
     .badge {
       font-size: 9px; text-transform: uppercase; letter-spacing: 0.04em;
       padding: 1px 5px; border-radius: 4px; background: var(--surface2); color: var(--blue);
@@ -367,10 +373,25 @@
       </div>
       <div class="modal-body">
         <div id="detailsGrid" class="details-grid"></div>
-        <div class="section-title" style="margin:12px 0 6px">Traffic</div>
+        <div class="section-title" style="margin:12px 0 6px;display:flex;align-items:center;justify-content:space-between;gap:8px">
+          <span>Traffic</span>
+          <label class="dim" style="font-size:10px;text-transform:none;letter-spacing:0;display:flex;align-items:center;gap:6px;font-weight:400">
+            Graph
+            <select id="detailsGraphStyle" class="graph-dd" title="Graph style (like Sound Settings)">
+              <option value="bars">bars</option>
+              <option value="wave">wave</option>
+              <option value="wave-fill" selected>wave-fill</option>
+              <option value="mirror">mirror</option>
+              <option value="scope">scope</option>
+              <option value="spectrum">spectrum</option>
+              <option value="dots">dots</option>
+              <option value="ribbon">ribbon</option>
+            </select>
+          </label>
+        </div>
         <div class="traffic-meta" id="detailsTrafficMeta">—</div>
         <div class="hist-wrap">
-          <canvas id="detailsHist" width="420" height="120" aria-label="Traffic histogram"></canvas>
+          <canvas id="detailsHist" width="420" height="140" aria-label="Traffic graph"></canvas>
           <div class="hist-legend">
             <span class="leg rx">Receive</span>
             <span class="leg tx">Transmit</span>
@@ -840,6 +861,17 @@
   const HIST_N = HIST_SEC;    /* capacity */
   let trafficCollectorId = null;
 
+  function sampleRate(name, iface, tSec) {
+    /* Deterministic-ish history so a full 5 min graph looks real immediately */
+    if (!iface || !iface.up) return { r: 0, x: 0 };
+    const load = name === "aq0" ? 10 : name.indexOf("wlan") === 0 ? 3 : name === "igb0" ? 2 : 1;
+    const wave = 0.55 + 0.45 * Math.sin(tSec / 17) * Math.cos(tSec / 41);
+    const burst = (Math.sin(tSec / 7) > 0.92) ? 3.5 : 1;
+    const r = burst * wave * (18000 + (tSec % 97) * 1800) * load;
+    const x = burst * (0.4 + 0.6 * wave) * (7000 + (tSec % 53) * 900) * load;
+    return { r: Math.max(0, r), x: Math.max(0, x) };
+  }
+
   function ensureTraffic(name, iface) {
     if (trafficStore[name]) return trafficStore[name];
     const baseRx = name === "aq0" ? 39e9 : name === "igb0" ? 1.2e9 : 5e7;
@@ -853,34 +885,46 @@
       tx: [],
       lastRx: 0,
       lastTx: 0,
+      tick: 0,
     };
-    /* Do not pre-seed 5 min of fake data — fill as samples arrive */
+    /*
+     * Seed full 5 minutes @ 1 Hz so Details opens with a complete graph
+     * (live collector also keeps rolling the same window).
+     */
+    const now = Math.floor(Date.now() / 1000);
+    for (let i = 0; i < HIST_N; i++) {
+      const tSec = now - (HIST_N - i);
+      const s = sampleRate(name, iface, tSec);
+      t.rx.push(s.r);
+      t.tx.push(s.x);
+      t.rxTotal += s.r;
+      t.txTotal += s.x;
+      t.rxPkts += Math.floor(s.r / 800) + 1;
+      t.txPkts += Math.floor(s.x / 600) + 1;
+      t.lastRx = s.r;
+      t.lastTx = s.x;
+    }
+    t.tick = now;
     trafficStore[name] = t;
     return t;
   }
 
   function tickTraffic(name, iface) {
     const t = ensureTraffic(name, iface);
-    if (!iface || !iface.up) {
-      t.rx.push(0);
-      t.tx.push(0);
-      t.lastRx = 0;
-      t.lastTx = 0;
-    } else {
-      const spike = Math.random() < 0.08 ? 4 : 1;
-      const r = spike * (15000 + Math.random() * 220000) *
-        (name === "aq0" ? 10 : name.indexOf("wlan") === 0 ? 3 : 1);
-      const x = spike * (5000 + Math.random() * 90000) * (name === "aq0" ? 4 : 1);
-      t.rx.push(r);
-      t.tx.push(x);
-      t.rxTotal += r;
-      t.txTotal += x;
-      t.rxPkts += Math.floor(r / 800) + 1;
-      t.txPkts += Math.floor(x / 600) + 1;
-      t.lastRx = r;
-      t.lastTx = x;
-    }
-    /* Ring: keep only last HIST_N samples (5 min @ 1 Hz) */
+    t.tick = (t.tick || 0) + 1;
+    const s = sampleRate(name, iface, t.tick);
+    /* live jitter on top of shaped wave */
+    const jitter = iface && iface.up && Math.random() < 0.1 ? 2.2 : 1;
+    const r = s.r * jitter;
+    const x = s.x * (jitter > 1 ? 1.6 : 1);
+    t.rx.push(r);
+    t.tx.push(x);
+    t.rxTotal += r;
+    t.txTotal += x;
+    t.rxPkts += Math.floor(r / 800) + 1;
+    t.txPkts += Math.floor(x / 600) + 1;
+    t.lastRx = r;
+    t.lastTx = x;
     while (t.rx.length > HIST_N) t.rx.shift();
     while (t.tx.length > HIST_N) t.tx.shift();
     return t;
@@ -920,48 +964,192 @@
     }
   }
 
-  function drawTrafficHist(canvas, series) {
+  /** Same style ids as sound meters (volume_graph_style). */
+  const TRAFFIC_GRAPH_STYLES = [
+    "bars", "wave", "wave-fill", "mirror", "scope", "spectrum", "dots", "ribbon",
+  ];
+  function safeTrafficGraphStyle(s) {
+    return TRAFFIC_GRAPH_STYLES.indexOf(s) >= 0 ? s : "wave-fill";
+  }
+
+  function drawTrafficHist(canvas, series, styleIn) {
     if (!canvas || !series) return;
+    const style = safeTrafficGraphStyle(styleIn || (state.trafficGraphStyle || "wave-fill"));
     const dpr = window.devicePixelRatio || 1;
     const cssW = canvas.clientWidth || 420;
-    const cssH = 120;
+    const cssH = 140;
     canvas.width = Math.floor(cssW * dpr);
     canvas.height = Math.floor(cssH * dpr);
     const ctx = canvas.getContext("2d");
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const W = cssW, H = cssH;
-    ctx.clearRect(0, 0, W, H);
-    const pad = { t: 8, r: 6, b: 18, l: 6 };
+    ctx.fillStyle = "#12121a";
+    ctx.fillRect(0, 0, W, H);
+    const pad = { t: 16, r: 8, b: 14, l: 8 };
     const plotW = W - pad.l - pad.r;
     const plotH = H - pad.t - pad.b;
     const n = series.rx.length;
+    if (n < 1) return;
     let max = 1;
-    for (let i = 0; i < n; i++) {
-      max = Math.max(max, series.rx[i], series.tx[i]);
-    }
-    /* y-axis unit from max rate */
+    for (let i = 0; i < n; i++) max = Math.max(max, series.rx[i] || 0, series.tx[i] || 0);
     const unitLabel = formatBitRateFromBytes(max);
     ctx.fillStyle = "#6c7086";
     ctx.font = "10px system-ui,sans-serif";
     ctx.textAlign = "right";
-    ctx.fillText(unitLabel + " peak", W - pad.r, 12);
+    ctx.fillText(unitLabel + " peak · " + style, W - pad.r, 12);
 
-    const barGroup = plotW / Math.max(n, 1);
-    const barW = Math.max(1, barGroup * 0.35);
-    for (let i = 0; i < n; i++) {
-      const x0 = pad.l + i * barGroup;
-      const hRx = (series.rx[i] / max) * plotH;
-      const hTx = (series.tx[i] / max) * plotH;
-      ctx.fillStyle = "#89b4fa";
-      ctx.fillRect(x0, pad.t + plotH - hRx, barW, hRx);
-      ctx.fillStyle = "#a6e3a1";
-      ctx.fillRect(x0 + barW + 1, pad.t + plotH - hTx, barW, hTx);
+    const xAt = (i) => pad.l + (n <= 1 ? plotW / 2 : (i / (n - 1)) * plotW);
+    const yRx = (v) => pad.t + plotH - (v / max) * plotH;
+    const yTx = yRx;
+    const colRx = "#89b4fa";
+    const colTx = "#a6e3a1";
+    const midY = pad.t + plotH / 2;
+
+    function pathLine(vals, color, fill) {
+      ctx.beginPath();
+      for (let i = 0; i < n; i++) {
+        const x = xAt(i), y = yRx(vals[i] || 0);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      if (fill) {
+        ctx.lineTo(xAt(n - 1), pad.t + plotH);
+        ctx.lineTo(xAt(0), pad.t + plotH);
+        ctx.closePath();
+        ctx.fillStyle = color;
+        ctx.globalAlpha = 0.35;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
     }
-    /* baseline */
+
+    if (style === "bars") {
+      const barGroup = plotW / n;
+      const barW = Math.max(1, barGroup * 0.35);
+      for (let i = 0; i < n; i++) {
+        const x0 = pad.l + i * barGroup;
+        const hRx = ((series.rx[i] || 0) / max) * plotH;
+        const hTx = ((series.tx[i] || 0) / max) * plotH;
+        ctx.fillStyle = colRx;
+        ctx.fillRect(x0, pad.t + plotH - hRx, barW, hRx);
+        ctx.fillStyle = colTx;
+        ctx.fillRect(x0 + barW + 1, pad.t + plotH - hTx, barW, hTx);
+      }
+    } else if (style === "wave") {
+      pathLine(series.rx, colRx, false);
+      pathLine(series.tx, colTx, false);
+    } else if (style === "wave-fill") {
+      pathLine(series.rx, colRx, true);
+      pathLine(series.tx, colTx, true);
+    } else if (style === "mirror") {
+      /* RX above midline, TX below */
+      ctx.beginPath();
+      for (let i = 0; i < n; i++) {
+        const x = xAt(i);
+        const y = midY - ((series.rx[i] || 0) / max) * (plotH / 2);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      for (let i = n - 1; i >= 0; i--) {
+        const x = xAt(i);
+        const y = midY + ((series.tx[i] || 0) / max) * (plotH / 2);
+        ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.fillStyle = "rgba(137,180,250,0.25)";
+      ctx.fill();
+      ctx.strokeStyle = colRx;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(pad.l, midY);
+      ctx.lineTo(pad.l + plotW, midY);
+      ctx.strokeStyle = "#313244";
+      ctx.stroke();
+    } else if (style === "scope") {
+      /* Combined differential-ish scope (RX − TX bias) */
+      ctx.beginPath();
+      for (let i = 0; i < n; i++) {
+        const v = ((series.rx[i] || 0) - (series.tx[i] || 0) * 0.5) / max;
+        const y = midY - v * (plotH / 2);
+        const x = xAt(i);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.strokeStyle = "#cba6f7";
+      ctx.lineWidth = 1.4;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(pad.l, midY);
+      ctx.lineTo(pad.l + plotW, midY);
+      ctx.strokeStyle = "#313244";
+      ctx.stroke();
+    } else if (style === "spectrum") {
+      /* Energy bins from short windows of the rate series */
+      const bins = 48;
+      const col = [colRx, colTx];
+      for (let b = 0; b < bins; b++) {
+        const i0 = Math.floor((b / bins) * n);
+        const i1 = Math.max(i0 + 1, Math.floor(((b + 1) / bins) * n));
+        let eR = 0, eT = 0, c = 0;
+        for (let i = i0; i < i1 && i < n; i++) {
+          eR += series.rx[i] || 0;
+          eT += series.tx[i] || 0;
+          c++;
+        }
+        eR = c ? eR / c : 0;
+        eT = c ? eT / c : 0;
+        const bw = plotW / bins;
+        const x = pad.l + b * bw;
+        const hR = (eR / max) * plotH;
+        const hT = (eT / max) * plotH * 0.85;
+        ctx.fillStyle = colRx;
+        ctx.globalAlpha = 0.85;
+        ctx.fillRect(x + 1, pad.t + plotH - hR, bw * 0.4, hR);
+        ctx.fillStyle = colTx;
+        ctx.fillRect(x + bw * 0.45, pad.t + plotH - hT, bw * 0.4, hT);
+        ctx.globalAlpha = 1;
+      }
+    } else if (style === "dots") {
+      for (let i = 0; i < n; i++) {
+        ctx.fillStyle = colRx;
+        ctx.beginPath();
+        ctx.arc(xAt(i), yRx(series.rx[i] || 0), 1.6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = colTx;
+        ctx.beginPath();
+        ctx.arc(xAt(i), yTx(series.tx[i] || 0), 1.6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    } else if (style === "ribbon") {
+      ctx.lineWidth = 4;
+      ctx.lineJoin = "round";
+      ctx.lineCap = "round";
+      ctx.strokeStyle = colRx;
+      ctx.globalAlpha = 0.55;
+      ctx.beginPath();
+      for (let i = 0; i < n; i++) {
+        const x = xAt(i), y = yRx(series.rx[i] || 0);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.strokeStyle = colTx;
+      ctx.beginPath();
+      for (let i = 0; i < n; i++) {
+        const x = xAt(i), y = yTx(series.tx[i] || 0);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.lineWidth = 1.2;
+      pathLine(series.rx, colRx, false);
+      pathLine(series.tx, colTx, false);
+    }
+
     ctx.strokeStyle = "#313244";
+    ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(pad.l, pad.t + plotH);
-    ctx.lineTo(W - pad.r, pad.t + plotH);
+    ctx.lineTo(pad.l + plotW, pad.t + plotH);
     ctx.stroke();
   }
 
@@ -1092,6 +1280,7 @@
     wifiLastScan: null,
     detailsOpen: false,
     detailsName: null,
+    trafficGraphStyle: "wave-fill", /* same family as sound meters */
     ctxName: null,
     extraIfaces: [], /* dynamically created in mock */
     ifaceOverrides: {}, /* up/down/delete from context menu */
@@ -1489,9 +1678,13 @@
       "<br/>Total RX " + formatByteCount(t.rxTotal) +
       " · TX " + formatByteCount(t.txTotal) +
       " · " + t.rxPkts.toLocaleString() + " / " + t.txPkts.toLocaleString() + " packets" +
-      "<br/>History " + histMin + "s / " + HIST_SEC + "s (1 Hz · background collector)";
+      "<br/>History " + histMin + "s / " + HIST_SEC + "s (full window · 1 Hz)";
 
-    drawTrafficHist($("detailsHist"), t);
+    const gsel = $("detailsGraphStyle");
+    if (gsel && gsel.value !== state.trafficGraphStyle) {
+      gsel.value = safeTrafficGraphStyle(state.trafficGraphStyle);
+    }
+    drawTrafficHist($("detailsHist"), t, state.trafficGraphStyle);
   }
 
   function openWifiJoin(ssid, security, opts) {
@@ -2015,6 +2208,10 @@
     $("btnDetailsClose2").addEventListener("click", closeDetails);
     $("detailsModal").addEventListener("click", (e) => {
       if (e.target === $("detailsModal")) closeDetails();
+    });
+    $("detailsGraphStyle").addEventListener("change", (e) => {
+      state.trafficGraphStyle = safeTrafficGraphStyle(e.target.value);
+      if (state.detailsOpen && state.detailsName) fillDetails(state.detailsName);
     });
     document.addEventListener("click", (e) => {
       if (!$("ctxMenu").contains(e.target)) hideCtx();
