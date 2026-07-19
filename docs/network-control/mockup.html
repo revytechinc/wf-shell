@@ -933,19 +933,32 @@
     const i = ifaceByName(name);
     const menu = $("ctxMenu");
     const feat = features();
-    const on = i && i.up;
-    /* Live IFF_UP → label; no command-line tooltips (sparse) */
-    $("ctxToggle").textContent = on ? "Turn off" : "Turn on";
-    $("ctxToggle").removeAttribute("title");
-    /* Information-only: no mutations */
-    $("ctxToggle").disabled = !i || !feat.mutate_iface;
-    const canDel = feat.mutate_iface && isDestroyable(i);
-    $("ctxDelete").disabled = !canDel;
-    $("ctxDelete").removeAttribute("title");
-    $("ctxConfigure").disabled = !feat.config_editor;
+    if (!i) {
+      hideCtx();
+      return false;
+    }
+    const canToggle = !!feat.mutate_iface;
+    const canCfg = !!feat.config_editor;
+    const canDel = !!feat.mutate_iface && isDestroyable(i);
+    /* No actionable items → do not open a useless menu */
+    if (!canToggle && !canCfg && !canDel) {
+      hideCtx();
+      return false;
+    }
+    /* Live up/down label; only show items that work */
+    $("ctxToggle").textContent = i.up ? "Turn off" : "Turn on";
+    $("ctxToggle").style.display = canToggle ? "" : "none";
+    $("ctxToggle").disabled = false;
+    $("ctxConfigure").style.display = canCfg ? "" : "none";
+    $("ctxConfigure").disabled = false;
+    $("ctxDelete").style.display = canDel ? "" : "none";
+    $("ctxDelete").disabled = false;
+    const sep = menu.querySelector(".sep");
+    if (sep) sep.style.display = (canDel && (canToggle || canCfg)) ? "" : "none";
     menu.classList.add("open");
     menu.style.left = Math.min(x, window.innerWidth - 200) + "px";
     menu.style.top = Math.min(y, window.innerHeight - 140) + "px";
+    return true;
   }
 
   function hideCtx() {

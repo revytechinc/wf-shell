@@ -26,8 +26,9 @@
         </div>
       </div>
       <div style="margin-top:12px;font-size:10px;color:#6c7086;line-height:1.5;">
-        Hidden when <code style="color:#f9e2af;">can_admin</code> is false:<br/>
-        Configure… · Create… · Turn on/off · Delete<br/>
+        When <code style="color:#f9e2af;">can_admin</code> is false:<br/>
+        no Configure… / Create… · <strong>no right-click menu</strong><br/>
+        (nothing actionable → do not open an empty menu).<br/>
         Tray still shows status icon (colour by activity).
       </div>
     </div>

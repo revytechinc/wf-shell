@@ -380,8 +380,8 @@ flowchart TB
   F -->|no can_admin| NONE[No mutation buttons]
 
   CFG --> M[Editor modal<br/>IPv4/IPv6 modes · static fields only]
-  I -->|right-click · can_admin| CTX[Context menu<br/>Turn on/off · Configure · Delete]
-  I -->|right-click · information-only| RO[No mutation items]
+  I -->|right-click · any action available| CTX[Context menu<br/>only enabled items]
+  I -->|right-click · nothing actionable| RO[No menu at all]
 ```
 
 **Tray:** icon only (activity colour); tooltip + popover hold detail.
