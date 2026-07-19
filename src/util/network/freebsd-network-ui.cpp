@@ -25,7 +25,13 @@ namespace
 
 void run_elevated(const std::string& cmdline)
 {
-    /* Prefer doas -n, then sudo -n, then plain (works if root). */
+    /*
+     * Prefer doas -n, then sudo -n, then plain (works if root).
+     * Prefix PATH so ifconfig/wpa tools work when the panel was started with
+     * a minimal PATH (missing /sbin /usr/sbin — common after ad-hoc restarts).
+     */
+    static constexpr const char *k_safe_path =
+        "PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin ";
     const char *try_cmds[] = {
         "doas -n ",
         "sudo -n ",
@@ -34,7 +40,7 @@ void run_elevated(const std::string& cmdline)
     };
     for (int i = 0; try_cmds[i]; ++i)
     {
-        std::string full = std::string(try_cmds[i]) + cmdline;
+        std::string full = std::string(k_safe_path) + try_cmds[i] + cmdline;
         int st = system(full.c_str());
         if (st == 0)
         {
@@ -113,7 +119,7 @@ void save_persisted_graph_style(const std::string& style)
 
 } // namespace
 
-/* ─── FreeBSDApRow ───────────────────────────────────────────────────────── */
+/*  FreeBSDApRow  */
 
 FreeBSDApRow::FreeBSDApRow(std::string wlan, wf_net::WifiScanEntry entry,
     bool is_connected, bool is_saved) :
@@ -162,7 +168,7 @@ FreeBSDApRow::FreeBSDApRow(std::string wlan, wf_net::WifiScanEntry entry,
     ssid_.set_text(entry_.ssid);
     ssid_.set_halign(Gtk::Align::START);
     ssid_.set_hexpand(true);
-    /* Prefer beacon-IE generation (Wi‑Fi 7 from EHT) over band-only heuristic. */
+    /* Prefer beacon-IE generation (WiFi 7 from EHT) over band-only heuristic. */
     auto band = wf_net::format_wifi_radio_label(entry_);
     if (band.empty())
     {
@@ -189,7 +195,7 @@ FreeBSDApRow::FreeBSDApRow(std::string wlan, wf_net::WifiScanEntry entry,
         badge_.set_text("Saved");
         badge_.add_css_class("ap-saved-badge");
         badge_.set_halign(Gtk::Align::END);
-        set_tooltip_text("Password saved — click to connect · right-click to manage");
+        set_tooltip_text("Password saved  click to connect  right-click to manage");
     }
 
     append(icon_);
@@ -222,7 +228,7 @@ FreeBSDApRow::FreeBSDApRow(std::string wlan, wf_net::WifiScanEntry entry,
         menu_box_.set_spacing(2);
         btn_connect_.set_label("Connect");
         btn_disconnect_.set_label("Disconnect");
-        btn_change_pw_.set_label("Change password…");
+        btn_change_pw_.set_label("Change password");
         btn_forget_.set_label("Forget network");
         btn_forget_.add_css_class("destructive-action");
         for (auto *b : {&btn_connect_, &btn_disconnect_, &btn_change_pw_,
@@ -292,7 +298,7 @@ void FreeBSDApRow::show_manage_menu(double x, double y)
     menu_.popup();
 }
 
-/* ─── FreeBSDIfaceRow ────────────────────────────────────────────────────── */
+/*  FreeBSDIfaceRow  */
 
 FreeBSDIfaceRow::FreeBSDIfaceRow(std::shared_ptr<FreeBSDNetwork> net,
     wf_net::TrafficCollector *collector) :
@@ -328,7 +334,7 @@ FreeBSDIfaceRow::FreeBSDIfaceRow(std::shared_ptr<FreeBSDNetwork> net,
     text_col_.append(title_row_);
     text_col_.append(sub_lbl_);
 
-    /* Expand/collapse chevron — Wi‑Fi AP list (and useful for multi-wlan) */
+    /* Expand/collapse chevron  WiFi AP list (and useful for multi-wlan) */
     expand_icon_.set_from_icon_name("pan-end-symbolic");
     expand_icon_.set_pixel_size(16);
     btn_expand_.set_child(expand_icon_);
@@ -354,8 +360,8 @@ FreeBSDIfaceRow::FreeBSDIfaceRow(std::shared_ptr<FreeBSDNetwork> net,
     /* Context menu: power + details (not expand) */
     menu_box_.set_spacing(2);
     btn_toggle_.set_label("Turn off");
-    btn_details_.set_label("Details…");
-    btn_delete_.set_label("Delete interface…");
+    btn_details_.set_label("Details");
+    btn_delete_.set_label("Delete interface");
     btn_delete_.add_css_class("destructive-action");
     for (auto *b : {&btn_toggle_, &btn_details_, &btn_delete_})
     {
@@ -376,7 +382,7 @@ FreeBSDIfaceRow::FreeBSDIfaceRow(std::shared_ptr<FreeBSDNetwork> net,
     header_.add_controller(rclick);
 
     /*
-     * Left-click header body: expand/collapse Wi‑Fi list (or power for non-wifi).
+     * Left-click header body: expand/collapse WiFi list (or power for non-wifi).
      * Chevron has its own handler.
      */
     signals_.push_back(btn_expand_.signal_clicked().connect(
@@ -397,7 +403,7 @@ FreeBSDIfaceRow::FreeBSDIfaceRow(std::shared_ptr<FreeBSDNetwork> net,
                 do_toggle(); /* wifi down: turn on */
             }
         }));
-    /* Only on text/icon — not the whole header (chevron has its own button) */
+    /* Only on text/icon  not the whole header (chevron has its own button) */
     text_col_.add_controller(lclick);
 
     signals_.push_back(btn_toggle_.signal_clicked().connect([this] () {
@@ -445,14 +451,14 @@ void FreeBSDIfaceRow::on_popover_open()
 {
     popover_open_ = true;
     /*
-     * Always expand Wi‑Fi when the popover opens so the full scan list is
+     * Always expand WiFi when the popover opens so the full scan list is
      * available (not just the connected SSID on the header). Collapse is
      * still available via the chevron.
      */
     if (is_wifi_clone() && net_ && net_->info().up)
     {
         set_expanded(true);
-        do_scan(); /* always refresh neighborhood — never reuse a 1-row stale list */
+        do_scan(); /* always refresh neighborhood  never reuse a 1-row stale list */
     } else
     {
         set_expanded(false);
@@ -500,7 +506,7 @@ void FreeBSDIfaceRow::set_expanded(bool expanded)
     update_expand_chrome();
     if (expanded_ && popover_open_ && is_wifi_clone() && net_->info().up)
     {
-        /* Rescan every expand — a prior partial scan can leave only the current AP. */
+        /* Rescan every expand  a prior partial scan can leave only the current AP. */
         if (!scanning_)
         {
             do_scan();
@@ -546,7 +552,7 @@ void FreeBSDIfaceRow::refresh()
     remove_css_class("is-down");
     const auto wifi_st = wf_net::format_wifi_connection_state(info);
     const bool wifi_connected = (wifi_st == "Connected" || wifi_st == "Associated");
-    const bool wifi_iface_on = up; /* IFF_UP — radio/stack on, not “associated” */
+    const bool wifi_iface_on = up; /* IFF_UP  radio/stack on, not associated */
     if (wifi && wifi_connected)
     {
         add_css_class("is-up");
@@ -555,7 +561,7 @@ void FreeBSDIfaceRow::refresh()
         add_css_class("is-up");
     } else if (wifi && up && !wifi_connected)
     {
-        /* On but not associated — amber-ish via is-down opacity + not fully red story */
+        /* On but not associated  amber-ish via is-down opacity + not fully red story */
         add_css_class("is-down");
     } else
     {
@@ -564,13 +570,13 @@ void FreeBSDIfaceRow::refresh()
 
     /*
      * Title is the connection story:
-     *   Connected → SSID (primary), iface as secondary in subtitle if needed
-     *   Not connected → wlan0 · Disconnected / On
+     *   Connected  SSID (primary), iface as secondary in subtitle if needed
+     *   Not connected  wlan0  Disconnected / On
      */
     std::string title;
     if (info.wifi_role == wf_net::WifiRole::ParentRadio && info.wifi_needs_clone)
     {
-        title = info.name + " · no wlan";
+        title = info.name + "  no wlan";
     } else if (wifi && wifi_connected && !info.wifi_ssid.empty())
     {
         title = info.wifi_ssid;
@@ -579,12 +585,12 @@ void FreeBSDIfaceRow::refresh()
         title = info.name;
         if (!wifi_st.empty() && wifi_st != "On")
         {
-            title += " · ";
+            title += "  ";
             title += wifi_st;
         }
     } else if (info.is_default_route)
     {
-        title = info.name + " · default";
+        title = info.name + "  default";
     } else
     {
         title = info.name;
@@ -596,7 +602,7 @@ void FreeBSDIfaceRow::refresh()
     speed_lbl_.set_text(speed);
     speed_lbl_.set_visible(!speed.empty());
 
-    /* Subtitle: Connected · addresses  (no scan chrome / no wpa: noise) */
+    /* Subtitle: Connected  addresses  (no scan chrome / no wpa: noise) */
     std::string sub;
     if (wifi && is_wifi_clone())
     {
@@ -605,22 +611,22 @@ void FreeBSDIfaceRow::refresh()
             sub = "Connected";
             if (info.is_default_route)
             {
-                sub += " · default route";
+                sub += "  default route";
             }
             if (info.wifi_signal_pct > 0)
             {
-                sub += " · ";
+                sub += "  ";
                 sub += std::to_string(static_cast<unsigned>(info.wifi_signal_pct));
                 sub += "%";
             } else if (info.wifi_signal_dbm != 0)
             {
-                sub += " · ";
+                sub += "  ";
                 sub += std::to_string(info.wifi_signal_dbm);
                 sub += " dBm";
             }
             if (!info.name.empty())
             {
-                sub += " · ";
+                sub += "  ";
                 sub += info.name;
             }
             auto addrs = wf_net::format_address_summary(info, 4);
@@ -639,7 +645,7 @@ void FreeBSDIfaceRow::refresh()
         }
     } else if (parent_only)
     {
-        sub = "Turn on to enable Wi‑Fi";
+        sub = "Turn on to enable WiFi";
     } else
     {
         sub = wf_net::format_address_summary(info, 4);
@@ -804,7 +810,7 @@ void FreeBSDIfaceRow::do_delete()
 
 void FreeBSDIfaceRow::do_create_wlan()
 {
-    /* Same as Turn on — never block the UI thread. */
+    /* Same as Turn on  never block the UI thread. */
     do_toggle();
 }
 
@@ -863,7 +869,7 @@ void FreeBSDIfaceRow::rebuild_ap_list(const std::vector<wf_net::WifiScanEntry>& 
             return a.signal_dbm > b.signal_dbm;
         });
 
-    /* SSIDs already in wpa_supplicant — no password prompt on click. */
+    /* SSIDs already in wpa_supplicant  no password prompt on click. */
     std::vector<std::string> saved = wf_net::wifi_saved_ssids(wlan);
     auto is_saved_ssid = [&] (const std::string& s) {
         for (const auto& x : saved)
@@ -928,7 +934,7 @@ void FreeBSDIfaceRow::do_scan()
     const std::string wlan = wlan_name();
     auto alive = alive_;
     std::thread([this, alive, wlan] () {
-        /* ≥4s: associated iface BSS cache fills slowly with neighbors. */
+        /* 4s: associated iface BSS cache fills slowly with neighbors. */
         auto aps = wf_net::wifi_scan(wlan, 4000);
         ui_idle([this, alive, aps = std::move(aps)] () mutable {
             if (!alive->load())
@@ -975,7 +981,7 @@ void FreeBSDIfaceRow::do_join(const wf_net::WifiScanEntry& ap)
     };
 
     /*
-     * Saved network in wpa_supplicant: connect with stored PSK — never
+     * Saved network in wpa_supplicant: connect with stored PSK  never
      * re-prompt for the password.
      */
     if (security != "open" && wf_net::wifi_ssid_is_saved(wlan, ssid))
@@ -1015,7 +1021,7 @@ void FreeBSDIfaceRow::do_join(const wf_net::WifiScanEntry& ap)
         dlg->unset_transient_for();
         auto *box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 12);
         box->set_margin(18);
-        auto *lbl = Gtk::make_managed<Gtk::Label>("Password for “" + ssid + "”");
+        auto *lbl = Gtk::make_managed<Gtk::Label>("Password for " + ssid + "");
         lbl->set_halign(Gtk::Align::START);
         lbl->set_margin_bottom(2);
         /*
@@ -1087,10 +1093,10 @@ void FreeBSDIfaceRow::do_join(const wf_net::WifiScanEntry& ap)
                 err->set_text(v.message);
                 return;
             }
-            err->set_text("Connecting…");
+            err->set_text("Connecting");
             join->set_sensitive(false);
             auto row_alive = alive_;
-            /* Capture only POD/strings for the worker — no Gtk widgets. */
+            /* Capture only POD/strings for the worker  no Gtk widgets. */
             std::thread([row_alive, dlg_alive, finish, err, join,
                 ssid, security, wlan, k, apply_join_result] () {
                 auto r = wf_net::wifi_join(wlan, ssid, security, k);
@@ -1119,7 +1125,7 @@ void FreeBSDIfaceRow::do_join(const wf_net::WifiScanEntry& ap)
         return;
     }
 
-    /* Open network — strings only on the worker */
+    /* Open network  strings only on the worker */
     auto row_alive = alive_;
     std::thread([row_alive, wlan, ssid, apply_join_result] () {
         auto r = wf_net::wifi_join(wlan, ssid, "open", "");
@@ -1215,7 +1221,7 @@ void FreeBSDIfaceRow::do_change_password_ap(const wf_net::WifiScanEntry& ap)
 
     auto *dlg = new Gtk::Window();
     auto dlg_alive = std::make_shared<std::atomic<bool>>(true);
-    dlg->set_title("Change password — " + ssid);
+    dlg->set_title("Change password  " + ssid);
     dlg->set_default_size(400, 220);
     dlg->set_modal(true);
     dlg->set_deletable(true);
@@ -1223,7 +1229,7 @@ void FreeBSDIfaceRow::do_change_password_ap(const wf_net::WifiScanEntry& ap)
     dlg->unset_transient_for();
     auto *box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 12);
     box->set_margin(18);
-    auto *lbl = Gtk::make_managed<Gtk::Label>("New password for “" + ssid + "”");
+    auto *lbl = Gtk::make_managed<Gtk::Label>("New password for " + ssid + "");
     lbl->set_halign(Gtk::Align::START);
     auto *entry = Gtk::make_managed<Gtk::Entry>();
     entry->set_visibility(false);
@@ -1284,7 +1290,7 @@ void FreeBSDIfaceRow::do_change_password_ap(const wf_net::WifiScanEntry& ap)
             err->set_text(v.message);
             return;
         }
-        err->set_text("Saving…");
+        err->set_text("Saving");
         save->set_sensitive(false);
         auto row_alive = alive_;
         std::thread([this, row_alive, dlg_alive, finish, err, save,
@@ -1339,7 +1345,7 @@ void FreeBSDIfaceRow::do_details()
     /* Also collapse local context menu if still up. */
     menu_.popdown();
 
-    /* Already open — just raise it. */
+    /* Already open  just raise it. */
     if (details_ && details_->get_visible())
     {
         details_->present_for(nullptr);
@@ -1350,7 +1356,7 @@ void FreeBSDIfaceRow::do_details()
     details_ = std::make_unique<FreeBSDDetailsWindow>(net_, collector_);
     signals_.push_back(details_->signal_closed().connect([this] () {
         /*
-         * closed_ is already emitted from an idle after hide — safe to
+         * closed_ is already emitted from an idle after hide  safe to
          * destroy the C++ object immediately.
          */
         details_.reset();
@@ -1367,21 +1373,21 @@ void FreeBSDIfaceRow::do_details()
     details_->present_for(panel_win);
 }
 
-/* ─── FreeBSDDetailsWindow ───────────────────────────────────────────────── */
+/*  FreeBSDDetailsWindow  */
 
 FreeBSDDetailsWindow::FreeBSDDetailsWindow(std::shared_ptr<FreeBSDNetwork> net,
     wf_net::TrafficCollector *collector) :
     net_(std::move(net)),
     collector_(collector)
 {
-    set_title(net_ ? ("Network — " + net_->get_interface()) : "Interface");
+    set_title(net_ ? ("Network  " + net_->get_interface()) : "Interface");
     set_default_size(480, 540);
     set_modal(false);
     set_destroy_with_parent(false);
     set_hide_on_close(true);
     set_deletable(true);
     set_resizable(true);
-    /* Standalone toplevel — never transient-for layer-shell panel. */
+    /* Standalone toplevel  never transient-for layer-shell panel. */
     unset_transient_for();
     attach_to_app();
 
@@ -1399,12 +1405,18 @@ FreeBSDDetailsWindow::FreeBSDDetailsWindow(std::shared_ptr<FreeBSDNetwork> net,
     traffic_lbl->set_halign(Gtk::Align::START);
     traffic_lbl->set_hexpand(true);
     traffic_lbl->add_css_class("title-4");
+    /* Current graph style first in the dropdown, then the rest. */
+    graph_style_ = load_persisted_graph_style();
+    graph_combo_.append(graph_style_, graph_style_);
     for (int i = 0; wf_net::TRAFFIC_GRAPH_STYLES[i]; ++i)
     {
         const char *s = wf_net::TRAFFIC_GRAPH_STYLES[i];
+        if (s == graph_style_)
+        {
+            continue;
+        }
         graph_combo_.append(s, s);
     }
-    graph_style_ = load_persisted_graph_style();
     graph_combo_.set_active_id(graph_style_);
     traffic_head->append(*traffic_lbl);
     traffic_head->append(graph_combo_);
@@ -1419,7 +1431,7 @@ FreeBSDDetailsWindow::FreeBSDDetailsWindow(std::shared_ptr<FreeBSDNetwork> net,
     graph_.set_content_height(140);
     graph_.set_hexpand(true);
     graph_.set_vexpand(false);
-    /* Lambda (not mem_fun) — matches volume meters; avoids dangling slot edge cases. */
+    /* Lambda (not mem_fun)  matches volume meters; avoids dangling slot edge cases. */
     graph_.set_draw_func([this] (const Cairo::RefPtr<Cairo::Context>& cr, int w, int h) {
         draw_graph(cr, w, h);
     });
@@ -1437,13 +1449,13 @@ FreeBSDDetailsWindow::FreeBSDDetailsWindow(std::shared_ptr<FreeBSDNetwork> net,
     signals_.push_back(graph_combo_.signal_changed().connect(
         [this] () { on_graph_style_changed(); }));
 
-    /* Title-bar X / Alt-F4 → close-request. */
+    /* Title-bar X / Alt-F4  close-request. */
     signals_.push_back(signal_close_request().connect([this] () {
         request_close();
         return true; /* we handle hide + deferred destroy */
     }, false));
 
-    /* Explicit Escape — some Wayland compositors don't map it to close-request. */
+    /* Explicit Escape  some Wayland compositors don't map it to close-request. */
     auto key = Gtk::EventControllerKey::create();
     signals_.push_back(key->signal_key_pressed().connect(
         [this] (guint keyval, guint, Gdk::ModifierType) -> bool {
@@ -1611,9 +1623,9 @@ void FreeBSDDetailsWindow::update_traffic_meta()
     auto s = collector_->snapshot(net_->get_interface());
     traffic_meta_.set_text(
         "RX " + wf_net::format_bit_rate_from_bytes(s.last_rx_Bps) +
-        " · TX " + wf_net::format_bit_rate_from_bytes(s.last_tx_Bps) +
+        "  TX " + wf_net::format_bit_rate_from_bytes(s.last_tx_Bps) +
         "\nTotal RX " + wf_net::format_byte_count(s.rx_total) +
-        " · TX " + wf_net::format_byte_count(s.tx_total) +
+        "  TX " + wf_net::format_byte_count(s.tx_total) +
         "\nHistory " + std::to_string(s.samples.size()) + "s / " +
         std::to_string(wf_net::k_traffic_history_sec) + "s");
 }
@@ -1636,7 +1648,7 @@ void FreeBSDDetailsWindow::rebuild_props()
     int row = 0;
     auto add_row = [&] (const char *k, const std::string& v) {
         auto *lk = Gtk::make_managed<Gtk::Label>(k);
-        auto *lv = Gtk::make_managed<Gtk::Label>(v.empty() ? "—" : v);
+        auto *lv = Gtk::make_managed<Gtk::Label>(v.empty() ? "" : v);
         lk->set_halign(Gtk::Align::START);
         lk->add_css_class("dim-label");
         lv->set_halign(Gtk::Align::START);
@@ -1679,7 +1691,7 @@ void FreeBSDDetailsWindow::rebuild_props()
     if (info.kind == wf_net::InterfaceKind::Wireless ||
         info.wifi_role != wf_net::WifiRole::None)
     {
-        add_row("Wi‑Fi state", wf_net::format_wifi_connection_state(info));
+        add_row("WiFi state", wf_net::format_wifi_connection_state(info));
         if (!info.wifi_wpa_state.empty())
         {
             add_row("wpa_state", info.wifi_wpa_state);
@@ -1689,7 +1701,7 @@ void FreeBSDDetailsWindow::rebuild_props()
             add_row("BSSID", info.wifi_bssid);
         }
     }
-    add_row("State", info.up ? (info.running ? "Up · running" : "Up · no link") : "Down");
+    add_row("State", info.up ? (info.running ? "Up  running" : "Up  no link") : "Down");
     add_row("Speed", wf_net::format_iface_speed(info));
     add_row("Media", info.media);
     add_row("Status", info.status);
@@ -1716,7 +1728,7 @@ void FreeBSDDetailsWindow::rebuild_props()
             }
             v6 += a;
         }
-        add_row("IPv6", v6.empty() ? "—" : v6);
+        add_row("IPv6", v6.empty() ? "" : v6);
     }
     add_row("Gateway v4", info.gateway_v4);
     add_row("Gateway v6", info.gateway_v6);
@@ -1766,7 +1778,7 @@ void FreeBSDDetailsWindow::draw_graph(const Cairo::RefPtr<Cairo::Context>& cr, i
     {
         cr->set_source_rgb(0.4, 0.4, 0.45);
         cr->move_to(12, h / 2.0);
-        cr->show_text("Collecting traffic…");
+        cr->show_text("Collecting traffic");
         return;
     }
 

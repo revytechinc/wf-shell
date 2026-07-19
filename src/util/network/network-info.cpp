@@ -35,10 +35,25 @@ void reset_info_hooks()
     g_hooks = InfoHooks{};
 }
 
+/*
+ * FreeBSD base tools live in /sbin and /usr/sbin. Panel processes launched
+ * with a minimal PATH (missing those dirs) cannot run ifconfig/wpa_cli/sysctl,
+ * which made Wi‑Fi look "off", scan fail with wpa_not_ready, and power-on
+ * report "could not create wlan interface" for an existing wlan0.
+ * Prefix every shell invocation with a sane PATH (keepenv doas inherits this).
+ */
+static constexpr const char *k_safe_path =
+    "PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin";
+
+static std::string with_safe_path(const std::string& cmd)
+{
+    return std::string(k_safe_path) + " " + cmd;
+}
+
 static std::string run_cmd_real(const std::string& cmd)
 {
     /* No shell metacharacters expected from our fixed callers. */
-    FILE *fp = popen(cmd.c_str(), "r");
+    FILE *fp = popen(with_safe_path(cmd).c_str(), "r");
     if (!fp)
     {
         return {};
@@ -62,7 +77,7 @@ static bool run_cmd_ok(const std::string& cmd)
         std::string o = g_hooks.run_cmd(cmd);
         return o == "0" || o == "ok" || o.find("uid=0") != std::string::npos;
     }
-    FILE *fp = popen(cmd.c_str(), "r");
+    FILE *fp = popen(with_safe_path(cmd).c_str(), "r");
     if (!fp)
     {
         return false;
@@ -524,12 +539,13 @@ static std::string resolve_wlan_for_power(const std::string& iface_or_parent)
     }
     if (is_wlan_clone_name(iface_or_parent))
     {
-        /* Confirm exists */
-        if (!run_cmd("ifconfig " + iface_or_parent + " 2>/dev/null").empty())
-        {
-            return iface_or_parent;
-        }
-        return {};
+        /*
+         * Prefer confirming via ifconfig, but still return the clone name if
+         * it is already a wlanN — power path will run ifconfig up / wpa.
+         * Never attempt create_wlan for an existing clone name (that produced
+         * "could not create wlan interface" when ifconfig was not on PATH).
+         */
+        return iface_or_parent;
     }
     /* Parent radio — find existing clone or create */
     auto parents = list_wlan_parent_devices();
@@ -774,7 +790,9 @@ WifiPowerResult wifi_turn_on(const std::string& iface_or_parent)
     std::string wlan = resolve_wlan_for_power(iface_or_parent);
     if (wlan.empty())
     {
-        r.detail = "could not create wlan interface";
+        r.detail = is_wlan_clone_name(iface_or_parent)
+            ? ("wlan interface missing: " + iface_or_parent)
+            : "could not create wlan interface (no parent/clone)";
         net_event_error("wifi.power.on", {field_str("error", r.detail)}, iface_or_parent);
         return r;
     }

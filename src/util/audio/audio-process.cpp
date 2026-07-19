@@ -2,8 +2,10 @@
 
 #include <array>
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <sstream>
+#include <string>
 #include <unistd.h>
 #include <sys/wait.h>
 
@@ -41,6 +43,50 @@ std::string read_text_file_real(const std::string& path)
     return ss.str();
 }
 
+/*
+ * FreeBSD keeps base tools in /sbin and /usr/sbin. Panel processes started
+ * with a minimal PATH (missing those dirs) cannot exec virtual_oss_cmd,
+ * sysctl, ifconfig, etc. — Virtual OSS then always shows "not running".
+ * Resolve bare command names against a safe search path before exec.
+ */
+static std::string resolve_executable(const std::string& name)
+{
+    if (name.empty())
+    {
+        return name;
+    }
+    /* Absolute or relative path: use as-is if executable. */
+    if (name.find('/') != std::string::npos)
+    {
+        if (access(name.c_str(), X_OK) == 0)
+        {
+            return name;
+        }
+        return name;
+    }
+
+    static const char *const k_dirs[] = {
+        "/sbin/",
+        "/bin/",
+        "/usr/sbin/",
+        "/usr/bin/",
+        "/usr/local/sbin/",
+        "/usr/local/bin/",
+        nullptr,
+    };
+    for (int i = 0; k_dirs[i]; ++i)
+    {
+        std::string candidate = std::string(k_dirs[i]) + name;
+        if (access(candidate.c_str(), X_OK) == 0)
+        {
+            return candidate;
+        }
+    }
+
+    /* Fall back to execvp PATH search (may still work if PATH is complete). */
+    return name;
+}
+
 bool run_capture_real(const std::vector<std::string>& argv, std::string& out, int& exit_code)
 {
     out.clear();
@@ -70,7 +116,23 @@ bool run_capture_real(const std::vector<std::string>& argv, std::string& out, in
         dup2(pipefd[1], STDOUT_FILENO);
         dup2(pipefd[1], STDERR_FILENO);
         close(pipefd[1]);
+        /*
+         * Also fix PATH for any child helpers; keepenv elevators inherit this.
+         * Prepend standard FreeBSD locations without dropping the caller's PATH.
+         */
+        static constexpr const char *k_safe =
+            "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin";
+        const char *old = getenv("PATH");
+        std::string path = k_safe;
+        if (old && old[0])
+        {
+            path += ":";
+            path += old;
+        }
+        setenv("PATH", path.c_str(), 1);
+
         std::vector<std::string> args = argv;
+        args[0] = resolve_executable(args[0]);
         std::vector<char*> cargv;
         cargv.reserve(args.size() + 1);
         for (auto& s : args)
