@@ -1223,14 +1223,15 @@
           });
         }
         WIFI_APS.forEach((a) => { if (a.ssid === ssid) a.active = false; });
-        /* Keep join dialog open with error — user re-enters key */
+        /* Keep join dialog open — key stays filled so user can edit it */
         state.wifiJoinOpen = true;
         const err = $("wifiJoinErr");
         err.style.display = "";
         err.textContent = "Could not connect: password incorrect or no longer valid.";
-        setFieldErr("wifiKey", "errWifiKey", "Check the network key and try again");
-        $("wifiKey").value = "";
+        setFieldErr("wifiKey", "errWifiKey", "Edit the network key and try again");
+        $("wifiKey").value = key; /* keep what they entered */
         $("wifiKey").focus();
+        $("wifiKey").select();
         $("btnWifiForget").style.display = "";
         toast("Authentication failed");
         render();
@@ -1591,7 +1592,17 @@
       syncWifiKeyUi();
       validateWifiJoinForm();
     });
-    $("wifiSsid").addEventListener("input", () => validateWifiJoinForm());
+    $("wifiSsid").addEventListener("input", () => {
+      /* Typing an SSID that is already saved → fill key from wpa_supplicant */
+      const s = $("wifiSsid").value;
+      const saved = WPA_NETWORKS.find((n) => n.ssid === s);
+      if (saved && saved.storedKey && !$("wifiKey").value) {
+        $("wifiKey").value = saved.storedKey;
+        if (saved.security) $("wifiSec").value = saved.security;
+        syncWifiKeyUi();
+      }
+      validateWifiJoinForm();
+    });
     $("wifiKey").addEventListener("input", () => validateWifiJoinForm());
     $("wifiKey").addEventListener("keydown", (e) => {
       if (e.key === "Enter") $("btnWifiJoinGo").click();

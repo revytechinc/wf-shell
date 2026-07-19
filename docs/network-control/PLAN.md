@@ -247,7 +247,11 @@ works. Fail-soft on scan/join errors.
 | **WEP vs WPA mismatch** | auth fails after key set | Allow changing Security in join dialog |
 | **save_config fails** | `update_config=0` in conf | Toast: could not persist; still try runtime select |
 
-**Never** leave a greyed-out empty menu. On bad_key: show the AP as **password invalid** and open the key dialog with clear error (no raw wpa_cli spam).
+**Never** leave a greyed-out empty menu. On bad_key: show the AP as **password invalid** and open the key dialog with the **saved key filled in** and a clear error (edit, don’t retype from scratch; no raw wpa_cli spam).
+
+**Network key field:** when a network is already in wpa_supplicant, prefill the key  
+from the stored credentials so the user can correct a changed password without  
+starting empty.
 
 ### v3 — actions / policy
 
