@@ -28,6 +28,7 @@ util = static_library(
         'network/network-log.cpp',
         'background-gl.cpp',
         'platform.cpp',
+        'theme-defaults.cpp',
         'power-controller.cpp',
         'power-controller-linux.cpp',
         'power-controller-bsd.cpp',

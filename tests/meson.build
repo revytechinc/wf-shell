@@ -47,6 +47,20 @@ test(
     suite: ['unit', 'audio'],
 )
 
+test_exec_theme = executable(
+    'theme-defaults-test',
+    'theme-defaults-test.cpp',
+    dependencies: [gtest_dep, libutil],
+    include_directories: test_includes,
+    link_with: util,
+)
+
+test(
+    'theme-defaults-test',
+    test_exec_theme,
+    suite: ['unit', 'theme'],
+)
+
 # Docs / config red-green (python)
 py3 = find_program('python3')
 audio_defaults_py = join_paths(meson.current_source_dir(),

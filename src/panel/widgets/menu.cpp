@@ -15,6 +15,7 @@
 #include "power-controller.hpp"
 #include "platform.hpp"
 #include "wf-shell-app.hpp"
+#include "theme-defaults.hpp"
 #include <gdkmm/pixbuf.h>
 #include <algorithm>
 #include <cctype>
@@ -318,22 +319,7 @@ std::string resolve_theme_path(const std::string& id)
     return {};
 }
 
-std::string theme_id_from_css_path(const std::string& path)
-{
-    if (path.empty())
-    {
-        return "default";
-    }
-    try
-    {
-        return std::filesystem::path(path).stem().string();
-    } catch (...)
-    {
-        return "default";
-    }
-}
-
-/* ── Menu button icons (themeable pack under ICONDIR/menu) ─────────────── */
+/* ── Menu button icons (theme pack under ICONDIR/menu) ─────────────────── */
 
 #ifndef ICONDIR
 #define ICONDIR RESOURCEDIR "/icons"
@@ -350,29 +336,8 @@ std::string user_menu_icons_dir()
     return h.empty() ? std::string{} : h + "/.config/wf-shell/menu-icons";
 }
 
-/**
- * Theme id → pack SVG stem under ICONDIR/menu.
- * "default" uses the classic Wayfire mark (ICONDIR/wayfire.png).
- */
-std::string theme_default_menu_icon_id(const std::string& theme_id)
-{
-    static const std::map<std::string, std::string> map = {
-        {"default", "wayfire"},
-        {"win95", "win95-start"},
-        {"system7", "system7-apple"},
-        {"amiga-workbench", "amiga-wb"},
-        {"crt-phosphor", "crt-node"},
-        {"synthwave", "synth-grid"},
-        {"miami-cyberpunk", "neon-orb"},
-        {"nord", "nord-circle"},
-        {"dracula", "dracula-bat"},
-        {"rose-pine", "rose-bloom"},
-        {"tokyo-night", "tokyo-pulse"},
-        {"catppuccin-mocha", "catppuccin-latte"},
-    };
-    auto it = map.find(theme_id);
-    return it != map.end() ? it->second : "wayfire";
-}
+using wf_shell::theme_id_from_css_path;
+using wf_shell::theme_default_menu_icon_id;
 
 /** Classic Wayfire panel mark — same asset the menu used before theming. */
 std::string wayfire_menu_icon_file()
@@ -512,56 +477,54 @@ bool set_menu_button_icon(Gtk::Image& image, const std::string& path_or_name, in
     return false;
 }
 
-/** Ordered candidates for the active theme, then universal safe defaults. */
+/** Filesystem-backed candidates: pack path first, then logical name fallbacks. */
 std::vector<std::string> menu_icon_candidates_for_theme()
 {
     std::vector<std::string> out;
-    const std::string tid     = current_theme_id_live();
-    const std::string pack_id = theme_default_menu_icon_id(tid);
+    const std::string tid = current_theme_id_live();
 
-    /* 1) Theme pack file (or wayfire.png for default) */
-    auto pack = pack_icon_path(pack_id);
-    if (!pack.empty())
+    for (const auto& logical : wf_shell::menu_icon_logical_candidates(tid))
     {
-        out.push_back(pack);
-    }
-
-    /* 2) Always try the classic Wayfire file next for default / as backup */
-    auto wf = wayfire_menu_icon_file();
-    if (!wf.empty() && (out.empty() || out.front() != wf))
-    {
-        if (pack_id == "wayfire")
+        auto pack = pack_icon_path(logical);
+        if (!pack.empty())
         {
-            out.insert(out.begin(), wf); /* default theme: wayfire first */
-        } else
-        {
-            out.push_back(wf);
+            /* Prefer real file over bare name when we have one */
+            bool have = false;
+            for (auto& x : out)
+            {
+                if (x == pack)
+                {
+                    have = true;
+                    break;
+                }
+            }
+            if (!have)
+            {
+                out.push_back(pack);
+            }
         }
-    }
-
-    /* 3) Icon-theme names (recolorable symbolic + stock) */
-    const char *safe[] = {
-        "wayfire",
-        "view-app-grid-symbolic",
-        "open-menu-symbolic",
-        "applications-menu",
-        "start-here",
-        "application-x-executable",
-    };
-    for (auto *s : safe)
-    {
-        bool have = false;
+        bool have_name = false;
         for (auto& x : out)
         {
-            if (x == s)
+            if (x == logical)
             {
-                have = true;
+                have_name = true;
                 break;
             }
         }
-        if (!have)
+        if (!have_name)
         {
-            out.push_back(s);
+            out.push_back(logical);
+        }
+    }
+
+    /* Absolute Wayfire asset always early for default */
+    if (wf_shell::is_default_theme_id(tid))
+    {
+        auto wf = wayfire_menu_icon_file();
+        if (!wf.empty())
+        {
+            out.insert(out.begin(), wf);
         }
     }
     return out;
