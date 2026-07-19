@@ -972,11 +972,33 @@
     return TRAFFIC_GRAPH_STYLES.indexOf(s) >= 0 ? s : "wave-fill";
   }
 
+  /** Downsample series for clean lines (300 pts → ~100) without losing peaks. */
+  function downsampleSeries(vals, target) {
+    const n = vals.length;
+    if (n <= target) return vals.slice();
+    const out = [];
+    const step = n / target;
+    for (let b = 0; b < target; b++) {
+      const i0 = Math.floor(b * step);
+      const i1 = Math.min(n, Math.floor((b + 1) * step));
+      let peak = 0;
+      for (let i = i0; i < i1; i++) peak = Math.max(peak, vals[i] || 0);
+      out.push(peak);
+    }
+    return out;
+  }
+
   function drawTrafficHist(canvas, series, styleIn) {
-    if (!canvas || !series) return;
-    const style = safeTrafficGraphStyle(styleIn || (state.trafficGraphStyle || "wave-fill"));
+    if (!canvas || !series || !series.rx || !series.rx.length) return;
+    /* Prefer live <select> value so the graph always matches the dropdown */
+    const gsel = document.getElementById("detailsGraphStyle");
+    const style = safeTrafficGraphStyle(
+      (gsel && gsel.value) || styleIn || state.trafficGraphStyle || "wave-fill"
+    );
+    state.trafficGraphStyle = style;
+
     const dpr = window.devicePixelRatio || 1;
-    const cssW = canvas.clientWidth || 420;
+    const cssW = Math.max(280, canvas.clientWidth || 420);
     const cssH = 140;
     canvas.width = Math.floor(cssW * dpr);
     canvas.height = Math.floor(cssH * dpr);
@@ -985,172 +1007,191 @@
     const W = cssW, H = cssH;
     ctx.fillStyle = "#12121a";
     ctx.fillRect(0, 0, W, H);
-    const pad = { t: 16, r: 8, b: 14, l: 8 };
+
+    const pad = { t: 18, r: 10, b: 12, l: 10 };
     const plotW = W - pad.l - pad.r;
     const plotH = H - pad.t - pad.b;
-    const n = series.rx.length;
-    if (n < 1) return;
+    const targetPts = style === "bars" || style === "spectrum" ? 64 : 120;
+    const rx = downsampleSeries(series.rx, targetPts);
+    const tx = downsampleSeries(series.tx, targetPts);
+    const n = rx.length;
     let max = 1;
-    for (let i = 0; i < n; i++) max = Math.max(max, series.rx[i] || 0, series.tx[i] || 0);
-    const unitLabel = formatBitRateFromBytes(max);
+    for (let i = 0; i < n; i++) max = Math.max(max, rx[i], tx[i]);
+
     ctx.fillStyle = "#6c7086";
     ctx.font = "10px system-ui,sans-serif";
     ctx.textAlign = "right";
-    ctx.fillText(unitLabel + " peak · " + style, W - pad.r, 12);
+    ctx.fillText(formatBitRateFromBytes(max) + " peak · " + style, W - pad.r, 12);
 
     const xAt = (i) => pad.l + (n <= 1 ? plotW / 2 : (i / (n - 1)) * plotW);
-    const yRx = (v) => pad.t + plotH - (v / max) * plotH;
-    const yTx = yRx;
+    const yOf = (v) => pad.t + plotH - (v / max) * plotH;
     const colRx = "#89b4fa";
     const colTx = "#a6e3a1";
     const midY = pad.t + plotH / 2;
 
-    function pathLine(vals, color, fill) {
+    function strokeLine(vals, color) {
       ctx.beginPath();
       for (let i = 0; i < n; i++) {
-        const x = xAt(i), y = yRx(vals[i] || 0);
+        const x = xAt(i), y = yOf(vals[i]);
         if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       }
-      if (fill) {
-        ctx.lineTo(xAt(n - 1), pad.t + plotH);
-        ctx.lineTo(xAt(0), pad.t + plotH);
-        ctx.closePath();
-        ctx.fillStyle = color;
-        ctx.globalAlpha = 0.35;
-        ctx.fill();
-        ctx.globalAlpha = 1;
-      }
       ctx.strokeStyle = color;
-      ctx.lineWidth = 1.5;
+      ctx.lineWidth = 1.8;
+      ctx.lineJoin = "round";
+      ctx.lineCap = "round";
+      ctx.stroke();
+    }
+    function fillUnder(vals, color) {
+      ctx.beginPath();
+      for (let i = 0; i < n; i++) {
+        const x = xAt(i), y = yOf(vals[i]);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.lineTo(xAt(n - 1), pad.t + plotH);
+      ctx.lineTo(xAt(0), pad.t + plotH);
+      ctx.closePath();
+      ctx.fillStyle = color;
+      ctx.globalAlpha = 0.32;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      strokeLine(vals, color);
+    }
+    function baseline() {
+      ctx.strokeStyle = "#313244";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(pad.l, pad.t + plotH);
+      ctx.lineTo(pad.l + plotW, pad.t + plotH);
       ctx.stroke();
     }
 
     if (style === "bars") {
-      const barGroup = plotW / n;
-      const barW = Math.max(1, barGroup * 0.35);
+      const gap = plotW / n;
+      const barW = Math.max(2, gap * 0.32);
       for (let i = 0; i < n; i++) {
-        const x0 = pad.l + i * barGroup;
-        const hRx = ((series.rx[i] || 0) / max) * plotH;
-        const hTx = ((series.tx[i] || 0) / max) * plotH;
+        const x0 = pad.l + i * gap + gap * 0.1;
+        const hRx = (rx[i] / max) * plotH;
+        const hTx = (tx[i] / max) * plotH;
         ctx.fillStyle = colRx;
-        ctx.fillRect(x0, pad.t + plotH - hRx, barW, hRx);
+        ctx.fillRect(x0, pad.t + plotH - hRx, barW, Math.max(0.5, hRx));
         ctx.fillStyle = colTx;
-        ctx.fillRect(x0 + barW + 1, pad.t + plotH - hTx, barW, hTx);
+        ctx.fillRect(x0 + barW + 1, pad.t + plotH - hTx, barW, Math.max(0.5, hTx));
       }
-    } else if (style === "wave") {
-      pathLine(series.rx, colRx, false);
-      pathLine(series.tx, colTx, false);
-    } else if (style === "wave-fill") {
-      pathLine(series.rx, colRx, true);
-      pathLine(series.tx, colTx, true);
-    } else if (style === "mirror") {
-      /* RX above midline, TX below */
+      baseline();
+      return;
+    }
+
+    if (style === "wave") {
+      strokeLine(rx, colRx);
+      strokeLine(tx, colTx);
+      baseline();
+      return;
+    }
+    if (style === "wave-fill") {
+      fillUnder(rx, colRx);
+      fillUnder(tx, colTx);
+      baseline();
+      return;
+    }
+    if (style === "mirror") {
       ctx.beginPath();
       for (let i = 0; i < n; i++) {
-        const x = xAt(i);
-        const y = midY - ((series.rx[i] || 0) / max) * (plotH / 2);
-        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        const y = midY - (rx[i] / max) * (plotH / 2);
+        if (i === 0) ctx.moveTo(xAt(i), y); else ctx.lineTo(xAt(i), y);
       }
       for (let i = n - 1; i >= 0; i--) {
-        const x = xAt(i);
-        const y = midY + ((series.tx[i] || 0) / max) * (plotH / 2);
-        ctx.lineTo(x, y);
+        ctx.lineTo(xAt(i), midY + (tx[i] / max) * (plotH / 2));
       }
       ctx.closePath();
-      ctx.fillStyle = "rgba(137,180,250,0.25)";
+      ctx.fillStyle = "rgba(137,180,250,0.3)";
       ctx.fill();
       ctx.strokeStyle = colRx;
+      ctx.lineWidth = 1.5;
       ctx.stroke();
       ctx.beginPath();
       ctx.moveTo(pad.l, midY);
       ctx.lineTo(pad.l + plotW, midY);
-      ctx.strokeStyle = "#313244";
+      ctx.strokeStyle = "#45475a";
       ctx.stroke();
-    } else if (style === "scope") {
-      /* Combined differential-ish scope (RX − TX bias) */
+      return;
+    }
+    if (style === "scope") {
       ctx.beginPath();
       for (let i = 0; i < n; i++) {
-        const v = ((series.rx[i] || 0) - (series.tx[i] || 0) * 0.5) / max;
-        const y = midY - v * (plotH / 2);
-        const x = xAt(i);
-        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        const v = (rx[i] - tx[i] * 0.55) / max;
+        const y = midY - Math.max(-1, Math.min(1, v)) * (plotH / 2);
+        if (i === 0) ctx.moveTo(xAt(i), y); else ctx.lineTo(xAt(i), y);
       }
       ctx.strokeStyle = "#cba6f7";
-      ctx.lineWidth = 1.4;
+      ctx.lineWidth = 1.6;
       ctx.stroke();
       ctx.beginPath();
       ctx.moveTo(pad.l, midY);
       ctx.lineTo(pad.l + plotW, midY);
-      ctx.strokeStyle = "#313244";
+      ctx.strokeStyle = "#45475a";
       ctx.stroke();
-    } else if (style === "spectrum") {
-      /* Energy bins from short windows of the rate series */
-      const bins = 48;
-      const col = [colRx, colTx];
+      return;
+    }
+    if (style === "spectrum") {
+      const bins = 40;
       for (let b = 0; b < bins; b++) {
         const i0 = Math.floor((b / bins) * n);
         const i1 = Math.max(i0 + 1, Math.floor(((b + 1) / bins) * n));
         let eR = 0, eT = 0, c = 0;
-        for (let i = i0; i < i1 && i < n; i++) {
-          eR += series.rx[i] || 0;
-          eT += series.tx[i] || 0;
-          c++;
-        }
+        for (let i = i0; i < i1; i++) { eR += rx[i]; eT += tx[i]; c++; }
         eR = c ? eR / c : 0;
         eT = c ? eT / c : 0;
         const bw = plotW / bins;
         const x = pad.l + b * bw;
-        const hR = (eR / max) * plotH;
-        const hT = (eT / max) * plotH * 0.85;
         ctx.fillStyle = colRx;
-        ctx.globalAlpha = 0.85;
-        ctx.fillRect(x + 1, pad.t + plotH - hR, bw * 0.4, hR);
+        ctx.fillRect(x + 1, pad.t + plotH - (eR / max) * plotH, bw * 0.42, Math.max(1, (eR / max) * plotH));
         ctx.fillStyle = colTx;
-        ctx.fillRect(x + bw * 0.45, pad.t + plotH - hT, bw * 0.4, hT);
-        ctx.globalAlpha = 1;
+        ctx.fillRect(x + bw * 0.48, pad.t + plotH - (eT / max) * plotH, bw * 0.42, Math.max(1, (eT / max) * plotH));
       }
-    } else if (style === "dots") {
+      baseline();
+      return;
+    }
+    if (style === "dots") {
       for (let i = 0; i < n; i++) {
         ctx.fillStyle = colRx;
         ctx.beginPath();
-        ctx.arc(xAt(i), yRx(series.rx[i] || 0), 1.6, 0, Math.PI * 2);
+        ctx.arc(xAt(i), yOf(rx[i]), 2.2, 0, Math.PI * 2);
         ctx.fill();
         ctx.fillStyle = colTx;
         ctx.beginPath();
-        ctx.arc(xAt(i), yTx(series.tx[i] || 0), 1.6, 0, Math.PI * 2);
+        ctx.arc(xAt(i), yOf(tx[i]), 2.2, 0, Math.PI * 2);
         ctx.fill();
       }
-    } else if (style === "ribbon") {
-      ctx.lineWidth = 4;
+      baseline();
+      return;
+    }
+    if (style === "ribbon") {
+      ctx.lineWidth = 7;
       ctx.lineJoin = "round";
       ctx.lineCap = "round";
+      ctx.globalAlpha = 0.4;
       ctx.strokeStyle = colRx;
-      ctx.globalAlpha = 0.55;
       ctx.beginPath();
       for (let i = 0; i < n; i++) {
-        const x = xAt(i), y = yRx(series.rx[i] || 0);
-        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        if (i === 0) ctx.moveTo(xAt(i), yOf(rx[i])); else ctx.lineTo(xAt(i), yOf(rx[i]));
       }
       ctx.stroke();
       ctx.strokeStyle = colTx;
       ctx.beginPath();
       for (let i = 0; i < n; i++) {
-        const x = xAt(i), y = yTx(series.tx[i] || 0);
-        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        if (i === 0) ctx.moveTo(xAt(i), yOf(tx[i])); else ctx.lineTo(xAt(i), yOf(tx[i]));
       }
       ctx.stroke();
       ctx.globalAlpha = 1;
-      ctx.lineWidth = 1.2;
-      pathLine(series.rx, colRx, false);
-      pathLine(series.tx, colTx, false);
+      strokeLine(rx, colRx);
+      strokeLine(tx, colTx);
+      baseline();
+      return;
     }
-
-    ctx.strokeStyle = "#313244";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(pad.l, pad.t + plotH);
-    ctx.lineTo(pad.l + plotW, pad.t + plotH);
-    ctx.stroke();
+    /* fallback */
+    fillUnder(rx, colRx);
+    fillUnder(tx, colTx);
+    baseline();
   }
 
   /** Host-shaped sample + overrides (up/down/create/destroy in the mock). */
