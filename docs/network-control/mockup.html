@@ -80,6 +80,32 @@
     }
     .iface:hover { background: var(--surface2); }
     .iface.selected { border-color: var(--blue); background: #1a2030; }
+    /* Green = up · Red = down · Greyed row when disabled/down */
+    .iface.is-up .state-dot {
+      background: var(--green);
+      box-shadow: 0 0 0 2px rgba(166, 227, 161, 0.2);
+    }
+    .iface.is-up .ico svg { stroke: var(--green); }
+    .iface.is-up .ico svg circle { fill: var(--green); }
+    .iface.is-down {
+      opacity: 0.5;
+      filter: grayscale(0.35);
+    }
+    .iface.is-down .state-dot { background: var(--red); box-shadow: none; }
+    .iface.is-down .ico svg { stroke: var(--dim); }
+    .iface.is-down .title strong,
+    .iface.is-down .sub { color: var(--dim); }
+    .iface.is-down .badge { opacity: 0.7; }
+    /* Admin up but no carrier — still “on”, not greyed; amber indicator */
+    .iface.is-nolink .state-dot {
+      background: var(--yellow);
+      box-shadow: 0 0 0 2px rgba(249, 226, 175, 0.15);
+    }
+    .iface.is-nolink .ico svg { stroke: var(--yellow); }
+    .iface .state-dot {
+      width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+      margin-top: 5px;
+    }
     .iface .ico {
       width: 22px; height: 22px; flex-shrink: 0;
       display: flex; align-items: center; justify-content: center;
@@ -94,7 +120,6 @@
       padding: 1px 5px; border-radius: 4px; background: var(--surface2); color: var(--blue);
     }
     .badge.def { background: #1e3a2f; color: var(--green); }
-    .badge.down { color: var(--dim); }
     .wifi-row {
       display: flex; align-items: center; gap: 8px; padding: 6px 8px;
       border-radius: 6px; cursor: pointer; font-size: 12px;

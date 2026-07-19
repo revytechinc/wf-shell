@@ -2,55 +2,56 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 520" width="100%" preserveAspectRatio="xMidYMid meet">
   <foreignObject x="0" y="0" width="360" height="520">
     <div xmlns="http://www.w3.org/1999/xhtml" style="position:relative;width:360px;height:520px;box-sizing:border-box;font-family:system-ui,Sans,sans-serif;background:#11111b;color:#cdd6f4;padding:12px;">
-      <div style="font-size:11px;color:#a6adc8;margin-bottom:8px;">FreeBSD popover — no NM · no status strip under title</div>
+      <div style="font-size:11px;color:#a6adc8;margin-bottom:8px;">Status by colour — green up · red down (greyed) · no text badges for up/down</div>
       <div style="background:#1e1e2e;border:1px solid #45475a;border-radius:12px;overflow:hidden;font-size:12px;box-shadow:0 16px 40px rgba(0,0,0,0.45);">
-        <!-- head -->
         <div style="padding:10px 12px;border-bottom:1px solid #313244;display:flex;justify-content:space-between;align-items:center;">
           <span style="font-weight:600;font-size:13px;">Network</span>
           <span style="color:#a6adc8;font-size:12px;">✕</span>
         </div>
-        <!-- interfaces -->
         <div style="padding:8px 12px;border-bottom:1px solid #313244;">
           <div style="font-size:10px;color:#6c7086;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">Interfaces</div>
-          <!-- aq0 selected -->
-          <div style="display:flex;gap:8px;padding:8px;border-radius:8px;border:1px solid #89b4fa;background:#1a2030;margin-bottom:4px;">
-            <div style="width:22px;color:#a6e3a1;font-size:14px;">🖧</div>
+          <!-- aq0 up green -->
+          <div style="display:flex;gap:8px;padding:8px;border-radius:8px;border:1px solid #89b4fa;background:#1a2030;margin-bottom:4px;align-items:flex-start;">
+            <div style="width:8px;height:8px;border-radius:50%;background:#a6e3a1;margin-top:5px;box-shadow:0 0 0 2px rgba(166,227,161,0.25);"></div>
+            <div style="width:18px;height:18px;color:#a6e3a1;font-size:14px;line-height:18px;">◈</div>
             <div style="flex:1;min-width:0;">
               <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-                <strong style="font-size:12px;">aq0</strong>
+                <strong style="font-size:12px;color:#cdd6f4;">aq0</strong>
                 <span style="font-size:9px;padding:1px 5px;border-radius:4px;background:#1e3a2f;color:#a6e3a1;">DEFAULT</span>
                 <span style="font-size:9px;padding:1px 5px;border-radius:4px;background:#313244;color:#89b4fa;">ETHERNET</span>
               </div>
               <div style="font-size:10px;color:#a6adc8;margin-top:2px;line-height:1.25;">
-                99.48.162.238<br/>2600:1700:1c14:4040:b49b:83f6:0:55<br/>10Gbase-T &lt;full-duplex&gt;
+                99.48.162.238<br/>2600:1700:…<br/>10Gbase-T
               </div>
             </div>
           </div>
-          <!-- igb0 -->
-          <div style="display:flex;gap:8px;padding:8px;border-radius:8px;margin-bottom:4px;">
-            <div style="width:22px;color:#89b4fa;font-size:14px;">🖧</div>
+          <!-- igb0 up green -->
+          <div style="display:flex;gap:8px;padding:8px;border-radius:8px;margin-bottom:4px;align-items:flex-start;">
+            <div style="width:8px;height:8px;border-radius:50%;background:#a6e3a1;margin-top:5px;"></div>
+            <div style="width:18px;height:18px;color:#a6e3a1;font-size:14px;line-height:18px;">◈</div>
             <div style="flex:1;">
               <div style="display:flex;gap:6px;align-items:center;">
                 <strong style="font-size:12px;">igb0</strong>
                 <span style="font-size:9px;padding:1px 5px;border-radius:4px;background:#313244;color:#89b4fa;">ETHERNET</span>
               </div>
-              <div style="font-size:10px;color:#a6adc8;margin-top:2px;line-height:1.25;">192.168.1.154<br/>1000baseT</div>
+              <div style="font-size:10px;color:#a6adc8;margin-top:2px;">192.168.1.154</div>
             </div>
           </div>
-          <!-- tap0 -->
-          <div style="display:flex;gap:8px;padding:8px;border-radius:8px;margin-bottom:4px;">
-            <div style="width:22px;color:#a6e3a1;font-size:14px;">⬚</div>
+          <!-- tap0 down red + greyed -->
+          <div style="display:flex;gap:8px;padding:8px;border-radius:8px;margin-bottom:4px;align-items:flex-start;opacity:0.5;filter:grayscale(0.35);">
+            <div style="width:8px;height:8px;border-radius:50%;background:#f38ba8;margin-top:5px;"></div>
+            <div style="width:18px;height:18px;color:#6c7086;font-size:14px;line-height:18px;">⬚</div>
             <div style="flex:1;">
               <div style="display:flex;gap:6px;align-items:center;">
-                <strong style="font-size:12px;">tap0</strong>
-                <span style="font-size:9px;padding:1px 5px;border-radius:4px;background:#313244;color:#89b4fa;">VIRTUAL</span>
+                <strong style="font-size:12px;color:#6c7086;">tap0</strong>
+                <span style="font-size:9px;padding:1px 5px;border-radius:4px;background:#313244;color:#89b4fa;opacity:0.7;">VIRTUAL</span>
               </div>
-              <div style="font-size:10px;color:#a6adc8;margin-top:2px;">1000baseT</div>
             </div>
           </div>
-          <!-- vm-public -->
-          <div style="display:flex;gap:8px;padding:8px;border-radius:8px;">
-            <div style="width:22px;color:#a6e3a1;font-size:14px;">⛓</div>
+          <!-- vm-public up -->
+          <div style="display:flex;gap:8px;padding:8px;border-radius:8px;align-items:flex-start;">
+            <div style="width:8px;height:8px;border-radius:50%;background:#a6e3a1;margin-top:5px;"></div>
+            <div style="width:18px;height:18px;color:#a6e3a1;font-size:14px;line-height:18px;">⛓</div>
             <div style="flex:1;">
               <div style="display:flex;gap:6px;align-items:center;">
                 <strong style="font-size:12px;">vm-public</strong>
@@ -59,13 +60,14 @@
             </div>
           </div>
         </div>
-        <!-- footer FreeBSD admin -->
         <div style="padding:8px 12px;display:flex;justify-content:flex-end;gap:8px;">
           <span style="border:1px solid #45475a;border-radius:6px;padding:6px 10px;font-size:11px;background:#313244;">Create…</span>
           <span style="border:1px solid #45475a;border-radius:6px;padding:6px 10px;font-size:11px;background:#313244;">Configure…</span>
         </div>
       </div>
-      <div style="font-size:10px;color:#6c7086;margin-top:8px;">can_admin · no NetworkManager chrome</div>
+      <div style="font-size:10px;color:#6c7086;margin-top:10px;line-height:1.45;">
+        ● green = up · ● red + greyed = down/disabled · ● amber = no link (still on)
+      </div>
     </div>
   </foreignObject>
 </svg>

@@ -6,11 +6,13 @@
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
         <!-- destroyable clone, currently up -->
         <div style="position:relative;background:#1e1e2e;border:1px solid #45475a;border-radius:12px;padding:8px 0 0;min-height:200px;">
-          <div style="padding:0 10px 6px;font-size:9px;color:#6c7086;text-transform:uppercase;">tap0 · virtual · up</div>
-          <div style="margin:0 10px 8px;padding:8px;border-radius:8px;border:1px solid #89b4fa;background:#1a2030;">
-            <strong style="font-size:12px;">tap0</strong>
-            <span style="font-size:9px;margin-left:4px;padding:1px 5px;border-radius:4px;background:#313244;color:#89b4fa;">VIRTUAL</span>
-            <div style="font-size:10px;color:#a6adc8;margin-top:2px;">Running</div>
+          <div style="padding:0 10px 6px;font-size:9px;color:#6c7086;text-transform:uppercase;">tap0 · up (green)</div>
+          <div style="margin:0 10px 8px;padding:8px;border-radius:8px;border:1px solid #89b4fa;background:#1a2030;display:flex;gap:8px;align-items:center;">
+            <span style="width:8px;height:8px;border-radius:50%;background:#a6e3a1;flex-shrink:0;"></span>
+            <div>
+              <strong style="font-size:12px;color:#cdd6f4;">tap0</strong>
+              <span style="font-size:9px;margin-left:4px;padding:1px 5px;border-radius:4px;background:#313244;color:#89b4fa;">VIRTUAL</span>
+            </div>
           </div>
           <div style="margin:0 10px;min-width:160px;background:#181825;border:1px solid #45475a;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.45);padding:4px;font-size:12px;">
             <div style="padding:8px 10px;border-radius:6px;background:#313244;">Turn off</div>
