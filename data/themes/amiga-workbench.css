@@ -1,36 +1,54 @@
 /* wf-shell-theme: id=amiga-workbench; name=Amiga Workbench; era=retro */
-/* ========================================== */
-/* Amiga Workbench — Wayfire Shell theme */
-/* ========================================== */
+/* ==========================================================================
+ * Amiga Workbench 2/3 inspired theme
+ *
+ * Palette (classic WB):
+ *   Gray fill    #aaaaaa   panel / window body
+ *   Blue title   #0000aa   selected / title bars
+ *   Orange hi    #ee8800   accents (classic Amiga orange)
+ *   Black text   #000000   on light surfaces
+ *   White text   #ffffff   on blue / dark surfaces
+ *   Shadow       #555555   3D bevel dark
+ *   Shine        #ffffff   3D bevel light
+ *
+ * Rules: never dark-blue text on dark-blue fill; icons always get outline
+ * shadows so symbolic glyphs stay readable on gray.
+ * ========================================================================== */
 
-/* ========================================== */
-/* Miami Cyberpunk Theme for Wayfire Shell   */
-/* ========================================== */
+/* ── Shared tokens as comments (GTK CSS has no vars in older stacks) ─────
+ * bg: #aaaaaa  text: #000000  title: #0000aa  accent: #ee8800
+ */
 
-/* Main Panel styling */
+/* ══════════════════════════════════════════════════════════════════════════
+ * Panel bar
+ * ══════════════════════════════════════════════════════════════════════════ */
+
 .wf-panel {
-    background-color: rgba(136, 136, 187, 0.95);
+    background-color: #9999bb;
+    background-image: none;
     color: #000000;
-    border-bottom: 2px solid #ff8800;
-    box-shadow: 0 2px 10px rgba(255, 136, 0, 0.2), 0 4px 20px rgba(0, 85, 170, 0.1);
+    border-bottom: 2px solid #000000;
+    border-top: 1px solid #ffffff;
+    box-shadow: inset 0 1px 0 #ccccdd, 0 2px 0 #555555;
 }
 
-/* Panel widgets */
+/* Labels / chrome on the bar — black on lavender-gray */
 .wf-panel .clock,
 .wf-panel .battery,
 .wf-panel .network,
 .wf-panel .volume,
 .wf-panel .menu,
 .wf-panel .app-button,
-.wf-panel .window-list button {
-    color: #0055aa; /* Electric Cyan */
+.wf-panel .window-list button,
+.wf-panel .tray,
+.wf-panel label {
+    color: #000000;
     font-weight: bold;
-    text-shadow: 0 0 4px rgba(0, 85, 170, 0.5);
+    text-shadow: none;
     border: 1px solid transparent;
-    border-radius: 4px;
-    padding: 2px 8px;
-    margin: 2px;
-    transition: all 0.2s ease;
+    border-radius: 0;
+    padding: 2px 6px;
+    margin: 1px;
 }
 
 .wf-panel .clock:hover,
@@ -40,92 +58,267 @@
 .wf-panel .menu:hover,
 .wf-panel .app-button:hover,
 .wf-panel .window-list button:hover {
-    color: #ff8800; /* Hot Pink */
-    text-shadow: 0 0 6px rgba(255, 136, 0, 0.6);
-    background-color: rgba(255, 136, 0, 0.1);
-    border: 1px solid rgba(255, 136, 0, 0.3);
-    box-shadow: 0 0 8px rgba(255, 136, 0, 0.2);
+    color: #ffffff;
+    background-color: #0000aa;
+    border: 1px solid #000000;
+    border-top-color: #ffffff;
+    border-left-color: #ffffff;
+    border-right-color: #555555;
+    border-bottom-color: #555555;
+    text-shadow: none;
+    box-shadow: none;
 }
 
 .wf-panel .volume.selected,
 .wf-panel .network.selected,
 .wf-panel .menu.selected,
 .wf-panel .window-list button.active {
-    color: #ff8800;
-    text-shadow: 0 0 8px rgba(255, 136, 0, 0.8);
-    background-color: rgba(255, 136, 0, 0.15);
-    border: 1px solid #ff8800;
-    box-shadow: 0 0 10px rgba(255, 136, 0, 0.3);
+    color: #ffffff;
+    background-color: #0000aa;
+    border: 1px solid #000000;
+    border-top-color: #555555;
+    border-left-color: #555555;
+    border-right-color: #ffffff;
+    border-bottom-color: #ffffff;
+    text-shadow: none;
+    box-shadow: none;
 }
 
-/* Launchers widget styling */
-.wf-panel .launcher-button {
-    margin: 0 4px;
-    transition: transform 0.2s ease;
-}
-.wf-panel .launcher-button:hover {
-    transform: scale(1.15) translateY(-2px);
+/* Window-list active — classic selected gadget */
+.wf-panel .window-button.activated {
+    background-color: #0000aa;
+    color: #ffffff;
 }
 
-/* ========================================== */
-/* Popover Windows & Dropdowns                */
-/* ========================================== */
-
-.popover > contents {
-    background-color: rgba(0, 85, 170, 0.98);
-    border: 2px solid #ff8800;
-    border-radius: 12px;
-    padding: 12px;
-    box-shadow: 0 0 20px rgba(255, 136, 0, 0.45), 0 0 8px rgba(0, 85, 170, 0.25);
+.wf-panel .window-button:hover {
+    background-color: #ccccdd;
     color: #000000;
 }
 
-/* General Popover Button Styling */
+/* ══════════════════════════════════════════════════════════════════════════
+ * Icons — outline so dark glyphs never vanish into the bar
+ * (volume / network / battery / menu / launchers / tray)
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+/*
+ * Symbolic icons use `color` + -gtk-icon-shadow.
+ * Full-color launchers use filter drop-shadow for a similar halo.
+ */
+.wf-panel .widget-icon,
+.wf-panel .volume image,
+.wf-panel .network image,
+.wf-panel .battery image,
+.wf-panel .menu image,
+.wf-panel .tray-button image,
+.wf-panel .clock image,
+.wf-panel image.widget-icon {
+    color: #000000;
+    -gtk-icon-shadow:
+        0  1px 0 #ffffff,
+        0 -1px 0 #ffffff,
+         1px  0 0 #ffffff,
+        -1px  0 0 #ffffff,
+         1px  1px 0 #ffffff,
+        -1px -1px 0 #ffffff,
+         1px -1px 0 #ffffff,
+        -1px  1px 0 #ffffff,
+         1px  1px 1px rgba(0, 0, 0, 0.55);
+}
+
+/* Selected / hover gadgets: invert to white icon with dark outline */
+.wf-panel .volume.selected image,
+.wf-panel .network.selected image,
+.wf-panel .menu.selected image,
+.wf-panel .volume:hover image,
+.wf-panel .network:hover image,
+.wf-panel .menu:hover image,
+.wf-panel .battery:hover image {
+    color: #ffffff;
+    -gtk-icon-shadow:
+        0  1px 0 #000000,
+        0 -1px 0 #000000,
+         1px  0 0 #000000,
+        -1px  0 0 #000000,
+         1px  1px 0 #000000,
+        -1px -1px 0 #000000,
+         1px -1px 0 #000000,
+        -1px  1px 0 #000000;
+}
+
+/* Network quality tints stay readable (dark enough on gray bar) */
+.wf-panel .network.excellent image { color: #006600; }
+.wf-panel .network.good image      { color: #0000aa; }
+.wf-panel .network.medium image    { color: #886600; }
+.wf-panel .network.weak image      { color: #aa4400; }
+.wf-panel .network.none image      { color: #444444; }
+.wf-panel .network.wifi.weak image { color: #aa4400; }
+.wf-panel .network.wifi.excellent image { color: #006600; }
+
+/* Full-color app launchers — halo so dark icons don’t vanish on #9999bb */
+.wf-panel image.launcher,
+.wf-panel .launcher image,
+.wf-panel .launchers image {
+    filter:
+        drop-shadow(0 0 0.6px #ffffff)
+        drop-shadow(0 0 0.6px #ffffff)
+        drop-shadow(1px 1px 0 rgba(0, 0, 0, 0.65));
+}
+
+/*
+ * Icon “well” — light inset plate behind tray gadgets so you can see icon
+ * bounds (volume was disappearing into the bar color).
+ */
+.wf-panel .volume,
+.wf-panel .network,
+.wf-panel .battery,
+.wf-panel .menu,
+.wf-panel .tray-button {
+    background-color: #b8b8cc;
+    border: 1px solid #555555;
+    border-top-color: #ffffff;
+    border-left-color: #ffffff;
+    border-right-color: #666688;
+    border-bottom-color: #666688;
+    padding: 2px 6px;
+    margin: 1px 2px;
+}
+
+.wf-panel .volume:hover,
+.wf-panel .network:hover,
+.wf-panel .battery:hover,
+.wf-panel .menu:hover,
+.wf-panel .tray-button:hover {
+    background-color: #0000aa;
+}
+
+.wf-panel .launcher-button,
+.wf-panel .launcher {
+    margin: 0 3px;
+    padding: 2px;
+    border: 1px solid transparent;
+    background: #b8b8cc;
+}
+
+.wf-panel .launcher-button:hover,
+.wf-panel .launcher:hover {
+    background-color: #ccccdd;
+    border-top-color: #ffffff;
+    border-left-color: #ffffff;
+    border-right-color: #555555;
+    border-bottom-color: #555555;
+}
+
+/* Battery overlay % — keep reverse outline from default.css readable */
+.wf-panel .battery overlay label {
+    color: #000000;
+    text-shadow:
+         1px  1px 0 #ffffff,
+        -1px -1px 0 #ffffff,
+        -1px  1px 0 #ffffff,
+         1px -1px 0 #ffffff,
+         0     1px 0 #ffffff,
+         0    -1px 0 #ffffff,
+        -1px   0   0 #ffffff,
+         1px   0   0 #ffffff;
+    font-weight: bold;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * Popovers / menus — light gray body, black text (readable)
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+popover > contents,
+popovercontents,
+.popover > contents,
+popovermenu contents,
+popovermenu > contents {
+    background-color: #aaaaaa;
+    background-image: none;
+    border: 2px solid #000000;
+    border-top-color: #ffffff;
+    border-left-color: #ffffff;
+    border-right-color: #555555;
+    border-bottom-color: #555555;
+    border-radius: 0;
+    padding: 8px;
+    box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.35);
+    color: #000000;
+}
+
+.popover label,
+popover label,
+popovermenu label {
+    color: #000000;
+}
+
+/* Buttons: raised gray gadgets, black label */
 .popover button,
 .network-control-center button,
 window button {
     background-image: none;
-    background-color: rgba(0, 85, 170, 0.05);
-    background: rgba(0, 85, 170, 0.05);
-    border: 1px solid rgba(0, 85, 170, 0.2);
-    color: #0055aa;
-    border-radius: 6px;
+    background-color: #aaaaaa;
+    background: #aaaaaa;
+    border: 2px solid #000000;
+    border-top-color: #ffffff;
+    border-left-color: #ffffff;
+    border-right-color: #555555;
+    border-bottom-color: #555555;
+    color: #000000;
+    border-radius: 0;
     padding: 4px 10px;
     font-weight: bold;
-    text-shadow: 0 0 3px rgba(0, 85, 170, 0.3);
-    transition: all 0.2s ease;
+    text-shadow: none;
+    box-shadow: none;
 }
 
 .popover button:hover,
 .network-control-center button:hover,
 window button:hover {
     background-image: none;
-    background-color: rgba(255, 136, 0, 0.15);
-    background: rgba(255, 136, 0, 0.15);
-    border-color: #ff8800;
-    color: #ff8800;
-    text-shadow: 0 0 5px rgba(255, 136, 0, 0.5);
-    box-shadow: 0 0 8px rgba(255, 136, 0, 0.3);
+    background-color: #bbbbbb;
+    background: #bbbbbb;
+    border-color: #000000;
+    border-top-color: #ffffff;
+    border-left-color: #ffffff;
+    border-right-color: #555555;
+    border-bottom-color: #555555;
+    color: #000000;
+    text-shadow: none;
+    box-shadow: none;
 }
 
+.popover button:active,
+.network-control-center button:active,
+window button:active {
+    background-color: #888888;
+    border-top-color: #555555;
+    border-left-color: #555555;
+    border-right-color: #ffffff;
+    border-bottom-color: #ffffff;
+    color: #000000;
+}
+
+/* Destructive = orange edge, still black text on gray */
 .popover button.destructive-action,
 .network-control-center button.destructive-action {
     background-image: none;
-    background-color: rgba(255, 136, 0, 0.08);
-    background: rgba(255, 136, 0, 0.08);
-    border-color: rgba(255, 136, 0, 0.3);
-    color: #ff8800;
+    background-color: #aaaaaa;
+    background: #aaaaaa;
+    border-color: #ee8800;
+    border-top-color: #ffcc88;
+    border-left-color: #ffcc88;
+    color: #000000;
 }
 
 .popover button.destructive-action:hover,
 .network-control-center button.destructive-action:hover {
     background-image: none;
-    background-color: rgba(255, 0, 0, 0.15);
-    background: rgba(255, 0, 0, 0.15);
-    border-color: #ff0000;
-    color: #ff0000;
-    text-shadow: 0 0 5px rgba(255, 0, 0, 0.5);
-    box-shadow: 0 0 8px rgba(255, 0, 0, 0.3);
+    background-color: #ee8800;
+    background: #ee8800;
+    border-color: #000000;
+    color: #000000;
+    text-shadow: none;
+    box-shadow: none;
 }
 
 .popover button.flat,
@@ -133,144 +326,64 @@ window button:hover {
     background-image: none;
     background-color: transparent;
     background: transparent;
-    border-color: transparent;
-    color: #0055aa;
+    border: 1px solid transparent;
+    color: #000000;
     box-shadow: none;
 }
 
 .popover button.flat:hover,
 .network-control-center button.flat:hover {
-    color: #ff8800;
-    background-color: rgba(255, 136, 0, 0.1);
-    background: rgba(255, 136, 0, 0.1);
+    color: #ffffff;
+    background-color: #0000aa;
+    background: #0000aa;
+    border-color: #000000;
     box-shadow: none;
 }
 
+/* Flat button icons inside popovers */
+.popover button image,
+.network-control-center button image,
+.popover .widget-icon {
+    color: #000000;
+    -gtk-icon-shadow:
+         1px  1px 0 #ffffff,
+        -1px -1px 0 #ffffff,
+         1px -1px 0 #ffffff,
+        -1px  1px 0 #ffffff;
+}
+
+.popover button.flat:hover image,
+.network-control-center button.flat:hover image {
+    color: #ffffff;
+    -gtk-icon-shadow:
+         1px  1px 0 #000000,
+        -1px -1px 0 #000000;
+}
+
+/* Combos — light field, black text */
 .popover combobox,
 .network-control-center combobox,
-.network-control-center combobox button {
-    background-image: none;
-    background-color: #aaaaaa;
-    background: #aaaaaa;
-    border: 1px solid rgba(0, 85, 170, 0.25);
-    border-radius: 8px;
-    color: #0055aa;
-    text-shadow: 0 0 4px rgba(0, 85, 170, 0.4);
-}
-
-.volume-popover-title,
-.network-popover-title {
-    font-size: 1.25em;
-    font-weight: 900;
-    color: #0055aa;
-    text-shadow: 0 0 6px rgba(0, 85, 170, 0.6);
-    letter-spacing: 0.05em;
-}
-
-.volume-popover-section-title {
-    font-size: 0.78em;
-    font-weight: 800;
-    color: #ff8800;
-    text-shadow: 0 0 4px rgba(255, 136, 0, 0.4);
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-}
-
-/* Mute button customization */
-.volume-popover-mute-btn {
-    border-radius: 8px;
-    padding: 6px;
-    background-image: none;
-    background-color: rgba(0, 85, 170, 0.05);
-    background: rgba(0, 85, 170, 0.05);
-    border: 1px solid rgba(0, 85, 170, 0.2);
-    color: #0055aa;
-    transition: all 0.2s ease;
-}
-
-.volume-popover-mute-btn:hover {
-    background-image: none;
-    background-color: rgba(255, 136, 0, 0.15);
-    background: rgba(255, 136, 0, 0.15);
-    border-color: #ff8800;
-    color: #ff8800;
-    transform: scale(1.08);
-    box-shadow: 0 0 8px rgba(255, 136, 0, 0.3);
-}
-
-.volume-popover-pct {
-    font-size: 0.95em;
-    font-weight: bold;
-    color: #0055aa;
-    text-shadow: 0 0 4px rgba(0, 85, 170, 0.5);
-}
-
-/* Volume and brightness sliders (scales) */
-.volume-popover-scale trough {
-    background-color: #cccccc;
-    min-height: 8px;
-    border-radius: 4px;
-    border: 1px solid rgba(0, 85, 170, 0.1);
-}
-
-.volume-popover-scale highlight {
-    border-radius: 4px;
-    background-color: #ff8800; /* Hot Pink */
-    box-shadow: 0 0 6px rgba(255, 136, 0, 0.5);
-}
-
-/* Make input slider use electric cyan */
-.volume-popover-section:nth-child(5) .volume-popover-scale highlight {
-    background-color: #0055aa; /* Electric Cyan */
-    box-shadow: 0 0 6px rgba(0, 85, 170, 0.5);
-}
-
-.volume-popover-scale slider {
-    background-color: #02010a;
-    border: 2px solid #0055aa;
-    border-radius: 50%;
-    min-width: 16px;
-    min-height: 16px;
-    margin: -4px;
-    box-shadow: 0 0 6px rgba(0, 85, 170, 0.8);
-    transition: transform 0.15s ease, background-color 0.15s ease;
-}
-
-.volume-popover-section:nth-child(5) .volume-popover-scale slider {
-    border-color: #ff8800;
-    box-shadow: 0 0 6px rgba(255, 136, 0, 0.8);
-}
-
-.volume-popover-scale slider:hover {
-    transform: scale(1.3);
-    background-color: #0055aa;
-}
-
-.volume-popover-section:nth-child(5) .volume-popover-scale slider:hover {
-    background-color: #ff8800;
-}
-
-/* Dropdowns / Comboboxes */
+.network-control-center combobox button,
 .volume-popover-combo,
 .volume-popover-device-combo,
 combobox,
 combobox button,
 combobox > box > button,
-combobox > box > button > box,
 dropdown,
-dropdown button,
-dropdown > button {
+dropdown button {
     background-image: none;
-    background-color: #aaaaaa;
-    background: #aaaaaa;
-    border: 1px solid rgba(0, 85, 170, 0.25);
-    border-radius: 8px;
-    padding: 6px 12px;
-    color: #0055aa;
-    text-shadow: 0 0 4px rgba(0, 85, 170, 0.4);
-    font-size: 0.95em;
+    background-color: #ffffff;
+    background: #ffffff;
+    border: 2px solid #000000;
+    border-top-color: #555555;
+    border-left-color: #555555;
+    border-right-color: #ffffff;
+    border-bottom-color: #ffffff;
+    border-radius: 0;
+    color: #000000;
+    text-shadow: none;
+    font-weight: bold;
     box-shadow: none;
-    transition: all 0.2s ease;
 }
 
 .volume-popover-combo:hover,
@@ -278,110 +391,336 @@ dropdown > button {
 combobox button:hover,
 dropdown button:hover {
     background-image: none;
-    background-color: rgba(0, 85, 170, 0.08);
-    background: rgba(0, 85, 170, 0.08);
-    border-color: #0055aa;
-    box-shadow: 0 0 8px rgba(0, 85, 170, 0.2);
+    background-color: #eeeeee;
+    background: #eeeeee;
+    border-color: #0000aa;
+    box-shadow: none;
+    color: #000000;
 }
 
 combobox cellview,
 combobox label,
 dropdown label,
 dropdown cellview {
-    color: #0055aa;
-    text-shadow: 0 0 4px rgba(0, 85, 170, 0.4);
+    color: #000000;
+    text-shadow: none;
 }
 
-/* Drawing Area level meters */
+/* List rows in dropdowns / menus */
+popover listbox row,
+popover listview row,
+popover row,
+.popover listbox row,
+popovermenu modelbutton,
+popover modelbutton {
+    background-color: transparent;
+    color: #000000;
+    font-weight: bold;
+    padding: 5px 10px;
+    margin: 1px 0;
+    border-radius: 0;
+    text-shadow: none;
+}
+
+popover listbox row:hover,
+popover listview row:hover,
+popover row:hover,
+.popover listbox row:hover,
+popovermenu modelbutton:hover,
+popover modelbutton:hover {
+    background-color: #0000aa;
+    color: #ffffff;
+    text-shadow: none;
+}
+
+popover listbox row:selected,
+popover listview row:selected,
+popover row:selected,
+.popover listbox row:selected,
+popovermenu modelbutton:selected,
+popover modelbutton:selected {
+    background-color: #0000aa;
+    color: #ffffff;
+    text-shadow: none;
+}
+
+popover listview,
+popover listbox,
+popover list,
+.popover listbox {
+    background-color: transparent;
+    background: transparent;
+    border: none;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * Volume popover
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+.volume-popover-root {
+    background-color: #aaaaaa;
+    color: #000000;
+}
+
+.volume-popover-title {
+    font-size: 1.15em;
+    font-weight: 900;
+    color: #ffffff;
+    background-color: #0000aa;
+    padding: 4px 8px;
+    border: 1px solid #000000;
+    text-shadow: none;
+    letter-spacing: 0.02em;
+}
+
+.volume-popover-section-title {
+    font-size: 0.78em;
+    font-weight: 800;
+    color: #000000;
+    text-shadow: none;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.volume-popover-section {
+    background-color: #bbbbbb;
+    border: 1px solid #555555;
+    border-top-color: #ffffff;
+    border-left-color: #ffffff;
+    padding: 6px;
+    margin: 4px 0;
+}
+
+.volume-popover-mute-btn {
+    border-radius: 0;
+    padding: 6px;
+    background-image: none;
+    background-color: #aaaaaa;
+    background: #aaaaaa;
+    border: 2px solid #000000;
+    border-top-color: #ffffff;
+    border-left-color: #ffffff;
+    border-right-color: #555555;
+    border-bottom-color: #555555;
+    color: #000000;
+}
+
+.volume-popover-mute-btn image {
+    color: #000000;
+    -gtk-icon-shadow:
+         1px  1px 0 #ffffff,
+        -1px -1px 0 #ffffff;
+}
+
+.volume-popover-mute-btn:hover {
+    background-image: none;
+    background-color: #0000aa;
+    background: #0000aa;
+    border-color: #000000;
+    color: #ffffff;
+    transform: none;
+    box-shadow: none;
+}
+
+.volume-popover-mute-btn:hover image {
+    color: #ffffff;
+    -gtk-icon-shadow:
+         1px  1px 0 #000000,
+        -1px -1px 0 #000000;
+}
+
+.volume-popover-pct {
+    font-size: 0.95em;
+    font-weight: bold;
+    color: #000000;
+    text-shadow: none;
+}
+
+.volume-popover-scale trough {
+    background-color: #ffffff;
+    min-height: 8px;
+    border-radius: 0;
+    border: 1px solid #555555;
+}
+
+.volume-popover-scale highlight {
+    border-radius: 0;
+    background-color: #0000aa;
+    box-shadow: none;
+}
+
+.volume-popover-section:nth-child(5) .volume-popover-scale highlight {
+    background-color: #ee8800;
+    box-shadow: none;
+}
+
+.volume-popover-scale slider {
+    background-color: #aaaaaa;
+    border: 2px solid #000000;
+    border-top-color: #ffffff;
+    border-left-color: #ffffff;
+    border-right-color: #555555;
+    border-bottom-color: #555555;
+    border-radius: 0;
+    min-width: 14px;
+    min-height: 14px;
+    margin: -4px;
+    box-shadow: none;
+}
+
+.volume-popover-section:nth-child(5) .volume-popover-scale slider {
+    border-color: #000000;
+    border-top-color: #ffffff;
+    border-left-color: #ffffff;
+    box-shadow: none;
+}
+
+.volume-popover-scale slider:hover {
+    transform: none;
+    background-color: #cccccc;
+}
+
+.volume-popover-section:nth-child(5) .volume-popover-scale slider:hover {
+    background-color: #ffcc88;
+}
+
 .volume-popover-meter {
-    border-radius: 8px;
-    border: 1px solid rgba(255, 136, 0, 0.25);
+    border-radius: 0;
+    border: 2px solid #000000;
+    border-top-color: #555555;
+    border-left-color: #555555;
+    border-right-color: #ffffff;
+    border-bottom-color: #ffffff;
     margin: 6px 0;
-    background-color: #07050e;
+    background-color: #000022;
 }
 
-/* Footer & Advanced Button */
 .volume-popover-adv-btn {
-    border-radius: 6px;
+    border-radius: 0;
     padding: 5px 14px;
-    color: #ff8800;
-    text-shadow: 0 0 4px rgba(255, 136, 0, 0.4);
-    background-color: rgba(255, 136, 0, 0.05);
-    border: 1px solid rgba(255, 136, 0, 0.25);
+    color: #000000;
+    text-shadow: none;
+    background-color: #aaaaaa;
+    border: 2px solid #000000;
+    border-top-color: #ffffff;
+    border-left-color: #ffffff;
+    border-right-color: #555555;
+    border-bottom-color: #555555;
     font-weight: bold;
     font-size: 0.85em;
-    transition: all 0.2s ease;
 }
 
 .volume-popover-adv-btn:hover {
-    background-color: rgba(255, 136, 0, 0.15);
-    border-color: #ff8800;
-    box-shadow: 0 0 8px rgba(255, 136, 0, 0.3);
-    transform: translateY(-1px);
+    background-color: #0000aa;
+    border-color: #000000;
+    color: #ffffff;
+    box-shadow: none;
+    transform: none;
 }
 
-/* ========================================== */
-/* Network Popover & Wireless Settings        */
-/* ========================================== */
+.dim-label {
+    color: #333333;
+    opacity: 1.0;
+}
+
+/* Virtual OSS strip — keep labels black on gray */
+.volume-popover-voss-section,
+.volume-popover-voss-title,
+.volume-popover-voss-lbl,
+.volume-popover-voss-fmt {
+    color: #000000;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * Network popover / FreeBSD iface rows
+ * ══════════════════════════════════════════════════════════════════════════ */
 
 .network-global-toggles {
     padding: 8px 12px;
     margin-bottom: 10px;
-    background-color: #aaaaaa;
-    border-radius: 8px;
-    border: 1px solid rgba(0, 85, 170, 0.25);
+    background-color: #bbbbbb;
+    border-radius: 0;
+    border: 1px solid #555555;
+    border-top-color: #ffffff;
+    border-left-color: #ffffff;
 }
 
 .network-toggle-button {
     margin-right: 14px;
-    color: #0055aa;
-    text-shadow: 0 0 4px rgba(0, 85, 170, 0.4);
+    color: #000000;
+    text-shadow: none;
     font-weight: bold;
     font-size: 0.9em;
 }
 
 .network-toggle-button check {
-    border-radius: 4px;
-    border-color: #0055aa;
-    background-color: #07050e;
+    border-radius: 0;
+    border-color: #000000;
+    background-color: #ffffff;
 }
 
 .network-toggle-button check:checked {
-    background-color: #ff8800;
-    border-color: #ff8800;
-    box-shadow: 0 0 6px rgba(255, 136, 0, 0.6);
+    background-color: #0000aa;
+    border-color: #000000;
+    box-shadow: none;
 }
 
-/* Device section blocks */
-.network-control-center .device {
-    margin-bottom: 10px;
-    background-color: #aaaaaa;
-    border-radius: 8px;
-    border: 1px solid rgba(255, 136, 0, 0.2);
-    padding: 10px;
+.network-control-center .device,
+.network-control-center .freebsd-iface {
+    margin-bottom: 8px;
+    background-color: #bbbbbb;
+    border-radius: 0;
+    border: 1px solid #555555;
+    border-top-color: #ffffff;
+    border-left-color: #ffffff;
+    padding: 8px;
+}
+
+.network-control-center .freebsd-iface:hover {
+    background-color: #cccccc;
 }
 
 .network-control-center .device-label {
     font-weight: bold;
-    color: #ff8800;
-    text-shadow: 0 0 4px rgba(255, 136, 0, 0.4);
+    color: #000000;
+    text-shadow: none;
     font-size: 1em;
 }
 
-/* Access Point Items */
+.network-control-center .freebsd-iface .sub,
+.network-control-center .freebsd-iface .speed {
+    color: #222222;
+}
+
+.network-control-center .freebsd-iface.is-down {
+    opacity: 0.85;
+}
+
+.network-control-center .freebsd-iface.is-up .state-dot {
+    background-color: #00aa00;
+}
+
+.network-control-center .freebsd-iface.is-down .state-dot {
+    background-color: #aa0000;
+}
+
 .network-control-center .access-point {
-    padding: 8px 10px;
-    margin: 3px 0;
-    border-radius: 6px;
+    padding: 6px 8px;
+    margin: 2px 0;
+    border-radius: 0;
     background-color: transparent;
     border: 1px solid transparent;
-    transition: all 0.2s ease;
 }
 
 .network-control-center .access-point:hover {
-    background-color: rgba(0, 85, 170, 0.08);
-    border-color: rgba(0, 85, 170, 0.3);
-    box-shadow: 0 0 6px rgba(0, 85, 170, 0.15);
+    background-color: #0000aa;
+    border-color: #000000;
+    box-shadow: none;
+}
+
+.network-control-center .access-point:hover label,
+.network-control-center .access-point:hover .band {
+    color: #ffffff;
 }
 
 .network-control-center .access-point label {
@@ -390,60 +729,78 @@ dropdown cellview {
 }
 
 .network-control-center .access-point .band {
-    color: #0055aa;
-    opacity: 0.8;
+    color: #333333;
+    opacity: 1.0;
     font-size: 0.85em;
 }
 
-/* Connected / Active Network Item */
 .network-control-center .access-point.connected,
 .network-control-center .access-point.active {
     font-weight: bold;
-    background-color: rgba(255, 136, 0, 0.12);
-    border: 1px solid rgba(255, 136, 0, 0.3);
-    border-left: 4px solid #ff8800;
+    background-color: #0000aa;
+    border: 1px solid #000000;
+    border-left: 4px solid #ee8800;
     padding-left: 8px;
 }
 
-.network-control-center .access-point.connected label {
-    color: #ff8800;
-    text-shadow: 0 0 4px rgba(255, 136, 0, 0.4);
-}
-
+.network-control-center .access-point.connected label,
 .network-control-center .access-point.connected .ap-connected-badge {
-    color: #ff8800;
-    font-weight: bold;
-    font-size: 0.85em;
+    color: #ffffff;
+    text-shadow: none;
 }
 
-/* VPN items */
+.network-control-center .access-point.saved .ap-saved-badge {
+    color: #000000;
+    background-color: #ee8800;
+    padding: 0 4px;
+    font-weight: bold;
+    font-size: 0.8em;
+}
+
+.network-control-center image.access-point {
+    color: #000000;
+    -gtk-icon-shadow:
+         1px  1px 0 #ffffff,
+        -1px -1px 0 #ffffff;
+}
+
+.network-control-center .access-point:hover image.access-point,
+.network-control-center .access-point.connected image.access-point {
+    color: #ffffff;
+    -gtk-icon-shadow:
+         1px  1px 0 #000000,
+        -1px -1px 0 #000000;
+}
+
 .network-control-center .vpn {
     padding: 8px 12px;
     margin: 4px 0;
-    border-radius: 6px;
-    background-color: #aaaaaa;
-    border: 1px solid rgba(0, 85, 170, 0.2);
-    transition: all 0.2s ease;
+    border-radius: 0;
+    background-color: #bbbbbb;
+    border: 1px solid #555555;
 }
 
 .network-control-center .vpn:hover {
-    background-color: rgba(0, 85, 170, 0.08);
-    border-color: rgba(0, 85, 170, 0.4);
+    background-color: #0000aa;
+    border-color: #000000;
+}
+
+.network-control-center .vpn:hover label {
+    color: #ffffff;
 }
 
 .network-control-center .vpn.active {
     font-weight: bold;
-    background-color: rgba(255, 136, 0, 0.12);
-    border: 1px solid rgba(255, 136, 0, 0.3);
-    border-left: 4px solid #ff8800;
+    background-color: #0000aa;
+    border: 1px solid #000000;
+    border-left: 4px solid #ee8800;
 }
 
 .network-control-center .vpn.active label {
-    color: #ff8800;
-    text-shadow: 0 0 4px rgba(255, 136, 0, 0.4);
+    color: #ffffff;
+    text-shadow: none;
 }
 
-/* Scrolled window customization */
 .network-control-center scrolledwindow,
 .network-control-center scrolledwindow viewport {
     background: transparent;
@@ -452,15 +809,16 @@ dropdown cellview {
     box-shadow: none;
 }
 
-/* ========================================== */
-/* Standalone Dialogs & Modals                */
-/* ========================================== */
+/* ══════════════════════════════════════════════════════════════════════════
+ * Dialogs / windows
+ * ══════════════════════════════════════════════════════════════════════════ */
 
 window {
-    background-color: #0c0a17;
+    background-color: #aaaaaa;
     color: #000000;
 }
 
+/* Title bar — classic blue with WHITE text (high contrast) */
 headerbar,
 headerbar:backdrop,
 window headerbar,
@@ -476,11 +834,11 @@ window.modal headerbar:backdrop,
 window .titlebar,
 window .titlebar:backdrop {
     background-image: none;
-    background-color: #aaaaaa;
-    background: #aaaaaa;
-    color: #0055aa;
-    border-bottom: 2px solid #ff8800;
-    box-shadow: 0 0 10px rgba(255, 136, 0, 0.3);
+    background-color: #0000aa;
+    background: #0000aa;
+    color: #ffffff;
+    border-bottom: 2px solid #000000;
+    box-shadow: none;
 }
 
 headerbar label,
@@ -495,61 +853,76 @@ window.dialog headerbar label,
 window.dialog headerbar .title,
 window.popup headerbar label,
 window.popup headerbar .title {
-    color: #0055aa;
+    color: #ffffff;
     font-weight: bold;
-    text-shadow: 0 0 5px rgba(0, 85, 170, 0.6);
+    text-shadow: none;
 }
 
-/* Style wifi join dialog / window */
+headerbar button,
+headerbar button image {
+    color: #ffffff;
+    -gtk-icon-shadow:
+         1px  1px 0 #000000,
+        -1px -1px 0 #000000;
+}
+
 window .wifi-password-entry {
-    background-color: #cccccc;
-    border: 1px solid rgba(0, 85, 170, 0.3);
-    border-radius: 6px;
-    color: #0055aa;
+    background-color: #ffffff;
+    border: 2px solid #000000;
+    border-top-color: #555555;
+    border-left-color: #555555;
+    border-radius: 0;
+    color: #000000;
     padding: 6px;
 }
 
 window .wifi-password-entry:focus {
-    border-color: #ff8800;
-    box-shadow: 0 0 6px rgba(255, 136, 0, 0.4);
+    border-color: #0000aa;
+    box-shadow: none;
 }
 
 window button.suggested-action {
     background-image: none;
-    background-color: rgba(255, 136, 0, 0.15);
-    background: rgba(255, 136, 0, 0.15);
-    color: #ff8800;
-    border: 1px solid #ff8800;
+    background-color: #0000aa;
+    background: #0000aa;
+    color: #ffffff;
+    border: 2px solid #000000;
+    border-top-color: #5555cc;
+    border-left-color: #5555cc;
     font-weight: bold;
-    box-shadow: 0 0 8px rgba(255, 136, 0, 0.3);
-    transition: all 0.2s ease;
+    box-shadow: none;
 }
 
 window button.suggested-action:hover {
     background-image: none;
-    background-color: rgba(255, 136, 0, 0.25);
-    background: rgba(255, 136, 0, 0.25);
-    box-shadow: 0 0 12px rgba(255, 136, 0, 0.5);
+    background-color: #2222cc;
+    background: #2222cc;
+    box-shadow: none;
 }
 
 window button:not(.suggested-action) {
     background-image: none;
-    background-color: rgba(0, 85, 170, 0.05);
-    background: rgba(0, 85, 170, 0.05);
-    color: #0055aa;
-    border: 1px solid rgba(0, 85, 170, 0.3);
-    transition: all 0.2s ease;
+    background-color: #aaaaaa;
+    background: #aaaaaa;
+    color: #000000;
+    border: 2px solid #000000;
+    border-top-color: #ffffff;
+    border-left-color: #ffffff;
+    border-right-color: #555555;
+    border-bottom-color: #555555;
 }
 
 window button:not(.suggested-action):hover {
     background-image: none;
-    background-color: rgba(0, 85, 170, 0.15);
-    background: rgba(0, 85, 170, 0.15);
-    border-color: #0055aa;
-    box-shadow: 0 0 8px rgba(0, 85, 170, 0.3);
+    background-color: #bbbbbb;
+    background: #bbbbbb;
+    border-color: #000000;
+    border-top-color: #ffffff;
+    border-left-color: #ffffff;
+    box-shadow: none;
+    color: #000000;
 }
 
-/* Grid / properties styling inside details */
 window grid label {
     color: #000000;
     font-size: 0.95em;
@@ -557,125 +930,29 @@ window grid label {
 }
 
 window grid label:first-child {
-    color: #ff8800;
+    color: #000000;
     font-weight: bold;
-    text-shadow: 0 0 4px rgba(255, 136, 0, 0.4);
+    text-shadow: none;
 }
 
 window grid label:nth-child(even) {
-    color: #0055aa;
-    text-shadow: 0 0 3px rgba(0, 85, 170, 0.3);
-}
-
-/* ========================================== */
-/* Dropdown Menus, Context Menus & Lists      */
-/* ========================================== */
-
-/* Style Gtk::Popover contents globally (covers combobox dropdown lists, context menus) */
-popover > contents,
-popovercontents,
-.popover > contents,
-popovermenu contents,
-popovermenu > contents {
-    background-color: rgba(0, 85, 170, 0.98);
-    border: 2px solid #ff8800;
-    border-radius: 12px;
-    padding: 10px;
-    box-shadow: 0 0 20px rgba(255, 136, 0, 0.45), 0 0 8px rgba(0, 85, 170, 0.25);
     color: #000000;
+    text-shadow: none;
 }
 
-/* Style popover list boxes and list views */
-popover listview,
-popover listbox,
-popover list,
-.popover listbox {
-    background-color: transparent;
-    background: transparent;
-    border: none;
-}
-
-/* Style individual selectable list rows inside popovers */
-popover listbox row,
-popover listview row,
-popover row,
-.popover listbox row {
-    background-color: transparent;
-    color: #0055aa;
-    font-weight: bold;
-    padding: 6px 12px;
-    margin: 2px 0;
-    border-radius: 6px;
-    transition: all 0.2s ease;
-}
-
-popover listbox row:hover,
-popover listview row:hover,
-popover row:hover,
-.popover listbox row:hover {
-    background-color: rgba(255, 136, 0, 0.15);
-    color: #ff8800;
-    text-shadow: 0 0 4px rgba(255, 136, 0, 0.5);
-}
-
-popover listbox row:selected,
-popover listview row:selected,
-popover row:selected,
-.popover listbox row:selected {
-    background-color: rgba(255, 136, 0, 0.25);
-    color: #ff8800;
-    text-shadow: 0 0 5px rgba(255, 136, 0, 0.6);
-}
-
-/* Style popover menu items (Model buttons in right-click popovers) */
-popovermenu modelbutton,
-popover modelbutton {
-    color: #0055aa;
-    font-weight: bold;
-    padding: 6px 12px;
-    margin: 2px 0;
-    border-radius: 6px;
-    text-shadow: 0 0 3px rgba(0, 85, 170, 0.3);
-    transition: all 0.2s ease;
-}
-
-popovermenu modelbutton:hover,
-popovermenu modelbutton:selected,
-popover modelbutton:hover,
-popover modelbutton:selected {
-    background-color: rgba(255, 136, 0, 0.15);
-    color: #ff8800;
-    text-shadow: 0 0 5px rgba(255, 136, 0, 0.5);
-}
-
-/* ComboBox inputs */
-combobox,
-combobox button {
-    background-color: #aaaaaa;
-    border: 1px solid rgba(0, 85, 170, 0.25);
-    border-radius: 8px;
-    color: #0055aa;
-    text-shadow: 0 0 4px rgba(0, 85, 170, 0.4);
-    font-weight: bold;
-    padding: 4px 8px;
-    transition: all 0.2s ease;
-}
-
-combobox button:hover {
-    background-color: rgba(0, 85, 170, 0.08);
-    border-color: #0055aa;
-    box-shadow: 0 0 8px rgba(0, 85, 170, 0.2);
-}
-
-/* General inputs / text fields inside popovers and windows */
+/* Entries */
 entry,
 entry text,
 passwordentry,
 passwordentry text {
-    background-color: #cccccc;
-    border: 1px solid rgba(0, 85, 170, 0.3);
-    border-radius: 6px;
-    color: #0055aa;
+    background-color: #ffffff;
+    border: 2px solid #000000;
+    border-top-color: #555555;
+    border-left-color: #555555;
+    border-right-color: #ffffff;
+    border-bottom-color: #ffffff;
+    border-radius: 0;
+    color: #000000;
     padding: 6px;
 }
 
@@ -683,6 +960,38 @@ entry:focus,
 entry:focus text,
 passwordentry:focus,
 passwordentry:focus text {
-    border-color: #ff8800;
-    box-shadow: 0 0 6px rgba(255, 136, 0, 0.4);
+    border-color: #0000aa;
+    box-shadow: none;
+    color: #000000;
+}
+
+/* Menu app list / flowbox items */
+.popover .app-button,
+.menu-popover .app-button {
+    color: #000000;
+    background-color: transparent;
+}
+
+.popover .app-button:hover,
+.menu-popover .app-button:hover {
+    background-color: #0000aa;
+    color: #ffffff;
+}
+
+.popover .app-button image {
+    -gtk-icon-shadow:
+         1px  1px 0 #ffffff,
+        -1px -1px 0 #ffffff;
+}
+
+.popover .app-button:hover image {
+    -gtk-icon-shadow:
+         1px  1px 0 #000000,
+        -1px -1px 0 #000000;
+}
+
+/* Theme combo + logout in menu footer */
+.popover combobox label,
+.popover .dim-label {
+    color: #000000;
 }
