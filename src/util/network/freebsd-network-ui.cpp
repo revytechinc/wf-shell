@@ -314,19 +314,14 @@ void FreeBSDIfaceRow::on_popover_open()
 {
     popover_open_ = true;
     /*
-     * Multi-wlan: each iface manages its own expand state.
-     * Default: expand when not connected (pick a network); collapse when
-     * connected (header already shows SSID). User can always expand.
+     * Always expand Wi‑Fi when the popover opens so the full scan list is
+     * available (not just the connected SSID on the header). Collapse is
+     * still available via the chevron.
      */
     if (is_wifi_clone() && net_ && net_->info().up)
     {
-        const auto st = wf_net::format_wifi_connection_state(net_->info());
-        const bool connected = (st == "Connected" || st == "Associated");
-        set_expanded(!connected);
-        if (expanded_)
-        {
-            do_scan();
-        }
+        set_expanded(true);
+        do_scan(); /* always refresh neighborhood — never reuse a 1-row stale list */
     } else
     {
         set_expanded(false);
@@ -374,7 +369,8 @@ void FreeBSDIfaceRow::set_expanded(bool expanded)
     update_expand_chrome();
     if (expanded_ && popover_open_ && is_wifi_clone() && net_->info().up)
     {
-        if (!ap_box_.get_first_child() && !scanning_)
+        /* Rescan every expand — a prior partial scan can leave only the current AP. */
+        if (!scanning_)
         {
             do_scan();
         }
@@ -776,7 +772,8 @@ void FreeBSDIfaceRow::do_scan()
     const std::string wlan = wlan_name();
     auto alive = alive_;
     std::thread([this, alive, wlan] () {
-        auto aps = wf_net::wifi_scan(wlan, 2800);
+        /* ≥4s: associated iface BSS cache fills slowly with neighbors. */
+        auto aps = wf_net::wifi_scan(wlan, 4000);
         ui_idle([this, alive, aps = std::move(aps)] () mutable {
             if (!alive->load())
             {

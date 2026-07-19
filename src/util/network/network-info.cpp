@@ -1049,9 +1049,10 @@ std::vector<WifiScanEntry> wifi_scan(const std::string& wlan, int wait_ms)
         return empty;
     }
     (void)wpa_cli_ok(wlan, "scan");
-    if (wait_ms < 500)
+    /* Default long enough for a full neighborhood when associated. */
+    if (wait_ms < 2500)
     {
-        wait_ms = 500;
+        wait_ms = 2500;
     }
     if (wait_ms > 15000)
     {
@@ -1061,16 +1062,36 @@ std::vector<WifiScanEntry> wifi_scan(const std::string& wlan, int wait_ms)
      * Wait for scan results. MUST only be called from a background worker —
      * never the GTK main loop (each sleep would freeze the panel).
      */
+    /*
+     * Wait for a full scan. Do NOT return on the first non-empty partial —
+     * when already associated, the BSS cache often has only the current AP
+     * for ~1–2s; early exit made the UI show a single network.
+     *
+     * Early exit only when we have a real neighborhood (≥5 unique SSIDs)
+     * after a minimum settle, or when the full wait expires.
+     */
     int left = wait_ms;
     std::vector<WifiScanEntry> final;
+    size_t last_count = 0;
+    int stable_rounds = 0;
     while (left > 0)
     {
         int chunk = left > 400 ? 400 : left;
         std::this_thread::sleep_for(std::chrono::milliseconds(chunk));
         left -= chunk;
         auto partial = parse_wpa_scan_results(wpa_cli_run(wlan, "scan_results"));
-        /* Return as soon as we have APs after ~1.2s minimum settle */
-        if (!partial.empty() && left < wait_ms - 1200)
+        const size_t n = partial.size();
+        const int elapsed = wait_ms - left;
+        if (n == last_count && n > 0)
+        {
+            ++stable_rounds;
+        } else
+        {
+            stable_rounds = 0;
+            last_count = n;
+        }
+        /* Enough APs, list stable, and at least ~2s of scan time */
+        if (n >= 5 && stable_rounds >= 2 && elapsed >= 2000)
         {
             final = std::move(partial);
             enrich_scan_with_bss_ies(wlan, final);
