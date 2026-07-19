@@ -168,11 +168,8 @@ class WayfireMenu : public WayfireWidget
     Gtk::Image logout_image;
     Gtk::ComboBoxText theme_combo;
     Gtk::Label theme_lbl;
-    Gtk::ComboBoxText menu_icon_combo;
-    Gtk::Label menu_icon_lbl;
     Gtk::ScrolledWindow app_scrolled_window, category_scrolled_window;
     bool filling_theme_combo = false;
-    bool filling_menu_icon_combo = false;
 
   private:
     std::shared_ptr<WfMenuLayout> layout;
@@ -198,7 +195,6 @@ class WayfireMenu : public WayfireWidget
     bool on_filter(Gtk::FlowBoxChild *child);
     void on_search_changed();
     void on_theme_changed();
-    void on_menu_icon_changed();
     void on_popover_shown();
 
     /* loaded_apps is a list of the already-opened applications + their execs,

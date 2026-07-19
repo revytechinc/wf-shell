@@ -15,6 +15,7 @@
 #include "power-controller.hpp"
 #include "platform.hpp"
 #include "wf-shell-app.hpp"
+#include <gdkmm/pixbuf.h>
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
@@ -338,13 +339,6 @@ std::string theme_id_from_css_path(const std::string& path)
 #define ICONDIR RESOURCEDIR "/icons"
 #endif
 
-struct MenuIconEntry
-{
-    std::string id;    /* combo id: auto | pack stem | freedesktop name | path */
-    std::string name;  /* human label */
-    std::string path;  /* absolute file path if file-backed, else empty */
-};
-
 std::string menu_icons_dir()
 {
     return std::string(ICONDIR) + "/menu";
@@ -356,11 +350,14 @@ std::string user_menu_icons_dir()
     return h.empty() ? std::string{} : h + "/.config/wf-shell/menu-icons";
 }
 
-/** Theme id → pack icon id (installed SVG stem). */
+/**
+ * Theme id → pack SVG stem under ICONDIR/menu.
+ * "default" uses the stock Wayfire icon name (always available via icon theme).
+ */
 std::string theme_default_menu_icon_id(const std::string& theme_id)
 {
     static const std::map<std::string, std::string> map = {
-        {"default", "start-grid"},
+        {"default", "wayfire"}, /* safe stock name — not a pack file */
         {"win95", "win95-start"},
         {"system7", "system7-apple"},
         {"amiga-workbench", "amiga-wb"},
@@ -374,33 +371,35 @@ std::string theme_default_menu_icon_id(const std::string& theme_id)
         {"catppuccin-mocha", "catppuccin-latte"},
     };
     auto it = map.find(theme_id);
-    return it != map.end() ? it->second : "start-grid";
+    return it != map.end() ? it->second : "wayfire";
 }
 
 std::string pack_icon_path(const std::string& id)
 {
-    if (id.empty() || id == "auto")
+    if (id.empty() || id == "auto" || id == "wayfire")
     {
+        /* wayfire is a freedesktop/hicolor name, not a pack file */
         return {};
     }
-    std::string p = menu_icons_dir() + "/" + id + ".svg";
     std::error_code ec;
-    if (std::filesystem::is_regular_file(p, ec))
+    const std::string dirs[] = {
+        menu_icons_dir(),
+        user_menu_icons_dir(),
+        std::string(RESOURCEDIR) + "/icons/menu",
+    };
+    for (const auto& dir : dirs)
     {
-        return p;
-    }
-    auto u = user_menu_icons_dir();
-    if (!u.empty())
-    {
-        p = u + "/" + id + ".svg";
-        if (std::filesystem::is_regular_file(p, ec))
+        if (dir.empty())
         {
-            return p;
+            continue;
         }
-        p = u + "/" + id + ".png";
-        if (std::filesystem::is_regular_file(p, ec))
+        for (const char *ext : {".svg", ".png", ".svgz"})
         {
-            return p;
+            std::string p = dir + "/" + id + ext;
+            if (std::filesystem::is_regular_file(p, ec))
+            {
+                return p;
+            }
         }
     }
     return {};
@@ -423,191 +422,107 @@ std::string current_theme_id_live()
     return theme_id_from_css_path(css);
 }
 
-/** Resolve panel/menu_icon value to something IconProvider can load. */
-std::string resolve_menu_icon_value(const std::string& raw)
+/**
+ * Load menu icon from file or icon-theme name.
+ * IconProvider::image_set_icon() returns true for absolute paths even when
+ * the load fails (blank image) — so we load files ourselves and only then
+ * fall through a safe default chain.
+ */
+bool set_menu_button_icon(Gtk::Image& image, const std::string& path_or_name, int px = 32)
 {
-    std::string v = trim_copy(raw);
-    if (v.empty() || v == "auto")
+    if (path_or_name.empty())
     {
-        std::string id = theme_default_menu_icon_id(current_theme_id_live());
-        auto path = pack_icon_path(id);
-        return path.empty() ? std::string("view-app-grid-symbolic") : path;
+        return false;
     }
-    if (v.rfind("/", 0) == 0 || v.rfind("~", 0) == 0)
+
+    std::string path = path_or_name;
+    if (!path.empty() && path[0] == '~')
     {
-        return v;
+        auto h = home_dir();
+        if (!h.empty())
+        {
+            path = h + path.substr(1);
+        }
     }
-    auto path = pack_icon_path(v);
-    if (!path.empty())
+
+    if (!path.empty() && path[0] == '/')
     {
-        return path;
+        try
+        {
+            auto pb = Gdk::Pixbuf::create_from_file(path, px, px, true);
+            if (pb)
+            {
+                image.set(pb);
+                return true;
+            }
+        } catch (...)
+        {}
+        try
+        {
+            /* gtkmm4: Image::set(filename) */
+            image.set(path);
+            return true;
+        } catch (...)
+        {}
+        return false;
     }
-    /* Freedesktop / installed theme icon name */
-    return v;
+
+    /* Icon theme / app-id name */
+    return IconProvider::image_set_icon(image, path_or_name);
 }
 
-bool menu_icon_follows_theme(const std::string& raw)
+/** Ordered candidates for the active theme, then universal safe defaults. */
+std::vector<std::string> menu_icon_candidates_for_theme()
 {
-    std::string v = trim_copy(raw);
-    return v.empty() || v == "auto";
-}
+    std::vector<std::string> out;
+    const std::string tid = current_theme_id_live();
+    const std::string pack_id = theme_default_menu_icon_id(tid);
 
-std::vector<MenuIconEntry> discover_menu_icons()
-{
-    std::vector<MenuIconEntry> out;
-    out.push_back({"auto", "Follow theme", {}});
-
-    auto scan = [&] (const std::string& dir) {
-        std::error_code ec;
-        if (!std::filesystem::is_directory(dir, ec))
-        {
-            return;
-        }
-        for (auto& p : std::filesystem::directory_iterator(dir, ec))
-        {
-            if (ec || !p.is_regular_file())
-            {
-                continue;
-            }
-            auto ext = p.path().extension().string();
-            if (ext != ".svg" && ext != ".png" && ext != ".svgz")
-            {
-                continue;
-            }
-            MenuIconEntry e;
-            e.id   = p.path().stem().string();
-            e.name = title_case_id(e.id);
-            e.path = p.path().string();
-            /* Prefer first occurrence (system then user overrides by re-scan order). */
-            bool exists = false;
-            for (auto& x : out)
-            {
-                if (x.id == e.id)
-                {
-                    x = e; /* user win if scanned second */
-                    exists = true;
-                    break;
-                }
-            }
-            if (!exists)
-            {
-                out.push_back(std::move(e));
-            }
-        }
-    };
-
-    scan(menu_icons_dir());
-    auto ud = user_menu_icons_dir();
-    if (!ud.empty())
+    auto pack = pack_icon_path(pack_id);
+    if (!pack.empty())
     {
-        scan(ud);
+        out.push_back(pack);
+    }
+    /* Named icon when pack id is also a theme icon (e.g. wayfire) */
+    if (pack_id == "wayfire" || pack.empty())
+    {
+        out.push_back(pack_id);
     }
 
-    /* Symbolic / stock fallbacks (recolor with panel CSS). */
-    const std::pair<const char*, const char*> stock[] = {
-        {"view-app-grid-symbolic", "App grid (symbolic)"},
-        {"open-menu-symbolic", "Menu (symbolic)"},
-        {"applications-menu", "Applications menu"},
-        {"start-here", "Start here"},
-        {"distributor-logo", "Distributor logo"},
-        {"wayfire", "Wayfire"},
+    /* Always end with a chain that exists on FreeBSD/Linux desktops */
+    const char *safe[] = {
+        "wayfire",
+        "view-app-grid-symbolic",
+        "open-menu-symbolic",
+        "applications-menu",
+        "start-here",
+        "application-x-executable",
+        "image-missing",
     };
-    for (auto& s : stock)
+    for (auto *s : safe)
     {
-        bool exists = false;
+        bool have = false;
         for (auto& x : out)
         {
-            if (x.id == s.first)
+            if (x == s)
             {
-                exists = true;
+                have = true;
                 break;
             }
         }
-        if (!exists)
+        if (!have)
         {
-            out.push_back({s.first, s.second, {}});
+            out.push_back(s);
         }
+    }
+
+    /* Pack start-grid as extra file candidate */
+    auto sg = pack_icon_path("start-grid");
+    if (!sg.empty())
+    {
+        out.insert(out.begin() + 1, sg); /* after theme pack */
     }
     return out;
-}
-
-/** Write panel/menu_icon (empty clears to auto/theme default). */
-void update_ini_menu_icon(const std::string& value)
-{
-    std::string ip = ini_path();
-    if (ip.empty())
-    {
-        return;
-    }
-    std::ifstream in(ip);
-    std::vector<std::string> lines;
-    std::string line;
-    bool in_panel = false;
-    bool found = false;
-    bool saw_panel = false;
-    if (in)
-    {
-        while (std::getline(in, line))
-        {
-            std::string trimmed = trim_copy(line);
-            if (trimmed == "[panel]")
-            {
-                in_panel = true;
-                saw_panel = true;
-                lines.push_back(line);
-                continue;
-            }
-            if (!trimmed.empty() && trimmed.front() == '[')
-            {
-                in_panel = false;
-                lines.push_back(line);
-                continue;
-            }
-            if (trimmed.rfind("menu_icon", 0) == 0 &&
-                (trimmed.size() == 9 || trimmed[9] == ' ' || trimmed[9] == '='))
-            {
-                /* Skip menu_icon_size etc. */
-                if (trimmed.rfind("menu_icon_", 0) == 0)
-                {
-                    lines.push_back(line);
-                    continue;
-                }
-                if (in_panel && !found)
-                {
-                    lines.push_back("menu_icon = " + value);
-                    found = true;
-                }
-                continue;
-            }
-            lines.push_back(line);
-        }
-        in.close();
-    }
-    if (!saw_panel)
-    {
-        lines.push_back("[panel]");
-        lines.push_back("menu_icon = " + value);
-        found = true;
-    } else if (!found)
-    {
-        for (auto it = lines.begin(); it != lines.end(); ++it)
-        {
-            if (trim_copy(*it) == "[panel]")
-            {
-                lines.insert(it + 1, "menu_icon = " + value);
-                break;
-            }
-        }
-    }
-    std::ofstream out(ip);
-    if (!out)
-    {
-        return;
-    }
-    for (const auto& l : lines)
-    {
-        out << l << "\n";
-    }
 }
 
 /** Populate ComboBoxText with current selection first, then the rest. */
@@ -672,34 +587,35 @@ void WfMenuLayout::allocate_vfunc(const Gtk::Widget& widget, int width, int heig
     logout_measurements    = menu->box_bottom.measure(Gtk::Orientation::VERTICAL, width);
     separator_measurements = menu->separator.measure(Gtk::Orientation::VERTICAL, width);
 
-    int remaining_height = height -
-        (entry_measurements.sizes.minimum +
-            logout_measurements.sizes.minimum +
-            separator_measurements.sizes.natural);
-    if (remaining_height <= 0)
+    /*
+     * Always reserve footer (theme + logout) and search first so logout is
+     * never clipped out of view when the popover is short or wide.
+     */
+    const int footer_h = logout_measurements.sizes.minimum;
+    const int sep_h    = separator_measurements.sizes.natural;
+    const int search_h = entry_measurements.sizes.minimum;
+    int remaining_height = height - (search_h + footer_h + sep_h);
+    if (remaining_height < 0)
     {
-        return;
+        remaining_height = 0;
     }
 
     search_alloc.set_x(0);
-    search_alloc.set_y(is_top ? 0 : height -
-        (logout_measurements.sizes.minimum + separator_measurements.sizes.natural +
-            entry_measurements.sizes.minimum));
-    search_alloc.set_height(entry_measurements.sizes.minimum);
+    search_alloc.set_y(is_top ? 0 : height - (footer_h + sep_h + search_h));
+    search_alloc.set_height(search_h);
     search_alloc.set_width(width);
     menu->search_entry.size_allocate(search_alloc, -1);
 
     logout_alloc.set_x(0);
-    logout_alloc.set_y(height - logout_measurements.sizes.minimum);
+    logout_alloc.set_y(height - footer_h);
     logout_alloc.set_width(width);
-    logout_alloc.set_height(logout_measurements.sizes.minimum);
+    logout_alloc.set_height(footer_h);
     menu->box_bottom.size_allocate(logout_alloc, -1);
 
     separator_alloc.set_x(0);
-    separator_alloc.set_y(height -
-        (logout_measurements.sizes.minimum + separator_measurements.sizes.natural));
+    separator_alloc.set_y(height - (footer_h + sep_h));
     separator_alloc.set_width(width);
-    separator_alloc.set_height(separator_measurements.sizes.natural);
+    separator_alloc.set_height(sep_h);
     menu->separator.size_allocate(separator_alloc, -1);
 
     if (show_categories.value())
@@ -1339,22 +1255,37 @@ void WayfireMenu::on_popover_shown()
 
 bool WayfireMenu::update_icon()
 {
-    std::string raw = static_cast<std::string>(menu_icon);
-    std::string icon = resolve_menu_icon_value(raw);
-
-    if (!IconProvider::image_set_icon(main_image, icon))
+    /* Theme-driven only — try pack art, then a hard safe default chain. */
+    int px = 32;
+    try
     {
-        /* Fallbacks: pack start-grid → symbolic grid → wayfire */
-        if (!IconProvider::image_set_icon(main_image, resolve_menu_icon_value("start-grid")) &&
-            !IconProvider::image_set_icon(main_image, "view-app-grid-symbolic") &&
-            !IconProvider::image_set_icon(main_image, "applications-menu") &&
-            !IconProvider::image_set_icon(main_image, default_icon))
+        /* Prefer configured menu icon size when set (>0). */
+        WfOption<int> sz{"panel/menu_icon_size"};
+        if (sz.value() > 0)
         {
-            main_image.set_from_icon_name("application-x-executable");
+            px = sz.value();
+        }
+    } catch (...)
+    {}
+
+    bool ok = false;
+    for (const auto& cand : menu_icon_candidates_for_theme())
+    {
+        if (set_menu_button_icon(main_image, cand, px))
+        {
+            ok = true;
+            break;
         }
     }
+    if (!ok)
+    {
+        /* Last resort: never leave a blank plate */
+        main_image.set_from_icon_name("application-x-executable");
+    }
+
     main_image.add_css_class("menu-icon");
     main_image.add_css_class("widget-icon");
+    main_image.add_css_class("default-icon");
     return true;
 }
 
@@ -1842,66 +1773,31 @@ void WayfireMenu::init(Gtk::Box *container)
 
     fill_combo_current_first(theme_combo, theme_items, current_id);
     theme_combo.set_valign(Gtk::Align::CENTER);
+    theme_combo.set_hexpand(false);
     signals.push_back(theme_combo.signal_changed().connect(
         sigc::mem_fun(*this, &WayfireMenu::on_theme_changed)));
 
     theme_box->append(theme_lbl);
     theme_box->append(theme_combo);
+    theme_box->set_hexpand(false);
     box_bottom.append(*theme_box);
 
-    /* Menu button icon picker — pack icons + stock; current first. */
-    auto *icon_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
-    icon_box->set_margin_start(12);
-    icon_box->set_halign(Gtk::Align::START);
-    menu_icon_lbl.set_text("Menu icon:");
-    menu_icon_lbl.add_css_class("dim-label");
-    menu_icon_lbl.set_valign(Gtk::Align::CENTER);
-
-    std::string cur_icon_id = trim_copy(static_cast<std::string>(menu_icon));
-    if (cur_icon_id.empty())
-    {
-        cur_icon_id = "auto";
-    }
-    /* Path config → stem if it's a pack file */
-    try
-    {
-        std::filesystem::path pp(cur_icon_id);
-        if (pp.has_extension() && (pp.extension() == ".svg" || pp.extension() == ".png"))
-        {
-            cur_icon_id = pp.stem().string();
-        }
-    } catch (...)
-    {}
-
-    auto icons = discover_menu_icons();
-    std::vector<std::pair<std::string, std::string>> icon_items;
-    for (auto& e : icons)
-    {
-        icon_items.emplace_back(e.id, e.name);
-    }
-    filling_menu_icon_combo = true;
-    fill_combo_current_first(menu_icon_combo, icon_items, cur_icon_id);
-    filling_menu_icon_combo = false;
-    menu_icon_combo.set_valign(Gtk::Align::CENTER);
-    menu_icon_combo.set_tooltip_text(
-        "Panel menu button glyph. “Follow theme” picks a matching pack icon.");
-    signals.push_back(menu_icon_combo.signal_changed().connect(
-        sigc::mem_fun(*this, &WayfireMenu::on_menu_icon_changed)));
-
-    icon_box->append(menu_icon_lbl);
-    icon_box->append(menu_icon_combo);
-    box_bottom.append(*icon_box);
-
+    /* Spacer keeps logout pinned to the trailing edge (always in view). */
     auto *spacer = Gtk::make_managed<Gtk::Box>();
     spacer->set_hexpand(true);
+    spacer->set_halign(Gtk::Align::FILL);
     box_bottom.append(*spacer);
 
     logout_image.set_icon_size(Gtk::IconSize::LARGE);
     logout_image.set_from_icon_name("system-shutdown");
     logout_button.add_css_class("flat");
+    logout_button.set_tooltip_text("Log out…");
     signals.push_back(logout_button.signal_clicked().connect(
         sigc::mem_fun(*this, &WayfireMenu::on_logout_click)));
-    logout_button.set_margin_end(35);
+    logout_button.set_margin_end(10);
+    logout_button.set_margin_start(6);
+    logout_button.set_halign(Gtk::Align::END);
+    logout_button.set_hexpand(false);
     logout_button.set_child(logout_image);
     box_bottom.append(logout_button);
 
@@ -2105,82 +2001,10 @@ void WayfireMenu::on_theme_changed()
         filling_theme_combo = false;
     }
 
-    /*
-     * Themeable menu button: when set to auto/empty, swap to the pack icon
-     * that matches this theme (Win95 start, CRT node, Amiga, …).
-     */
+    /* Menu button mark always tracks the active theme pack. */
     try
     {
-        std::string raw = static_cast<std::string>(menu_icon);
-        if (menu_icon_follows_theme(raw))
-        {
-            update_icon();
-            /* Keep combo showing Auto while following theme. */
-            filling_menu_icon_combo = true;
-            auto icons = discover_menu_icons();
-            std::vector<std::pair<std::string, std::string>> icon_items;
-            for (auto& e : icons)
-            {
-                icon_items.emplace_back(e.id, e.name);
-            }
-            fill_combo_current_first(menu_icon_combo, icon_items, "auto");
-            filling_menu_icon_combo = false;
-        }
-    } catch (...)
-    {
-        filling_menu_icon_combo = false;
-    }
-}
-
-void WayfireMenu::on_menu_icon_changed()
-{
-    if (filling_menu_icon_combo)
-    {
-        return;
-    }
-
-    std::string selected = menu_icon_combo.get_active_id();
-    if (selected.empty())
-    {
-        return;
-    }
-
-    /* Persist: auto → empty string (follow theme); else id or path. */
-    std::string store = (selected == "auto") ? std::string{} : selected;
-    try
-    {
-        auto opt = WayfireShellApp::get().config.get_option<std::string>("panel/menu_icon");
-        if (opt)
-        {
-            opt->set_value(store);
-        }
+        update_icon();
     } catch (...)
     {}
-
-    update_icon();
-
-    Glib::signal_idle().connect_once([store] ()
-    {
-        try
-        {
-            update_ini_menu_icon(store);
-        } catch (...)
-        {}
-    });
-
-    /* Current selection at top of the list. */
-    filling_menu_icon_combo = true;
-    try
-    {
-        auto icons = discover_menu_icons();
-        std::vector<std::pair<std::string, std::string>> icon_items;
-        for (auto& e : icons)
-        {
-            icon_items.emplace_back(e.id, e.name);
-        }
-        fill_combo_current_first(menu_icon_combo, icon_items,
-            store.empty() ? "auto" : selected);
-    } catch (...)
-    {}
-    filling_menu_icon_combo = false;
 }
