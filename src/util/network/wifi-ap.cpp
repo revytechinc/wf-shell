@@ -131,12 +131,16 @@ AccessPoint::~AccessPoint()
 
 std::string AccessPoint::get_security_icon_name()
 {
-    if (security_flags | NM_SOME_WPA_SECURITY)
+    /*
+     * Must use bitwise AND — `flags | MASK` is always non-zero and always
+     * looked “secure”. Prefer Adwaita network-wireless-encrypted (ships on
+     * FreeBSD); empty string = open network (no lock overlay).
+     */
+    if (security_flags & NM_SOME_WPA_SECURITY)
     {
-        return "channel-secure-symbolic";
+        return "network-wireless-encrypted-symbolic";
     }
-
-    return "channel-insecure-symbolic";
+    return {};
 }
 
 unsigned int AccessPoint::get_frequency_mhz() const
@@ -191,7 +195,7 @@ std::vector<std::string> AccessPoint::get_css_classes()
         classlist.push_back("ap-" + ssid);
     }
 
-    if (security_flags | NM_SOME_WPA_SECURITY)
+    if (security_flags & NM_SOME_WPA_SECURITY)
     {
         classlist.push_back("secure");
     } else

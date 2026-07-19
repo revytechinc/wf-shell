@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 420" width="100%" preserveAspectRatio="xMidYMid meet">
+  <foreignObject x="0" y="0" width="400" height="420">
+    <div xmlns="http://www.w3.org/1999/xhtml" style="width:400px;height:420px;box-sizing:border-box;font-family:system-ui,sans-serif;background:#0c0c14;color:#cdd6f4;padding:16px;">
+      <div style="font-size:11px;color:#a6adc8;margin-bottom:10px;">Join Wi‑Fi — WPA/WEP key → wpa_supplicant</div>
+      <div style="background:#1e1e2e;border:1px solid #45475a;border-radius:12px;overflow:hidden;max-width:360px;">
+        <div style="padding:10px 12px;border-bottom:1px solid #313244;font-size:13px;font-weight:600;">Join “CloudBSD-Lab”</div>
+        <div style="padding:12px;display:flex;flex-direction:column;gap:10px;font-size:12px;">
+          <div style="font-size:11px;color:#a6adc8;line-height:1.35;">Updates wpa_supplicant (wpa_cli set_network) and optionally saves the config.</div>
+          <div>
+            <div style="font-size:10px;color:#6c7086;text-transform:uppercase;margin-bottom:4px;">Network name (SSID)</div>
+            <div style="background:#313244;border:1px solid #45475a;border-radius:6px;padding:8px;">CloudBSD-Lab</div>
+          </div>
+          <div>
+            <div style="font-size:10px;color:#6c7086;text-transform:uppercase;margin-bottom:4px;">Security</div>
+            <div style="background:#313244;border:1px solid #45475a;border-radius:6px;padding:8px;">WPA / WPA2 / WPA3 (Personal) ▾</div>
+          </div>
+          <div>
+            <div style="font-size:10px;color:#6c7086;text-transform:uppercase;margin-bottom:4px;">Network key</div>
+            <div style="background:#313244;border:1px solid #45475a;border-radius:6px;padding:8px;letter-spacing:2px;">••••••••••</div>
+            <div style="font-size:10px;color:#6c7086;margin-top:6px;">WPA: 8–63 characters, or 64 hex digits</div>
+          </div>
+          <div style="font-size:11px;color:#a6adc8;">☑ Save to wpa_supplicant config</div>
+        </div>
+        <div style="padding:10px 12px;border-top:1px solid #313244;display:flex;justify-content:flex-end;gap:8px;">
+          <span style="border:1px solid #45475a;border-radius:6px;padding:6px 10px;font-size:11px;color:#a6adc8;">Cancel</span>
+          <span style="border:1px solid #89b4fa;border-radius:6px;padding:6px 10px;font-size:11px;background:#313a55;color:#89b4fa;">Connect</span>
+        </div>
+      </div>
+      <div style="font-size:10px;color:#6c7086;margin-top:12px;line-height:1.45;">
+        Open networks skip the key field. WEP uses wep_key0. Icons: Adwaita signal + encrypted.
+      </div>
+    </div>
+  </foreignObject>
+</svg>

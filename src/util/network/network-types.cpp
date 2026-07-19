@@ -797,6 +797,91 @@ ValidationResult validate_admin_password(const std::string& password)
     return validation_ok();
 }
 
+ValidationResult validate_wifi_ssid(const std::string& ssid)
+{
+    if (ssid.empty())
+    {
+        return validation_fail("Network name is required");
+    }
+    if (ssid.size() > 32)
+    {
+        return validation_fail("SSID must be at most 32 characters");
+    }
+    return validation_ok();
+}
+
+ValidationResult validate_wifi_wpa_psk(const std::string& key)
+{
+    if (key.empty())
+    {
+        return validation_fail("Password is required");
+    }
+    if (key.size() == 64)
+    {
+        for (char c : key)
+        {
+            if (!is_hex_digit(c))
+            {
+                return validation_fail(
+                    "WPA password must be 8–63 characters (or 64 hex digits)");
+            }
+        }
+        return validation_ok();
+    }
+    if (key.size() < 8 || key.size() > 63)
+    {
+        return validation_fail(
+            "WPA password must be 8–63 characters (or 64 hex digits)");
+    }
+    return validation_ok();
+}
+
+ValidationResult validate_wifi_wep_key(const std::string& key)
+{
+    if (key.empty())
+    {
+        return validation_fail("WEP key is required");
+    }
+    auto all_hex = [] (const std::string& s) {
+        for (char c : s)
+        {
+            if (!is_hex_digit(c))
+            {
+                return false;
+            }
+        }
+        return true;
+    };
+    if ((key.size() == 10 || key.size() == 26) && all_hex(key))
+    {
+        return validation_ok();
+    }
+    if (key.size() == 5 || key.size() == 13)
+    {
+        return validation_ok();
+    }
+    return validation_fail("WEP key: 5 or 13 characters, or 10/26 hex digits");
+}
+
+ValidationResult validate_wifi_credentials(const std::string& security,
+    const std::string& key)
+{
+    if (security == "open" || security == "none")
+    {
+        return validation_ok();
+    }
+    if (security == "wpa" || security == "wpa2" || security == "wpa3" ||
+        security == "wpa-psk")
+    {
+        return validate_wifi_wpa_psk(key);
+    }
+    if (security == "wep")
+    {
+        return validate_wifi_wep_key(key);
+    }
+    return validation_fail("Unknown security type");
+}
+
 ConfigFormErrors validate_config_form(const ConfigFormInput& in)
 {
     ConfigFormErrors e;

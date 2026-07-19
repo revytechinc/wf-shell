@@ -293,6 +293,29 @@ ValidationResult validate_prefix_length(const std::string& text, int max_bits,
 /** Auth dialog: non-empty, length cap (no format rules beyond that). */
 ValidationResult validate_admin_password(const std::string& password);
 
+/* ─── Wi‑Fi credentials (wpa_supplicant) ──────────────────────────────── */
+
+/** SSID: 1…32 octets (FreeBSD/IEEE 802.11). */
+ValidationResult validate_wifi_ssid(const std::string& ssid);
+
+/**
+ * WPA/WPA2/WPA3-Personal passphrase: 8–63 characters, or 64 hex digits (PSK).
+ * Empty fails.
+ */
+ValidationResult validate_wifi_wpa_psk(const std::string& key);
+
+/**
+ * WEP key: 5 or 13 ASCII characters, or 10/26 hex digits.
+ */
+ValidationResult validate_wifi_wep_key(const std::string& key);
+
+/**
+ * security: "open" | "wpa" | "wep"
+ * Open ignores key. WPA/WEP validate key format.
+ */
+ValidationResult validate_wifi_credentials(const std::string& security,
+    const std::string& key);
+
 /** Configure modal field bundle (modes: dhcp|static|none / accept_rtadv|static|none). */
 struct ConfigFormInput
 {

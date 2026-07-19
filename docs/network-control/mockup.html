@@ -119,10 +119,23 @@
       border-radius: 6px; cursor: pointer; font-size: 12px;
     }
     .wifi-row:hover { background: var(--surface2); }
+    .wifi-row .ap-ico {
+      width: 22px; height: 22px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      position: relative;
+    }
+    .wifi-row .ap-ico svg { width: 20px; height: 20px; display: block; }
+    .wifi-row .ap-ico .lock {
+      position: absolute; right: -2px; bottom: -1px;
+      width: 11px; height: 11px;
+    }
+    .wifi-row .ap-ico .lock svg { width: 11px; height: 11px; }
     .wifi-row .meta { flex: 1; min-width: 0; }
     .wifi-row .ssid { font-size: 12px; }
     .wifi-row .freq { font-size: 10px; color: var(--blue); line-height: 1.2; margin-top: 1px; font-variant-numeric: tabular-nums; }
     .wifi-row .sig { color: var(--green); font-size: 10px; margin-left: auto; flex-shrink: 0; }
+    .wifi-row.wifi-bad .ssid { color: var(--red); }
+    .wifi-row.wifi-bad .freq { color: #f38ba8; }
     .foot {
       padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; gap: 8px;
     }
@@ -279,7 +292,14 @@
         </div>
 
         <div class="section" id="wifiSection" style="display:none">
-          <div class="section-title">Wi‑Fi</div>
+          <div class="section-title" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+            <span>Wi‑Fi</span>
+            <span style="display:flex;gap:6px">
+              <button type="button" class="btn ghost" id="btnWifiScan" style="padding:3px 8px;font-size:10px">Scan</button>
+              <button type="button" class="btn ghost" id="btnWifiJoin" style="padding:3px 8px;font-size:10px">Join other…</button>
+            </span>
+          </div>
+          <div id="wifiStatus" class="dim" style="font-size:10px;margin-bottom:6px;color:var(--muted)"></div>
           <div id="wifiList"></div>
         </div>
 
@@ -403,6 +423,52 @@
       <div class="modal-foot">
         <button type="button" class="btn ghost" id="btnAuthCancel">Cancel</button>
         <button type="button" class="btn primary" id="btnAuthGo">Authenticate</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Wi‑Fi join / wpa_supplicant network setup -->
+  <div class="modal-backdrop" id="wifiJoinModal" role="dialog" aria-modal="true" aria-labelledby="wifiJoinTitle">
+    <div class="modal" style="max-width:400px">
+      <div class="modal-head">
+        <h3 id="wifiJoinTitle">Join Wi‑Fi network</h3>
+        <button type="button" class="btn ghost" id="btnWifiJoinClose" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="auth-note" id="wifiJoinNote">Saves a network block to wpa_supplicant and selects it.</p>
+        <label class="fld">Network name (SSID)
+          <input id="wifiSsid" type="text" spellcheck="false" autocomplete="off" maxlength="32" />
+          <span class="field-err" id="errWifiSsid"></span>
+        </label>
+        <label class="fld">Security
+          <select id="wifiSec">
+            <option value="wpa">WPA / WPA2 / WPA3 (Personal)</option>
+            <option value="wep">WEP</option>
+            <option value="open">Open (no key)</option>
+          </select>
+        </label>
+        <div id="wifiKeyWrap">
+          <label class="fld">Network key
+            <input id="wifiKey" type="password" autocomplete="new-password" spellcheck="false" />
+            <span class="field-err" id="errWifiKey"></span>
+          </label>
+          <label class="dim" style="display:flex;align-items:center;gap:6px;font-size:11px;margin-top:4px">
+            <input type="checkbox" id="wifiKeyShow" /> Show key
+          </label>
+          <div class="dim" id="wifiKeyHint" style="font-size:10px;color:var(--muted);margin-top:6px;line-height:1.35"></div>
+        </div>
+        <label class="dim" style="display:flex;align-items:center;gap:6px;font-size:11px;margin-top:10px">
+          <input type="checkbox" id="wifiSaveConf" checked />
+          Save to wpa_supplicant config (persist across reboot)
+        </label>
+        <div class="preflight bad" id="wifiJoinErr" style="display:none;margin-top:10px"></div>
+      </div>
+      <div class="modal-foot" style="justify-content:space-between">
+        <button type="button" class="btn danger" id="btnWifiForget" style="display:none">Forget network</button>
+        <span style="display:flex;gap:8px;margin-left:auto">
+          <button type="button" class="btn ghost" id="btnWifiJoinCancel">Cancel</button>
+          <button type="button" class="btn primary" id="btnWifiJoinGo">Connect</button>
+        </span>
       </div>
     </div>
   </div>
@@ -542,6 +608,56 @@
   }
 
   /**
+   * Wi‑Fi key validation (mirrors wf_net::validate_wifi_psk / validate_wifi_wep_key).
+   * security: open | wpa | wep
+   */
+  function validateWifiSsid(ssid) {
+    const s = String(ssid || "");
+    if (!s.length) return { ok: false, message: "Network name is required" };
+    if (s.length > 32) return { ok: false, message: "SSID must be at most 32 characters" };
+    return { ok: true };
+  }
+  function validateWifiKey(security, key) {
+    if (security === "open") return { ok: true };
+    if (security === "wpa") {
+      if (!key || !key.length) return { ok: false, message: "Password is required" };
+      if (key.length === 64 && /^[0-9a-fA-F]{64}$/.test(key)) return { ok: true }; /* hex PSK */
+      if (key.length < 8 || key.length > 63)
+        return { ok: false, message: "WPA password must be 8–63 characters (or 64 hex digits)" };
+      return { ok: true };
+    }
+    if (security === "wep") {
+      if (!key || !key.length) return { ok: false, message: "WEP key is required" };
+      if (/^[0-9a-fA-F]{10}$/.test(key) || /^[0-9a-fA-F]{26}$/.test(key)) return { ok: true };
+      if (key.length === 5 || key.length === 13) return { ok: true }; /* ASCII WEP */
+      return { ok: false, message: "WEP key: 5 or 13 characters, or 10/26 hex digits" };
+    }
+    return { ok: false, message: "Unknown security type" };
+  }
+  function wifiKeyHint(security) {
+    if (security === "open") return "";
+    if (security === "wpa") return "WPA/WPA2/WPA3 personal: 8–63 characters, or 64 hex digits.";
+    if (security === "wep") return "WEP: 5 or 13 ASCII characters, or 10/26 hexadecimal digits.";
+    return "";
+  }
+  function validateWifiJoinForm() {
+    setFieldErr("wifiSsid", "errWifiSsid", "");
+    setFieldErr("wifiKey", "errWifiKey", "");
+    const sec = $("wifiSec").value;
+    let ok = true;
+    const sr = validateWifiSsid($("wifiSsid").value);
+    if (!sr.ok) { setFieldErr("wifiSsid", "errWifiSsid", sr.message); ok = false; }
+    const kr = validateWifiKey(sec, $("wifiKey").value);
+    if (!kr.ok) { setFieldErr("wifiKey", "errWifiKey", kr.message); ok = false; }
+    return ok;
+  }
+  function syncWifiKeyUi() {
+    const sec = $("wifiSec").value;
+    $("wifiKeyWrap").style.display = sec === "open" ? "none" : "";
+    $("wifiKeyHint").textContent = wifiKeyHint(sec);
+  }
+
+  /**
    * FreeBSD cloned-interface catalog (mirrors wf_net::known_clone_types).
    * Live host also intersects with ifconfig -C; mock uses full catalog.
    * module: kld name without .ko; null = usually in-kernel.
@@ -638,13 +754,31 @@
       .map((i) => (ov[i.name] && !ov[i.name].deleted ? Object.assign({}, i, ov[i.name]) : i));
   }
 
-  const WIFI_APS = [
-    { ssid: "CloudBSD-Lab", sig: 92, secure: true, active: true, freqMhz: 5180, maxKbps: 1200000 },
-    { ssid: "Guest", sig: 71, secure: false, active: false, freqMhz: 2462, maxKbps: 144000 },
-    { ssid: "IoT-2.4", sig: 44, secure: true, active: false, freqMhz: 2412, maxKbps: 54000 },
-    { ssid: "Lab-6E", sig: 60, secure: true, active: false, freqMhz: 6115, maxKbps: 900000 },
-    { ssid: "Be-Router", sig: 80, secure: true, active: false, freqMhz: 5500, maxKbps: 2500000 },
+  /** Live scan results (mutated by Scan); security: open | wpa | wep */
+  let WIFI_APS = [
+    { ssid: "CloudBSD-Lab", sig: 92, secure: true, security: "wpa", active: true, freqMhz: 5180, maxKbps: 1200000 },
+    { ssid: "Guest", sig: 71, secure: false, security: "open", active: false, freqMhz: 2462, maxKbps: 144000 },
+    { ssid: "IoT-2.4", sig: 44, secure: true, security: "wep", active: false, freqMhz: 2412, maxKbps: 54000 },
+    { ssid: "Lab-6E", sig: 60, secure: true, security: "wpa", active: false, freqMhz: 6115, maxKbps: 900000 },
+    { ssid: "Be-Router", sig: 80, secure: true, security: "wpa", active: false, freqMhz: 5500, maxKbps: 2500000 },
   ];
+  /**
+   * Networks already in wpa_supplicant (list_networks).
+   * auth: ok | bad_key | unknown — common failure: PSK changed on the AP
+   * storedKey: mock only (never log real keys in product code)
+   */
+  let WPA_NETWORKS = [
+    { id: 0, ssid: "CloudBSD-Lab", flags: "[CURRENT]", auth: "ok", security: "wpa", storedKey: "lab-secret-ok" },
+    { id: 1, ssid: "IoT-2.4", flags: "[DISABLED]", auth: "bad_key", security: "wep", storedKey: "stale" },
+  ];
+  /** Mock “current correct” keys (simulates AP side). Stale saved keys fail. */
+  const WIFI_CORRECT_KEYS = {
+    "CloudBSD-Lab": "lab-secret-ok",
+    "IoT-2.4": "hello",
+    "Lab-6E": "sixe-password",
+    "Be-Router": "be-router-pass",
+    "CloudBSD-Guest": "guest-pass1",
+  };
 
   function wifiBand(mhz) {
     if (!mhz) return "";
@@ -691,6 +825,11 @@
     editorOpen: false,
     createOpen: false,
     authOpen: false,
+    wifiJoinOpen: false,
+    wifiJoinSsid: "",
+    wifiJoinSec: "wpa",
+    wifiScanning: false,
+    wifiLastScan: null,
     ctxName: null,
     extraIfaces: [], /* dynamically created in mock */
     ifaceOverrides: {}, /* up/down/delete from context menu */
@@ -735,6 +874,8 @@
     else if (action.kind === "delete") deleteIface(action.name);
     else if (action.kind === "save") doSaveConfig();
     else if (action.kind === "create") doCreateIface();
+    else if (action.kind === "wifi_join")
+      doWifiJoin(action.ssid, action.security, action.key, action.save);
     else if (action.kind === "open_editor") { state.editorOpen = true; state.createOpen = false; }
     else if (action.kind === "open_create") { state.createOpen = true; state.editorOpen = false; }
     state.pendingAction = null;
@@ -757,7 +898,7 @@
     return i.running ? "eth" : "eth-off";
   }
 
-  /* Inline SVG — no emoji fonts required (FreeBSD often lacks noto-emoji). */
+  /* Inline SVG — NO emoji (FreeBSD seats often lack emoji fonts). */
   function svgIcon(kind) {
     const c = "#cdd6f4";
     const g = "#a6e3a1";
@@ -769,13 +910,45 @@
       "eth-off": `<svg viewBox="0 0 24 24" fill="none" stroke="${d}" stroke-width="1.8"><rect x="3" y="8" width="18" height="10" rx="2"/><path d="M4 4l16 16" stroke-linecap="round"/></svg>`,
       wifi: `<svg viewBox="0 0 24 24" fill="none" stroke="${active}" stroke-width="1.8"><path d="M5 12.5a9 9 0 0114 0M8.5 16a5 5 0 017 0" stroke-linecap="round"/><circle cx="12" cy="19" r="1.2" fill="${active}" stroke="none"/></svg>`,
       "wifi-off": `<svg viewBox="0 0 24 24" fill="none" stroke="${d}" stroke-width="1.8"><path d="M5 12.5a9 9 0 0114 0M4 4l16 16" stroke-linecap="round"/></svg>`,
-      /* bridge: two ports + bar (vm-public) */
       bridge: `<svg viewBox="0 0 24 24" fill="none" stroke="${active}" stroke-width="1.8"><rect x="2" y="9" width="6" height="6" rx="1"/><rect x="16" y="9" width="6" height="6" rx="1"/><path d="M8 12h8" stroke-linecap="round"/><path d="M12 8v8" stroke-linecap="round" opacity="0.5"/></svg>`,
-      /* virtual/tap: box with arrow */
       virtual: `<svg viewBox="0 0 24 24" fill="none" stroke="${active}" stroke-width="1.8"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="M9 12h6m0 0l-2-2m2 2l-2 2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
       offline: `<svg viewBox="0 0 24 24" fill="none" stroke="${d}" stroke-width="1.8"><circle cx="12" cy="12" r="8"/><path d="M8 8l8 8" stroke-linecap="round"/></svg>`,
     };
     return svgs[kind] || svgs.eth;
+  }
+
+  /**
+   * AP signal icon (mirrors Adwaita network-wireless-signal-*-symbolic).
+   * strength 0–100 → excellent / good / ok / weak / none
+   */
+  function wifiSignalSvg(sig) {
+    const col = "#cdd6f4";
+    const dim = "#585b70";
+    const s = Number(sig) || 0;
+    /* Arc visibility by strength tier */
+    const a1 = s >= 5  ? col : dim; /* outer */
+    const a2 = s >= 30 ? col : dim;
+    const a3 = s >= 55 ? col : dim;
+    const a4 = s >= 80 ? col : dim;
+    return `<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round">
+      <path d="M2.5 10.5a13 13 0 0119 0" stroke="${a4}"/>
+      <path d="M5 13.2a9.5 9.5 0 0114 0" stroke="${a3}"/>
+      <path d="M7.8 15.8a5.8 5.8 0 018.4 0" stroke="${a2}"/>
+      <path d="M10.5 18.2a2.2 2.2 0 013 0" stroke="${a1}"/>
+      <circle cx="12" cy="20.2" r="1.15" fill="${col}" stroke="none"/>
+    </svg>`;
+  }
+
+  /** Lock badge (mirrors network-wireless-encrypted-symbolic) */
+  function wifiLockSvg() {
+    return `<svg viewBox="0 0 16 16" fill="#a6adc8"><path d="M8 1C5.8 1 4 2.8 4 5v2c-1.1 0-2 .9-2 2v5c0 .6.4 1 1 1h10c.6 0 1-.4 1-1v-5c0-1.1-.9-2-2-2V5c0-2.2-1.8-4-4-4zm0 2c1.1 0 2 .9 2 2v2H6V5c0-1.1.9-2 2-2z"/></svg>`;
+  }
+
+  function wifiApIcon(ap) {
+    const lock = ap.secure
+      ? `<span class="lock" aria-label="secured">${wifiLockSvg()}</span>`
+      : "";
+    return `<span class="ap-ico" title="${ap.secure ? "Secured" : "Open"}">${wifiSignalSvg(ap.sig)}${lock}</span>`;
   }
 
   function toast(msg) {
@@ -897,23 +1070,62 @@
       });
     });
 
-    /* wifi */
+    /* wifi — scan list + join (wpa_supplicant) */
     const showWifi = feat.wireless && feat.wpa;
     $("wifiSection").style.display = showWifi ? "" : "none";
     if (showWifi) {
-      $("wifiList").innerHTML = WIFI_APS.map((ap) => {
+      const st = $("wifiStatus");
+      if (state.wifiScanning) {
+        st.textContent = "Scanning…";
+      } else if (state.wifiLastScan) {
+        st.textContent = "Last scan " + state.wifiLastScan +
+          " · " + WPA_NETWORKS.length + " saved in wpa_supplicant";
+      } else {
+        st.textContent = WPA_NETWORKS.length
+          ? WPA_NETWORKS.length + " network(s) in wpa_supplicant · Scan for nearby APs"
+          : "Scan for nearby networks";
+      }
+      $("btnWifiScan").disabled = state.wifiScanning;
+      const sorted = WIFI_APS.slice().sort((a, b) => (b.sig || 0) - (a.sig || 0));
+      $("wifiList").innerHTML = sorted.map((ap) => {
         const radio = wifiRadioLabel(ap.freqMhz, ap.maxKbps);
-        return `<div class="wifi-row" data-ssid="${ap.ssid}">
-          <span>${ap.secure ? "🔒" : "📡"}</span>
+        const secLabel = ap.security === "open" ? "Open" :
+          ap.security === "wep" ? "WEP" : "WPA";
+        const saved = WPA_NETWORKS.find((n) => n.ssid === ap.ssid);
+        let status = "";
+        if (ap.active) status = " · connected";
+        else if (saved && saved.auth === "bad_key") status = " · password invalid";
+        else if (saved) status = " · saved";
+        const bad = saved && saved.auth === "bad_key";
+        return `<div class="wifi-row${bad ? " wifi-bad" : ""}" data-ssid="${ap.ssid}" data-sec="${ap.security || (ap.secure ? "wpa" : "open")}">
+          ${wifiApIcon(ap)}
           <div class="meta">
-            <div class="ssid">${ap.ssid}${ap.active ? " · connected" : ""}</div>
-            ${radio ? `<div class="freq">${radio}</div>` : ""}
+            <div class="ssid">${ap.ssid}${status}</div>
+            <div class="freq">${[radio, secLabel].filter(Boolean).join(" · ")}${bad ? " · needs new key" : ""}</div>
           </div>
           <span class="sig">${ap.sig}%</span>
         </div>`;
       }).join("");
       $("wifiList").querySelectorAll(".wifi-row").forEach((el) => {
-        el.addEventListener("click", () => toast("Connect " + el.dataset.ssid + " (v2)"));
+        el.addEventListener("click", () => {
+          const ssid = el.dataset.ssid;
+          const sec = el.dataset.sec || "wpa";
+          const ap = WIFI_APS.find((a) => a.ssid === ssid);
+          const saved = WPA_NETWORKS.find((n) => n.ssid === ssid);
+          if (ap && ap.active && !(saved && saved.auth === "bad_key")) {
+            toast("Already connected to " + ssid);
+            return;
+          }
+          if (saved && saved.auth === "bad_key") {
+            openWifiJoin(ssid, saved.security || sec, { reason: "bad_key" });
+            return;
+          }
+          if (sec === "open") {
+            doWifiJoin(ssid, "open", "", true);
+            return;
+          }
+          openWifiJoin(ssid, sec);
+        });
       });
     }
 
@@ -929,6 +1141,159 @@
     if (state.createOpen) syncCreatePreflight();
 
     $("authModal").classList.toggle("open", state.authOpen);
+    $("wifiJoinModal").classList.toggle("open", state.wifiJoinOpen);
+    if (state.wifiJoinOpen) syncWifiKeyUi();
+  }
+
+  function openWifiJoin(ssid, security, opts) {
+    opts = opts || {};
+    state.wifiJoinOpen = true;
+    state.editorOpen = false;
+    state.createOpen = false;
+    state.authOpen = false;
+    hideCtx();
+    const saved = WPA_NETWORKS.find((n) => n.ssid === ssid);
+    $("wifiSsid").value = ssid || "";
+    $("wifiSsid").readOnly = !!ssid;
+    $("wifiSec").value = security || (saved && saved.security) || "wpa";
+    $("wifiKey").value = "";
+    $("wifiKeyShow").checked = false;
+    $("wifiKey").type = "password";
+    $("wifiSaveConf").checked = true;
+    setFieldErr("wifiSsid", "errWifiSsid", "");
+    setFieldErr("wifiKey", "errWifiKey", "");
+    const err = $("wifiJoinErr");
+    err.style.display = "none";
+    err.textContent = "";
+    if (opts.reason === "bad_key" || (saved && saved.auth === "bad_key")) {
+      err.style.display = "";
+      err.textContent = "The saved password is no longer valid. Enter the new network key.";
+      $("wifiJoinTitle").textContent = ssid ? ("Update password for “" + ssid + "”") : "Join Wi‑Fi network";
+      $("wifiJoinNote").textContent =
+        "Authentication failed (wrong or changed key). Update wpa_supplicant and try again.";
+    } else {
+      $("wifiJoinTitle").textContent = ssid ? ("Join “" + ssid + "”") : "Join Wi‑Fi network";
+      $("wifiJoinNote").textContent =
+        "Updates wpa_supplicant (wpa_cli set_network) and optionally saves the config.";
+    }
+    /* Forget only when this SSID is already in wpa_supplicant */
+    $("btnWifiForget").style.display = saved ? "" : "none";
+    render();
+    setTimeout(() => {
+      const sec = $("wifiSec").value;
+      if (sec === "open") $("btnWifiJoinGo").focus();
+      else $("wifiKey").focus();
+    }, 40);
+  }
+
+  function closeWifiJoin() {
+    state.wifiJoinOpen = false;
+    $("wifiKey").value = "";
+    const err = $("wifiJoinErr");
+    if (err) { err.style.display = "none"; err.textContent = ""; }
+    render();
+  }
+
+  function forgetWifiNetwork(ssid) {
+    WPA_NETWORKS = WPA_NETWORKS.filter((n) => n.ssid !== ssid);
+    WIFI_APS.forEach((a) => {
+      if (a.ssid === ssid) a.active = false;
+    });
+    toast("Forgot “" + ssid + "” · removed from wpa_supplicant");
+    closeWifiJoin();
+  }
+
+  /**
+   * Mock apply: wpa_cli add/set/enable/select/save_config.
+   * Auth failure when key does not match AP (common: password changed).
+   */
+  function doWifiJoin(ssid, security, key, saveConf) {
+    if (security !== "open") {
+      const expect = WIFI_CORRECT_KEYS[ssid];
+      /* Unknown mock APs accept any valid-format key; known APs check */
+      if (expect !== undefined && key !== expect) {
+        let n = WPA_NETWORKS.find((x) => x.ssid === ssid);
+        if (n) {
+          n.auth = "bad_key";
+          n.flags = "[DISABLED]";
+          n.storedKey = key;
+        } else {
+          WPA_NETWORKS.push({
+            id: WPA_NETWORKS.length, ssid: ssid, flags: "[DISABLED]",
+            auth: "bad_key", security: security, storedKey: key,
+          });
+        }
+        WIFI_APS.forEach((a) => { if (a.ssid === ssid) a.active = false; });
+        /* Keep join dialog open with error — user re-enters key */
+        state.wifiJoinOpen = true;
+        const err = $("wifiJoinErr");
+        err.style.display = "";
+        err.textContent = "Could not connect: password incorrect or no longer valid.";
+        setFieldErr("wifiKey", "errWifiKey", "Check the network key and try again");
+        $("wifiKey").value = "";
+        $("wifiKey").focus();
+        $("btnWifiForget").style.display = "";
+        toast("Authentication failed");
+        render();
+        return false;
+      }
+    }
+
+    WIFI_APS.forEach((a) => { a.active = (a.ssid === ssid); });
+    if (!WIFI_APS.some((a) => a.ssid === ssid)) {
+      WIFI_APS.push({
+        ssid: ssid, sig: 50, secure: security !== "open",
+        security: security, active: true, freqMhz: 5180, maxKbps: 300000,
+      });
+    }
+    WPA_NETWORKS.forEach((n) => {
+      if (n.ssid === ssid) {
+        n.flags = "[CURRENT]";
+        n.auth = "ok";
+        n.storedKey = key || n.storedKey;
+        n.security = security;
+      } else if (n.flags === "[CURRENT]") {
+        n.flags = "";
+      }
+    });
+    if (!WPA_NETWORKS.some((n) => n.ssid === ssid)) {
+      WPA_NETWORKS.push({
+        id: WPA_NETWORKS.length, ssid: ssid, flags: "[CURRENT]",
+        auth: "ok", security: security, storedKey: key,
+      });
+    }
+    toast(saveConf
+      ? ("Connected to " + ssid + " · wpa_supplicant saved")
+      : ("Connected to " + ssid));
+    closeWifiJoin();
+    return true;
+  }
+
+  function runWifiScan() {
+    if (state.wifiScanning) return;
+    state.wifiScanning = true;
+    render();
+    /* Simulated scan completes quickly; live path: wpa_cli scan + scan_results */
+    setTimeout(() => {
+      /* Jitter signal levels slightly to show refresh */
+      WIFI_APS.forEach((a) => {
+        if (!a.active) {
+          a.sig = Math.max(5, Math.min(99, a.sig + Math.floor(Math.random() * 11) - 5));
+        }
+      });
+      /* Occasionally “discover” a lab AP */
+      if (!WIFI_APS.some((a) => a.ssid === "CloudBSD-Guest")) {
+        WIFI_APS.push({
+          ssid: "CloudBSD-Guest", sig: 55, secure: true, security: "wpa",
+          active: false, freqMhz: 2462, maxKbps: 144000,
+        });
+      }
+      state.wifiScanning = false;
+      const d = new Date();
+      state.wifiLastScan = d.toLocaleTimeString();
+      toast("Scan complete");
+      render();
+    }, 700);
   }
 
   function showCtx(x, y, name) {
@@ -1140,6 +1505,7 @@
         state.editorOpen = false;
         state.createOpen = false;
         state.authOpen = false;
+        state.wifiJoinOpen = false;
         hideCtx();
       }
       $("btnNet").setAttribute("aria-expanded", state.open ? "true" : "false");
@@ -1150,6 +1516,7 @@
       state.editorOpen = false;
       state.createOpen = false;
       state.authOpen = false;
+      state.wifiJoinOpen = false;
       hideCtx();
       render();
     });
@@ -1215,6 +1582,49 @@
       runPending(pending);
     });
 
+    /* Wi‑Fi scan + join (wpa_supplicant) */
+    $("btnWifiScan").addEventListener("click", () => runWifiScan());
+    $("btnWifiJoin").addEventListener("click", () => openWifiJoin("", "wpa"));
+    $("btnWifiJoinClose").addEventListener("click", closeWifiJoin);
+    $("btnWifiJoinCancel").addEventListener("click", closeWifiJoin);
+    $("wifiJoinModal").addEventListener("click", (e) => {
+      if (e.target === $("wifiJoinModal")) closeWifiJoin();
+    });
+    $("wifiSec").addEventListener("change", () => {
+      syncWifiKeyUi();
+      validateWifiJoinForm();
+    });
+    $("wifiSsid").addEventListener("input", () => validateWifiJoinForm());
+    $("wifiKey").addEventListener("input", () => validateWifiJoinForm());
+    $("wifiKey").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") $("btnWifiJoinGo").click();
+    });
+    $("wifiKeyShow").addEventListener("change", (e) => {
+      $("wifiKey").type = e.target.checked ? "text" : "password";
+    });
+    $("btnWifiJoinGo").addEventListener("click", () => {
+      if (!validateWifiJoinForm()) return;
+      const ssid = $("wifiSsid").value;
+      const sec = $("wifiSec").value;
+      const key = $("wifiKey").value;
+      const save = $("wifiSaveConf").checked;
+      /* Saving wpa_supplicant.conf may need admin — prompt if required */
+      if (save && features().needs_password) {
+        state.pendingAction = {
+          kind: "wifi_join",
+          ssid: ssid, security: sec, key: key, save: save,
+        };
+        openAuth();
+        return;
+      }
+      doWifiJoin(ssid, sec, key, save);
+    });
+    $("btnWifiForget").addEventListener("click", () => {
+      const ssid = $("wifiSsid").value;
+      if (!ssid) return;
+      forgetWifiNetwork(ssid);
+    });
+
     $("ctxToggle").addEventListener("click", () => {
       const n = state.selected;
       hideCtx();
@@ -1255,6 +1665,7 @@
         state.editorOpen = false;
         state.createOpen = false;
         state.authOpen = false;
+        state.wifiJoinOpen = false;
       }
       hideCtx();
       render();
@@ -1264,6 +1675,7 @@
       state.editorOpen = false;
       state.createOpen = false;
       state.authOpen = false;
+      state.wifiJoinOpen = false;
       hideCtx();
       render();
     });

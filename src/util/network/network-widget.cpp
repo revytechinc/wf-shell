@@ -39,9 +39,26 @@ AccessPointWidget::AccessPointWidget(std::string path_in, std::shared_ptr<Access
     auto update_ap = [this] ()
     {
         label.set_label(ap->get_ssid());
-        /* Prefer symbolic status icons (FreeBSD/Adwaita always ship *-symbolic). */
-        wifi.set_from_icon_name(ap->get_icon_name() + "-symbolic");
-        security.set_from_icon_name(ap->get_security_icon_name());
+        /*
+         * Adwaita FreeBSD ships:
+         *   network-wireless-signal-{excellent,good,ok,weak,none}-symbolic
+         *   network-wireless-encrypted-symbolic
+         * Never double-append -symbolic; never use emoji.
+         */
+        const std::string sig = ap->get_icon_name();
+        wifi.set_from_icon_name(sig + "-symbolic");
+        wifi.set_visible(true);
+        const std::string sec = ap->get_security_icon_name();
+        if (sec.empty())
+        {
+            security.clear();
+            security.set_visible(false);
+        }
+        else
+        {
+            security.set_from_icon_name(sec);
+            security.set_visible(true);
+        }
         /* Radio frequency (MHz) · band — omit if unknown (no "???"). */
         auto radio = ap->get_band_name();
         band.set_label(radio);

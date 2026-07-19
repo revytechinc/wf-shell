@@ -225,18 +225,23 @@ text-shadow: 1px  1px 0 var(--bcol),
     animation-fill-mode: forwards;
 }
 
+/* Wi-Fi AP list: signal + optional lock — Adwaita symbolic names only */
 .network-control-center image.access-point {
     -gtk-icon-size: 40px;
 }
 
-.network-control-center .access-point.secure .security {
-    -gtk-icon-size:20px;
-    color:red;
+.network-control-center .access-point .security {
+    -gtk-icon-size: 16px;
+    color: #a6adc8; /* visible lock overlay */
 }
 
+.network-control-center .access-point.secure .security {
+    -gtk-icon-size: 16px;
+    color: #f9e2af;
+}
 
 .network-control-center .access-point.secure.has-password .security {
-    color:green;
+    color: #a6e3a1;
 }
 
 .network-control-center .access-point.has-password{

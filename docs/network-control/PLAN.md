@@ -202,11 +202,52 @@ Same Honcho rule as audio: **diff before paint**.
 6. Linux **Advanced** → networkmgr / ini only.  
 7. No NM global toggles / fake AP list on FreeBSD.
 
-### v2 — Wi‑Fi (when `wlan*` + wpa)
+### v2 — Wi‑Fi + wpa_supplicant (when `wlan*` + `wpa_cli`)
 
-7. Scan list, connect/disconnect via `wpa_cli`.  
-8. Signal strength icons.  
-9. PSK prompt (reuse password popup pattern carefully).
+7. **Scan** — `wpa_cli -i wlanN scan` / `scan_results`  
+8. **Signal icons** — Adwaita `network-wireless-signal-*-symbolic` + lock overlay  
+9. **Join** — open / WPA-PSK / WEP key dialog (validated)  
+10. **Modify wpa_supplicant** — prefer `wpa_cli` control interface, then `save_config`:
+
+```text
+wpa_cli -i wlan0
+> add_network
+> set_network N ssid "MyNet"
+> set_network N key_mgmt WPA-PSK          # or NONE / WEP...
+> set_network N psk "passphrase"          # WPA 8–63 or 64 hex
+> set_network N wep_key0 "...."           # WEP only
+> enable_network N
+> select_network N
+> save_config                             # requires update_config=1 in conf
+```
+
+| Security | wpa_supplicant fields |
+|----------|------------------------|
+| Open | `key_mgmt=NONE` |
+| WPA/WPA2/WPA3-Personal | `key_mgmt=WPA-PSK` + `psk=` |
+| WEP | `key_mgmt=NONE` + `wep_key0=` + `wep_tx_keyidx=0` |
+
+**Persist:** `save_config` writes the conf used by the running daemon (often  
+`/etc/wpa_supplicant.conf` via `wpa_supplicant_conf` / `rc.conf`).  
+Host conf must have `update_config=1` for save to stick.  
+Elevation: same admin gate as other mutations when the control socket or conf  
+is root-owned.
+
+**Do not** ship a project `doas.conf`; do not rewrite conf by hand if `wpa_cli`  
+works. Fail-soft on scan/join errors.
+
+### Common Wi‑Fi failures (handle in UI)
+
+| Issue | Detection (FreeBSD) | User action |
+|-------|---------------------|-------------|
+| **Password changed / wrong PSK** | `CTRL-EVENT-SSID-TEMP-DISABLED` / auth failures; network not ASSOCIATED | Re-open join: “password no longer valid”; update `psk` / `wep_key0`; **Forget network** |
+| **Saved network won’t reconnect** | `list_networks` has SSID but not CURRENT after enable | Offer **Update password** or **Forget** |
+| **Open network** | scan flags lack privacy | Connect without key dialog |
+| **Out of range** | missing from `scan_results` | Keep saved; show “not in range” if user tries join |
+| **WEP vs WPA mismatch** | auth fails after key set | Allow changing Security in join dialog |
+| **save_config fails** | `update_config=0` in conf | Toast: could not persist; still try runtime select |
+
+**Never** leave a greyed-out empty menu. On bad_key: show the AP as **password invalid** and open the key dialog with clear error (no raw wpa_cli spam).
 
 ### v3 — actions / policy
 
@@ -401,6 +442,7 @@ flowchart TB
 | [diagrams/modal-configure.svg](diagrams/modal-configure.svg) | Configure… static/DHCP editor |
 | [diagrams/modal-create-preflight.svg](diagrams/modal-create-preflight.svg) | Create… lists only available types |
 | [diagrams/modal-auth-password.svg](diagrams/modal-auth-password.svg) | Password when doas/sudo needs it |
+| [diagrams/modal-wifi-join.svg](diagrams/modal-wifi-join.svg) | Wi‑Fi join · WPA/WEP key · wpa_supplicant |
 | [diagrams/information-only.svg](diagrams/information-only.svg) | No doas/sudo — read-only list |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Factory/Builder + Mermaid wiring |
 

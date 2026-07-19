@@ -334,6 +334,44 @@ TEST(NetworkTypes, CloneCatalogAndPreflight)
     EXPECT_TRUE(lo_empty.can_create);
 }
 
+TEST(AccessPointIcons, StrengthAndSecurityNames)
+{
+    /*
+     * Document / pin icon base names that must exist as Adwaita *-symbolic.
+     * AccessPoint lives in wifi-ap; pure strength mapping mirrored here.
+     */
+    auto strength_string = [] (unsigned char strength) -> const char * {
+        if (strength >= 80) return "excellent";
+        if (strength >= 55) return "good";
+        if (strength >= 30) return "ok";
+        if (strength >= 5) return "weak";
+        return "none";
+    };
+    EXPECT_STREQ(strength_string(100), "excellent");
+    EXPECT_STREQ(strength_string(60), "good");
+    EXPECT_STREQ(strength_string(40), "ok");
+    EXPECT_STREQ(strength_string(10), "weak");
+    EXPECT_STREQ(strength_string(0), "none");
+
+    /* Names that Adwaita FreeBSD ships (verified on host during fix) */
+    const char *need[] = {
+        "network-wireless-signal-excellent",
+        "network-wireless-signal-good",
+        "network-wireless-signal-ok",
+        "network-wireless-signal-weak",
+        "network-wireless-signal-none",
+        "network-wireless-encrypted",
+        "network-wireless-offline",
+        nullptr,
+    };
+    for (int i = 0; need[i]; ++i)
+    {
+        EXPECT_FALSE(std::string(need[i]).empty());
+        EXPECT_EQ(std::string(need[i]).find("symbolic"), std::string::npos)
+            << "base name must not already include -symbolic: " << need[i];
+    }
+}
+
 TEST(NetworkTypes, WifiFrequencyLabels)
 {
     EXPECT_EQ(format_wifi_frequency_mhz(0), "");
@@ -864,6 +902,28 @@ TEST(NetworkTypes, InputValidation)
     EXPECT_TRUE(validate_admin_password("secret").ok);
     EXPECT_FALSE(validate_admin_password(std::string(513, 'x')).ok);
     EXPECT_TRUE(validate_admin_password(std::string(512, 'x')).ok);
+
+    /* Wi‑Fi credentials (wpa_supplicant) */
+    EXPECT_TRUE(validate_wifi_ssid("CloudBSD-Lab").ok);
+    EXPECT_FALSE(validate_wifi_ssid("").ok);
+    EXPECT_FALSE(validate_wifi_ssid(std::string(33, 'a')).ok);
+
+    EXPECT_TRUE(validate_wifi_wpa_psk("password1").ok);
+    EXPECT_TRUE(validate_wifi_wpa_psk(std::string(64, 'a')).ok); /* hex PSK */
+    EXPECT_FALSE(validate_wifi_wpa_psk("short").ok);
+    EXPECT_FALSE(validate_wifi_wpa_psk("").ok);
+    EXPECT_FALSE(validate_wifi_wpa_psk(std::string(64, 'z')).ok); /* not hex */
+
+    EXPECT_TRUE(validate_wifi_wep_key("abcde").ok);
+    EXPECT_TRUE(validate_wifi_wep_key("abcdefghijklm").ok);
+    EXPECT_TRUE(validate_wifi_wep_key("0123456789").ok);
+    EXPECT_FALSE(validate_wifi_wep_key("abcd").ok);
+
+    EXPECT_TRUE(validate_wifi_credentials("open", "").ok);
+    EXPECT_TRUE(validate_wifi_credentials("wpa", "goodpass").ok);
+    EXPECT_FALSE(validate_wifi_credentials("wpa", "bad").ok);
+    EXPECT_TRUE(validate_wifi_credentials("wep", "hello").ok);
+    EXPECT_FALSE(validate_wifi_credentials("mystery", "x").ok);
 
     ConfigFormInput cfg;
     cfg.v4_mode = "static";
