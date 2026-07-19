@@ -1813,7 +1813,9 @@
     const kind = t === "bridge" ? "Bridge" : t === "tap" || t === "tun" || t === "epair" ? "Virtual" : "Other";
     state.extraIfaces = state.extraIfaces.filter((e) => e.name !== name);
     state.extraIfaces.push({
-      name: name, kind: kind, media: "", ipv4: [], ipv6: [],
+      name: name, kind: kind,
+      media: kind === "Bridge" ? "" : "Ethernet autoselect (1000baseT <full-duplex>)",
+      ipv4: [], ipv6: [],
       up: true, running: true, isDefault: false, status: "active", permanent: false,
     });
     state.selected = name;
