@@ -120,12 +120,12 @@ class FreeBSDDetailsWindow : public Gtk::Window
     ~FreeBSDDetailsWindow() override;
 
     /**
-     * Show the window. Do not parent to the panel (layer-shell) — that
-     * breaks Close / Escape / WM decorations under Wayland.
+     * Show the window. Never set_transient_for a layer-shell panel (breaks
+     * close). Optionally inherits the panel's Gdk::Display for Wayland.
      */
-    void present_for(Gtk::Window *transient_parent = nullptr);
+    void present_for(Gtk::Window *display_source = nullptr);
 
-    /** Hide cleanly: stop tick, release grab, emit closed. */
+    /** Stop tick, unmap, then emit closed on idle (safe destroy by owner). */
     void request_close();
 
     sigc::signal<void()>& signal_closed() { return closed_; }
@@ -137,6 +137,7 @@ class FreeBSDDetailsWindow : public Gtk::Window
     bool on_tick();
     void ensure_tick();
     void stop_tick();
+    void attach_to_app();
     void draw_graph(const Cairo::RefPtr<Cairo::Context>& cr, int w, int h);
 
     std::shared_ptr<FreeBSDNetwork> net_;
@@ -152,6 +153,7 @@ class FreeBSDDetailsWindow : public Gtk::Window
     Gtk::DrawingArea graph_;
     Gtk::Button close_btn_;
     sigc::connection tick_;
+    sigc::connection close_idle_;
     std::vector<sigc::connection> signals_;
     sigc::signal<void()> closed_;
 };

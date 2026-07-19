@@ -1008,28 +1008,32 @@ void FreeBSDIfaceRow::do_details()
     {
         return;
     }
-    if (!details_)
+    /* Already open — just raise it. */
+    if (details_ && details_->get_visible())
     {
-        details_ = std::make_unique<FreeBSDDetailsWindow>(net_, collector_);
-        /* Destroy after close so the next open is a clean window (no stuck hide). */
-        signals_.push_back(details_->signal_closed().connect([this] () {
-            auto row_alive = alive_;
-            ui_idle([this, row_alive] () {
-                if (!row_alive->load() || !details_)
-                {
-                    return;
-                }
-                /* Re-opened before idle ran — leave the live window alone. */
-                if (details_->get_visible())
-                {
-                    return;
-                }
-                details_.reset();
-            });
-        }));
+        details_->present_for(nullptr);
+        return;
     }
-    /* Never pass the panel as transient — layer-shell breaks dialog close. */
-    details_->present_for(nullptr);
+    /* Fresh window each open avoids stuck hide/map state on Wayland. */
+    details_.reset();
+    details_ = std::make_unique<FreeBSDDetailsWindow>(net_, collector_);
+    signals_.push_back(details_->signal_closed().connect([this] () {
+        /*
+         * closed_ is already emitted from an idle after hide — safe to
+         * destroy the C++ object immediately.
+         */
+        details_.reset();
+    }));
+    /*
+     * Pass the panel window only as a display source (not transient-for).
+     * Layer-shell as transient parent is what made Close/Escape feel broken.
+     */
+    Gtk::Window *panel_win = nullptr;
+    if (auto *root = get_root())
+    {
+        panel_win = dynamic_cast<Gtk::Window*>(root);
+    }
+    details_->present_for(panel_win);
 }
 
 /* ─── FreeBSDDetailsWindow ───────────────────────────────────────────────── */
@@ -1045,8 +1049,10 @@ FreeBSDDetailsWindow::FreeBSDDetailsWindow(std::shared_ptr<FreeBSDNetwork> net,
     set_destroy_with_parent(false);
     set_hide_on_close(true);
     set_deletable(true);
-    /* Standalone toplevel — panel is layer-shell, not a safe transient parent. */
+    set_resizable(true);
+    /* Standalone toplevel — never transient-for layer-shell panel. */
     unset_transient_for();
+    attach_to_app();
 
     root_.set_margin(12);
     root_.set_spacing(10);
@@ -1090,6 +1096,8 @@ FreeBSDDetailsWindow::FreeBSDDetailsWindow(std::shared_ptr<FreeBSDNetwork> net,
     close_btn_.set_label("Close");
     close_btn_.set_halign(Gtk::Align::END);
     close_btn_.set_can_focus(true);
+    close_btn_.set_receives_default(true);
+    set_default_widget(close_btn_);
     signals_.push_back(close_btn_.signal_clicked().connect(
         [this] () { request_close(); }));
     root_.append(close_btn_);
@@ -1097,11 +1105,24 @@ FreeBSDDetailsWindow::FreeBSDDetailsWindow(std::shared_ptr<FreeBSDNetwork> net,
     signals_.push_back(graph_combo_.signal_changed().connect(
         [this] () { on_graph_style_changed(); }));
 
-    /* Title-bar X, Alt-F4, Escape (GTK maps these to close-request). */
+    /* Title-bar X / Alt-F4 → close-request. */
     signals_.push_back(signal_close_request().connect([this] () {
         request_close();
-        return true; /* we handled it */
+        return true; /* we handle hide + deferred destroy */
     }, false));
+
+    /* Explicit Escape — some Wayland compositors don't map it to close-request. */
+    auto key = Gtk::EventControllerKey::create();
+    signals_.push_back(key->signal_key_pressed().connect(
+        [this] (guint keyval, guint, Gdk::ModifierType) -> bool {
+            if (keyval == GDK_KEY_Escape)
+            {
+                request_close();
+                return true;
+            }
+            return false;
+        }, false));
+    add_controller(key);
 
     if (net_ && collector_ &&
         wf_net::is_valid_traffic_ifname(net_->get_interface()) &&
@@ -1117,9 +1138,33 @@ FreeBSDDetailsWindow::FreeBSDDetailsWindow(std::shared_ptr<FreeBSDNetwork> net,
 FreeBSDDetailsWindow::~FreeBSDDetailsWindow()
 {
     stop_tick();
+    if (close_idle_.connected())
+    {
+        close_idle_.disconnect();
+    }
     for (auto& s : signals_)
     {
         s.disconnect();
+    }
+    try
+    {
+        unset_application();
+    } catch (...)
+    {
+    }
+}
+
+void FreeBSDDetailsWindow::attach_to_app()
+{
+    /*
+     * Wayland: windows not tied to the GtkApplication often mishandle close.
+     * Gtk::Application::get_default() returns Gtk::Application (not Gio).
+     */
+    auto app = std::dynamic_pointer_cast<Gtk::Application>(
+        Gio::Application::get_default());
+    if (app)
+    {
+        set_application(app);
     }
 }
 
@@ -1149,23 +1194,48 @@ void FreeBSDDetailsWindow::request_close()
     }
     closing_ = true;
     stop_tick();
-    hide();
-    closed_.emit();
-    closing_ = false;
+    /* Unmap first while the window object is still fully alive. */
+    if (get_visible())
+    {
+        hide();
+    }
+    /*
+     * Emit closed_ only after the current GTK signal stack unwinds.
+     * Destroying (unique_ptr reset) from inside close-request/clicked is
+     * what left the modal half-dead / unresponsive on Wayland.
+     */
+    if (close_idle_.connected())
+    {
+        close_idle_.disconnect();
+    }
+    close_idle_ = Glib::signal_idle().connect([this] () {
+        closed_.emit();
+        return false; /* one-shot */
+    });
 }
 
-void FreeBSDDetailsWindow::present_for(Gtk::Window *transient_parent)
+void FreeBSDDetailsWindow::present_for(Gtk::Window *display_source)
 {
-    (void)transient_parent;
     closing_ = false;
+    if (close_idle_.connected())
+    {
+        close_idle_.disconnect();
+    }
     /*
-     * Never set_transient_for the panel: it is a gtk-layer-shell surface.
-     * Transient children of layer surfaces often cannot close cleanly (X,
-     * Escape, Close button appear dead or re-show the window).
+     * Never set_transient_for the panel (layer-shell). Do inherit its
+     * GdkDisplay so the dialog lands on the same Wayland seat/output.
      */
     unset_transient_for();
     set_modal(false);
     set_destroy_with_parent(false);
+    if (display_source)
+    {
+        if (auto disp = display_source->get_display())
+        {
+            set_display(disp);
+        }
+    }
+    attach_to_app();
     rebuild_props();
     update_traffic_meta();
     present();
