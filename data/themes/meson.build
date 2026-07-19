@@ -1,0 +1,13 @@
+themes_path = join_paths(resource_dir, 'themes')
+
+install_data('amiga-workbench.css', install_dir: themes_path)
+install_data('catppuccin-mocha.css', install_dir: themes_path)
+install_data('crt-phosphor.css', install_dir: themes_path)
+install_data('dracula.css', install_dir: themes_path)
+install_data('miami-cyberpunk.css', install_dir: themes_path)
+install_data('nord.css', install_dir: themes_path)
+install_data('rose-pine.css', install_dir: themes_path)
+install_data('synthwave.css', install_dir: themes_path)
+install_data('system7.css', install_dir: themes_path)
+install_data('tokyo-night.css', install_dir: themes_path)
+install_data('win95.css', install_dir: themes_path)

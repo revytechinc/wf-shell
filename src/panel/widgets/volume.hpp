@@ -171,6 +171,9 @@ class WayfireVolume : public WayfireWidget
     void draw_meter(const Cairo::RefPtr<Cairo::Context>& cr, int w, int h,
         double level, bool muted, bool is_output, const std::string& style);
 
+    Gtk::PopoverMenu popover_menu;
+    void show_right_click_menu();
+
   public:
     void init(Gtk::Box *container) override;
     virtual ~WayfireVolume();

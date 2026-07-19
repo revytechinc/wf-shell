@@ -1,0 +1,688 @@
+/* wf-shell-theme: id=catppuccin-mocha; name=Catppuccin Mocha; era=modern */
+/* ========================================== */
+/* Catppuccin Mocha — Wayfire Shell theme */
+/* ========================================== */
+
+/* ========================================== */
+/* Miami Cyberpunk Theme for Wayfire Shell   */
+/* ========================================== */
+
+/* Main Panel styling */
+.wf-panel {
+    background-color: rgba(24, 24, 37, 0.95);
+    color: #cdd6f4;
+    border-bottom: 2px solid #cba6f7;
+    box-shadow: 0 2px 10px rgba(203, 166, 247, 0.2), 0 4px 20px rgba(137, 180, 250, 0.1);
+}
+
+/* Panel widgets */
+.wf-panel .clock,
+.wf-panel .battery,
+.wf-panel .network,
+.wf-panel .volume,
+.wf-panel .menu,
+.wf-panel .app-button,
+.wf-panel .window-list button {
+    color: #89b4fa; /* Electric Cyan */
+    font-weight: bold;
+    text-shadow: 0 0 4px rgba(137, 180, 250, 0.5);
+    border: 1px solid transparent;
+    border-radius: 4px;
+    padding: 2px 8px;
+    margin: 2px;
+    transition: all 0.2s ease;
+}
+
+.wf-panel .clock:hover,
+.wf-panel .battery:hover,
+.wf-panel .network:hover,
+.wf-panel .volume:hover,
+.wf-panel .menu:hover,
+.wf-panel .app-button:hover,
+.wf-panel .window-list button:hover {
+    color: #cba6f7; /* Hot Pink */
+    text-shadow: 0 0 6px rgba(203, 166, 247, 0.6);
+    background-color: rgba(203, 166, 247, 0.1);
+    border: 1px solid rgba(203, 166, 247, 0.3);
+    box-shadow: 0 0 8px rgba(203, 166, 247, 0.2);
+}
+
+.wf-panel .volume.selected,
+.wf-panel .network.selected,
+.wf-panel .menu.selected,
+.wf-panel .window-list button.active {
+    color: #cba6f7;
+    text-shadow: 0 0 8px rgba(203, 166, 247, 0.8);
+    background-color: rgba(203, 166, 247, 0.15);
+    border: 1px solid #cba6f7;
+    box-shadow: 0 0 10px rgba(203, 166, 247, 0.3);
+}
+
+/* Launchers widget styling */
+.wf-panel .launcher-button {
+    margin: 0 4px;
+    transition: transform 0.2s ease;
+}
+.wf-panel .launcher-button:hover {
+    transform: scale(1.15) translateY(-2px);
+}
+
+/* ========================================== */
+/* Popover Windows & Dropdowns                */
+/* ========================================== */
+
+.popover > contents {
+    background-color: rgba(30, 30, 46, 0.98);
+    border: 2px solid #cba6f7;
+    border-radius: 12px;
+    padding: 12px;
+    box-shadow: 0 0 20px rgba(203, 166, 247, 0.45), 0 0 8px rgba(137, 180, 250, 0.25);
+    color: #cdd6f4;
+}
+
+/* General Popover Button Styling */
+.popover button,
+.network-control-center button,
+window button {
+    background-image: none;
+    background-color: rgba(137, 180, 250, 0.05);
+    background: rgba(137, 180, 250, 0.05);
+    border: 1px solid rgba(137, 180, 250, 0.2);
+    color: #89b4fa;
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-weight: bold;
+    text-shadow: 0 0 3px rgba(137, 180, 250, 0.3);
+    transition: all 0.2s ease;
+}
+
+.popover button:hover,
+.network-control-center button:hover,
+window button:hover {
+    background-image: none;
+    background-color: rgba(203, 166, 247, 0.15);
+    background: rgba(203, 166, 247, 0.15);
+    border-color: #cba6f7;
+    color: #cba6f7;
+    text-shadow: 0 0 5px rgba(203, 166, 247, 0.5);
+    box-shadow: 0 0 8px rgba(203, 166, 247, 0.3);
+}
+
+.popover button.destructive-action,
+.network-control-center button.destructive-action {
+    background-image: none;
+    background-color: rgba(203, 166, 247, 0.08);
+    background: rgba(203, 166, 247, 0.08);
+    border-color: rgba(203, 166, 247, 0.3);
+    color: #cba6f7;
+}
+
+.popover button.destructive-action:hover,
+.network-control-center button.destructive-action:hover {
+    background-image: none;
+    background-color: rgba(255, 0, 0, 0.15);
+    background: rgba(255, 0, 0, 0.15);
+    border-color: #ff0000;
+    color: #ff0000;
+    text-shadow: 0 0 5px rgba(255, 0, 0, 0.5);
+    box-shadow: 0 0 8px rgba(255, 0, 0, 0.3);
+}
+
+.popover button.flat,
+.network-control-center button.flat {
+    background-image: none;
+    background-color: transparent;
+    background: transparent;
+    border-color: transparent;
+    color: #89b4fa;
+    box-shadow: none;
+}
+
+.popover button.flat:hover,
+.network-control-center button.flat:hover {
+    color: #cba6f7;
+    background-color: rgba(203, 166, 247, 0.1);
+    background: rgba(203, 166, 247, 0.1);
+    box-shadow: none;
+}
+
+.popover combobox,
+.network-control-center combobox,
+.network-control-center combobox button {
+    background-image: none;
+    background-color: #313244;
+    background: #313244;
+    border: 1px solid rgba(137, 180, 250, 0.25);
+    border-radius: 8px;
+    color: #89b4fa;
+    text-shadow: 0 0 4px rgba(137, 180, 250, 0.4);
+}
+
+.volume-popover-title,
+.network-popover-title {
+    font-size: 1.25em;
+    font-weight: 900;
+    color: #89b4fa;
+    text-shadow: 0 0 6px rgba(137, 180, 250, 0.6);
+    letter-spacing: 0.05em;
+}
+
+.volume-popover-section-title {
+    font-size: 0.78em;
+    font-weight: 800;
+    color: #cba6f7;
+    text-shadow: 0 0 4px rgba(203, 166, 247, 0.4);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+}
+
+/* Mute button customization */
+.volume-popover-mute-btn {
+    border-radius: 8px;
+    padding: 6px;
+    background-image: none;
+    background-color: rgba(137, 180, 250, 0.05);
+    background: rgba(137, 180, 250, 0.05);
+    border: 1px solid rgba(137, 180, 250, 0.2);
+    color: #89b4fa;
+    transition: all 0.2s ease;
+}
+
+.volume-popover-mute-btn:hover {
+    background-image: none;
+    background-color: rgba(203, 166, 247, 0.15);
+    background: rgba(203, 166, 247, 0.15);
+    border-color: #cba6f7;
+    color: #cba6f7;
+    transform: scale(1.08);
+    box-shadow: 0 0 8px rgba(203, 166, 247, 0.3);
+}
+
+.volume-popover-pct {
+    font-size: 0.95em;
+    font-weight: bold;
+    color: #89b4fa;
+    text-shadow: 0 0 4px rgba(137, 180, 250, 0.5);
+}
+
+/* Volume and brightness sliders (scales) */
+.volume-popover-scale trough {
+    background-color: #45475a;
+    min-height: 8px;
+    border-radius: 4px;
+    border: 1px solid rgba(137, 180, 250, 0.1);
+}
+
+.volume-popover-scale highlight {
+    border-radius: 4px;
+    background-color: #cba6f7; /* Hot Pink */
+    box-shadow: 0 0 6px rgba(203, 166, 247, 0.5);
+}
+
+/* Make input slider use electric cyan */
+.volume-popover-section:nth-child(5) .volume-popover-scale highlight {
+    background-color: #89b4fa; /* Electric Cyan */
+    box-shadow: 0 0 6px rgba(137, 180, 250, 0.5);
+}
+
+.volume-popover-scale slider {
+    background-color: #02010a;
+    border: 2px solid #89b4fa;
+    border-radius: 50%;
+    min-width: 16px;
+    min-height: 16px;
+    margin: -4px;
+    box-shadow: 0 0 6px rgba(137, 180, 250, 0.8);
+    transition: transform 0.15s ease, background-color 0.15s ease;
+}
+
+.volume-popover-section:nth-child(5) .volume-popover-scale slider {
+    border-color: #cba6f7;
+    box-shadow: 0 0 6px rgba(203, 166, 247, 0.8);
+}
+
+.volume-popover-scale slider:hover {
+    transform: scale(1.3);
+    background-color: #89b4fa;
+}
+
+.volume-popover-section:nth-child(5) .volume-popover-scale slider:hover {
+    background-color: #cba6f7;
+}
+
+/* Dropdowns / Comboboxes */
+.volume-popover-combo,
+.volume-popover-device-combo,
+combobox,
+combobox button,
+combobox > box > button,
+combobox > box > button > box,
+dropdown,
+dropdown button,
+dropdown > button {
+    background-image: none;
+    background-color: #313244;
+    background: #313244;
+    border: 1px solid rgba(137, 180, 250, 0.25);
+    border-radius: 8px;
+    padding: 6px 12px;
+    color: #89b4fa;
+    text-shadow: 0 0 4px rgba(137, 180, 250, 0.4);
+    font-size: 0.95em;
+    box-shadow: none;
+    transition: all 0.2s ease;
+}
+
+.volume-popover-combo:hover,
+.volume-popover-device-combo:hover,
+combobox button:hover,
+dropdown button:hover {
+    background-image: none;
+    background-color: rgba(137, 180, 250, 0.08);
+    background: rgba(137, 180, 250, 0.08);
+    border-color: #89b4fa;
+    box-shadow: 0 0 8px rgba(137, 180, 250, 0.2);
+}
+
+combobox cellview,
+combobox label,
+dropdown label,
+dropdown cellview {
+    color: #89b4fa;
+    text-shadow: 0 0 4px rgba(137, 180, 250, 0.4);
+}
+
+/* Drawing Area level meters */
+.volume-popover-meter {
+    border-radius: 8px;
+    border: 1px solid rgba(203, 166, 247, 0.25);
+    margin: 6px 0;
+    background-color: #07050e;
+}
+
+/* Footer & Advanced Button */
+.volume-popover-adv-btn {
+    border-radius: 6px;
+    padding: 5px 14px;
+    color: #cba6f7;
+    text-shadow: 0 0 4px rgba(203, 166, 247, 0.4);
+    background-color: rgba(203, 166, 247, 0.05);
+    border: 1px solid rgba(203, 166, 247, 0.25);
+    font-weight: bold;
+    font-size: 0.85em;
+    transition: all 0.2s ease;
+}
+
+.volume-popover-adv-btn:hover {
+    background-color: rgba(203, 166, 247, 0.15);
+    border-color: #cba6f7;
+    box-shadow: 0 0 8px rgba(203, 166, 247, 0.3);
+    transform: translateY(-1px);
+}
+
+/* ========================================== */
+/* Network Popover & Wireless Settings        */
+/* ========================================== */
+
+.network-global-toggles {
+    padding: 8px 12px;
+    margin-bottom: 10px;
+    background-color: #313244;
+    border-radius: 8px;
+    border: 1px solid rgba(137, 180, 250, 0.25);
+}
+
+.network-toggle-button {
+    margin-right: 14px;
+    color: #89b4fa;
+    text-shadow: 0 0 4px rgba(137, 180, 250, 0.4);
+    font-weight: bold;
+    font-size: 0.9em;
+}
+
+.network-toggle-button check {
+    border-radius: 4px;
+    border-color: #89b4fa;
+    background-color: #07050e;
+}
+
+.network-toggle-button check:checked {
+    background-color: #cba6f7;
+    border-color: #cba6f7;
+    box-shadow: 0 0 6px rgba(203, 166, 247, 0.6);
+}
+
+/* Device section blocks */
+.network-control-center .device {
+    margin-bottom: 10px;
+    background-color: #313244;
+    border-radius: 8px;
+    border: 1px solid rgba(203, 166, 247, 0.2);
+    padding: 10px;
+}
+
+.network-control-center .device-label {
+    font-weight: bold;
+    color: #cba6f7;
+    text-shadow: 0 0 4px rgba(203, 166, 247, 0.4);
+    font-size: 1em;
+}
+
+/* Access Point Items */
+.network-control-center .access-point {
+    padding: 8px 10px;
+    margin: 3px 0;
+    border-radius: 6px;
+    background-color: transparent;
+    border: 1px solid transparent;
+    transition: all 0.2s ease;
+}
+
+.network-control-center .access-point:hover {
+    background-color: rgba(137, 180, 250, 0.08);
+    border-color: rgba(137, 180, 250, 0.3);
+    box-shadow: 0 0 6px rgba(137, 180, 250, 0.15);
+}
+
+.network-control-center .access-point label {
+    color: #cdd6f4;
+    font-size: 0.95em;
+}
+
+.network-control-center .access-point .band {
+    color: #89b4fa;
+    opacity: 0.8;
+    font-size: 0.85em;
+}
+
+/* Connected / Active Network Item */
+.network-control-center .access-point.connected,
+.network-control-center .access-point.active {
+    font-weight: bold;
+    background-color: rgba(203, 166, 247, 0.12);
+    border: 1px solid rgba(203, 166, 247, 0.3);
+    border-left: 4px solid #cba6f7;
+    padding-left: 8px;
+}
+
+.network-control-center .access-point.connected label {
+    color: #cba6f7;
+    text-shadow: 0 0 4px rgba(203, 166, 247, 0.4);
+}
+
+.network-control-center .access-point.connected .ap-connected-badge {
+    color: #cba6f7;
+    font-weight: bold;
+    font-size: 0.85em;
+}
+
+/* VPN items */
+.network-control-center .vpn {
+    padding: 8px 12px;
+    margin: 4px 0;
+    border-radius: 6px;
+    background-color: #313244;
+    border: 1px solid rgba(137, 180, 250, 0.2);
+    transition: all 0.2s ease;
+}
+
+.network-control-center .vpn:hover {
+    background-color: rgba(137, 180, 250, 0.08);
+    border-color: rgba(137, 180, 250, 0.4);
+}
+
+.network-control-center .vpn.active {
+    font-weight: bold;
+    background-color: rgba(203, 166, 247, 0.12);
+    border: 1px solid rgba(203, 166, 247, 0.3);
+    border-left: 4px solid #cba6f7;
+}
+
+.network-control-center .vpn.active label {
+    color: #cba6f7;
+    text-shadow: 0 0 4px rgba(203, 166, 247, 0.4);
+}
+
+/* Scrolled window customization */
+.network-control-center scrolledwindow,
+.network-control-center scrolledwindow viewport {
+    background: transparent;
+    background-color: transparent;
+    border: none;
+    box-shadow: none;
+}
+
+/* ========================================== */
+/* Standalone Dialogs & Modals                */
+/* ========================================== */
+
+window {
+    background-color: #0c0a17;
+    color: #cdd6f4;
+}
+
+headerbar,
+headerbar:backdrop,
+window headerbar,
+window headerbar:backdrop,
+window.dialog headerbar,
+window.dialog headerbar:backdrop,
+window.popup headerbar,
+window.popup headerbar:backdrop,
+window.modal headerbar,
+window.modal headerbar:backdrop,
+.titlebar,
+.titlebar:backdrop,
+window .titlebar,
+window .titlebar:backdrop {
+    background-image: none;
+    background-color: #313244;
+    background: #313244;
+    color: #89b4fa;
+    border-bottom: 2px solid #cba6f7;
+    box-shadow: 0 0 10px rgba(203, 166, 247, 0.3);
+}
+
+headerbar label,
+headerbar .title,
+headerbar:backdrop label,
+headerbar:backdrop .title,
+window headerbar label,
+window headerbar .title,
+window headerbar:backdrop label,
+window headerbar:backdrop .title,
+window.dialog headerbar label,
+window.dialog headerbar .title,
+window.popup headerbar label,
+window.popup headerbar .title {
+    color: #89b4fa;
+    font-weight: bold;
+    text-shadow: 0 0 5px rgba(137, 180, 250, 0.6);
+}
+
+/* Style wifi join dialog / window */
+window .wifi-password-entry {
+    background-color: #45475a;
+    border: 1px solid rgba(137, 180, 250, 0.3);
+    border-radius: 6px;
+    color: #89b4fa;
+    padding: 6px;
+}
+
+window .wifi-password-entry:focus {
+    border-color: #cba6f7;
+    box-shadow: 0 0 6px rgba(203, 166, 247, 0.4);
+}
+
+window button.suggested-action {
+    background-image: none;
+    background-color: rgba(203, 166, 247, 0.15);
+    background: rgba(203, 166, 247, 0.15);
+    color: #cba6f7;
+    border: 1px solid #cba6f7;
+    font-weight: bold;
+    box-shadow: 0 0 8px rgba(203, 166, 247, 0.3);
+    transition: all 0.2s ease;
+}
+
+window button.suggested-action:hover {
+    background-image: none;
+    background-color: rgba(203, 166, 247, 0.25);
+    background: rgba(203, 166, 247, 0.25);
+    box-shadow: 0 0 12px rgba(203, 166, 247, 0.5);
+}
+
+window button:not(.suggested-action) {
+    background-image: none;
+    background-color: rgba(137, 180, 250, 0.05);
+    background: rgba(137, 180, 250, 0.05);
+    color: #89b4fa;
+    border: 1px solid rgba(137, 180, 250, 0.3);
+    transition: all 0.2s ease;
+}
+
+window button:not(.suggested-action):hover {
+    background-image: none;
+    background-color: rgba(137, 180, 250, 0.15);
+    background: rgba(137, 180, 250, 0.15);
+    border-color: #89b4fa;
+    box-shadow: 0 0 8px rgba(137, 180, 250, 0.3);
+}
+
+/* Grid / properties styling inside details */
+window grid label {
+    color: #cdd6f4;
+    font-size: 0.95em;
+    padding: 4px 6px;
+}
+
+window grid label:first-child {
+    color: #cba6f7;
+    font-weight: bold;
+    text-shadow: 0 0 4px rgba(203, 166, 247, 0.4);
+}
+
+window grid label:nth-child(even) {
+    color: #89b4fa;
+    text-shadow: 0 0 3px rgba(137, 180, 250, 0.3);
+}
+
+/* ========================================== */
+/* Dropdown Menus, Context Menus & Lists      */
+/* ========================================== */
+
+/* Style Gtk::Popover contents globally (covers combobox dropdown lists, context menus) */
+popover > contents,
+popovercontents,
+.popover > contents,
+popovermenu contents,
+popovermenu > contents {
+    background-color: rgba(30, 30, 46, 0.98);
+    border: 2px solid #cba6f7;
+    border-radius: 12px;
+    padding: 10px;
+    box-shadow: 0 0 20px rgba(203, 166, 247, 0.45), 0 0 8px rgba(137, 180, 250, 0.25);
+    color: #cdd6f4;
+}
+
+/* Style popover list boxes and list views */
+popover listview,
+popover listbox,
+popover list,
+.popover listbox {
+    background-color: transparent;
+    background: transparent;
+    border: none;
+}
+
+/* Style individual selectable list rows inside popovers */
+popover listbox row,
+popover listview row,
+popover row,
+.popover listbox row {
+    background-color: transparent;
+    color: #89b4fa;
+    font-weight: bold;
+    padding: 6px 12px;
+    margin: 2px 0;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+}
+
+popover listbox row:hover,
+popover listview row:hover,
+popover row:hover,
+.popover listbox row:hover {
+    background-color: rgba(203, 166, 247, 0.15);
+    color: #cba6f7;
+    text-shadow: 0 0 4px rgba(203, 166, 247, 0.5);
+}
+
+popover listbox row:selected,
+popover listview row:selected,
+popover row:selected,
+.popover listbox row:selected {
+    background-color: rgba(203, 166, 247, 0.25);
+    color: #cba6f7;
+    text-shadow: 0 0 5px rgba(203, 166, 247, 0.6);
+}
+
+/* Style popover menu items (Model buttons in right-click popovers) */
+popovermenu modelbutton,
+popover modelbutton {
+    color: #89b4fa;
+    font-weight: bold;
+    padding: 6px 12px;
+    margin: 2px 0;
+    border-radius: 6px;
+    text-shadow: 0 0 3px rgba(137, 180, 250, 0.3);
+    transition: all 0.2s ease;
+}
+
+popovermenu modelbutton:hover,
+popovermenu modelbutton:selected,
+popover modelbutton:hover,
+popover modelbutton:selected {
+    background-color: rgba(203, 166, 247, 0.15);
+    color: #cba6f7;
+    text-shadow: 0 0 5px rgba(203, 166, 247, 0.5);
+}
+
+/* ComboBox inputs */
+combobox,
+combobox button {
+    background-color: #313244;
+    border: 1px solid rgba(137, 180, 250, 0.25);
+    border-radius: 8px;
+    color: #89b4fa;
+    text-shadow: 0 0 4px rgba(137, 180, 250, 0.4);
+    font-weight: bold;
+    padding: 4px 8px;
+    transition: all 0.2s ease;
+}
+
+combobox button:hover {
+    background-color: rgba(137, 180, 250, 0.08);
+    border-color: #89b4fa;
+    box-shadow: 0 0 8px rgba(137, 180, 250, 0.2);
+}
+
+/* General inputs / text fields inside popovers and windows */
+entry,
+entry text,
+passwordentry,
+passwordentry text {
+    background-color: #45475a;
+    border: 1px solid rgba(137, 180, 250, 0.3);
+    border-radius: 6px;
+    color: #89b4fa;
+    padding: 6px;
+}
+
+entry:focus,
+entry:focus text,
+passwordentry:focus,
+passwordentry:focus text {
+    border-color: #cba6f7;
+    box-shadow: 0 0 6px rgba(203, 166, 247, 0.4);
+}

@@ -1,5 +1,9 @@
 background_dir = join_paths(get_option('prefix'), 'share', 'wf-shell', 'backgrounds')
 
+subdir('css')
+subdir('themes')
+
+
 install_data(join_paths('backgrounds','calm-blue.png'), install_dir: background_dir)
 install_data(join_paths('backgrounds','circuits.png'), install_dir: background_dir)
 install_data(join_paths('backgrounds','secret-chest.png'), install_dir: background_dir)
@@ -26,4 +30,4 @@ install_data('wf-locker', install_dir:'/etc/pam.d/')
 
 install_data('xdpw/wayfire', install_dir: '/etc/xdg/xdg-desktop-portal-wlr/')
 
-subdir('css')
+
