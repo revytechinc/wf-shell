@@ -85,7 +85,10 @@ void WayfireBatteryInfo::update_icon()
 
     Glib::Variant<Glib::ustring> icon_name;
     display_device->get_cached_property(icon_name, ICON);
-    icon.set_from_icon_name(icon_name.get());
+    if (icon_name)
+    {
+        icon.set_from_icon_name(icon_name.get());
+    }
 }
 
 static std::string state_descriptions[] = {
@@ -124,16 +127,30 @@ static std::string uint_to_time(int64_t time)
 
 void WayfireBatteryInfo::update_details()
 {
+    if (!display_device)
+    {
+        return;
+    }
+
     Glib::Variant<guint32> type;
     display_device->get_cached_property(type, TYPE);
 
     Glib::Variant<guint32> vstate;
     display_device->get_cached_property(vstate, STATE);
+    if (!vstate)
+    {
+        return;
+    }
     uint32_t state = vstate.get();
+    if (state >= sizeof(state_descriptions) / sizeof(state_descriptions[0]))
+    {
+        state = 0;
+    }
 
     Glib::Variant<gdouble> vpercentage;
     display_device->get_cached_property(vpercentage, PERCENTAGE);
-    auto percentage_string = std::to_string((int)vpercentage.get()) + "%";
+    const int pct = vpercentage ? static_cast<int>(vpercentage.get()) : 0;
+    auto percentage_string = std::to_string(pct) + "%";
 
     Glib::Variant<gint64> time_to_full;
     display_device->get_cached_property(time_to_full, TIMETOFULL);
@@ -142,16 +159,17 @@ void WayfireBatteryInfo::update_details()
     display_device->get_cached_property(time_to_empty, TIMETOEMPTY);
 
     std::string description = percentage_string + ", " + state_descriptions[state];
-    if (is_charging(state))
+    if (is_charging(state) && time_to_full)
     {
         description += ", " + uint_to_time(time_to_full.get()) + " until full";
-    } else if (is_discharging(state))
+    } else if (is_discharging(state) && time_to_empty)
     {
         description += ", " + uint_to_time(time_to_empty.get()) + " remaining";
     }
 
-    box->set_tooltip_text(
-        get_device_type_description(type.get()) + description);
+    const std::string type_desc = type ?
+        get_device_type_description(type.get()) : std::string{};
+    box->set_tooltip_text(type_desc + description);
 
     if (status_opt.value() == BATTERY_STATUS_PERCENT)
     {
@@ -263,8 +281,17 @@ bool WayfireBatteryInfo::setup_dbus_battery()
         return false;
     }
 
+    /*
+     * ShouldDisplay may be absent from the cache (common on FreeBSD when
+     * UPower has no battery / property not yet populated). Calling .get()
+     * on an empty Glib::Variant triggers GLib-CRITICAL on g_variant_get_*.
+     */
     Glib::Variant<bool> present;
     display_device->get_cached_property(present, SHOULD_DISPLAY);
+    if (!present)
+    {
+        return false;
+    }
     if (present.get())
     {
         disp_dev_sig = display_device->signal_properties_changed().connect(
