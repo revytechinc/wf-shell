@@ -12,6 +12,7 @@
 #include <glib.h>
 #include <glibmm/main.h>
 #include <iostream>
+#include <fstream>
 #include <thread>
 #include <unistd.h>
 
@@ -64,6 +65,50 @@ void ui_idle(F&& fn)
             return G_SOURCE_REMOVE;
         },
         heap);
+}
+
+std::string get_graph_style_cache_path()
+{
+    const char *home = getenv("HOME");
+    if (home)
+    {
+        return std::string(home) + "/.config/wf-shell/graph_style.txt";
+    }
+    return "";
+}
+
+std::string load_persisted_graph_style()
+{
+    std::string path = get_graph_style_cache_path();
+    if (!path.empty())
+    {
+        std::ifstream in(path);
+        if (in)
+        {
+            std::string style;
+            if (std::getline(in, style))
+            {
+                // Strip whitespace
+                style.erase(style.find_last_not_of(" \n\r\t") + 1);
+                style.erase(0, style.find_first_not_of(" \n\r\t"));
+                return style;
+            }
+        }
+    }
+    return "wave-fill"; // default
+}
+
+void save_persisted_graph_style(const std::string& style)
+{
+    std::string path = get_graph_style_cache_path();
+    if (!path.empty())
+    {
+        std::ofstream out(path);
+        if (out)
+        {
+            out << style << std::endl;
+        }
+    }
 }
 
 } // namespace
@@ -1359,7 +1404,8 @@ FreeBSDDetailsWindow::FreeBSDDetailsWindow(std::shared_ptr<FreeBSDNetwork> net,
         const char *s = wf_net::TRAFFIC_GRAPH_STYLES[i];
         graph_combo_.append(s, s);
     }
-    graph_combo_.set_active_id("wave-fill");
+    graph_style_ = load_persisted_graph_style();
+    graph_combo_.set_active_id(graph_style_);
     traffic_head->append(*traffic_lbl);
     traffic_head->append(graph_combo_);
     root_.append(*traffic_head);
@@ -1532,6 +1578,7 @@ void FreeBSDDetailsWindow::present_for(Gtk::Window *display_source)
 void FreeBSDDetailsWindow::on_graph_style_changed()
 {
     graph_style_ = wf_net::safe_traffic_graph_style(graph_combo_.get_active_id());
+    save_persisted_graph_style(graph_style_);
     graph_.queue_draw();
 }
 
@@ -1682,9 +1729,28 @@ void FreeBSDDetailsWindow::draw_graph(const Cairo::RefPtr<Cairo::Context>& cr, i
     {
         return;
     }
-    cr->set_source_rgb(0.07, 0.07, 0.10);
+
+    // Draw a premium dark purple gradient background for the scope
+    Cairo::RefPtr<Cairo::LinearGradient> bg_grad = Cairo::LinearGradient::create(0.0, h, w, 0.0);
+    bg_grad->add_color_stop_rgb(0.0, 0.04, 0.03, 0.08);
+    bg_grad->add_color_stop_rgb(1.0, 0.06, 0.05, 0.12);
+    cr->set_source(bg_grad);
     cr->rectangle(0, 0, w, h);
     cr->fill();
+
+    // Draw a subtle Miami Cyberpunk grid in the background
+    cr->set_source_rgba(1.0, 0.0, 0.5, 0.04); // Faint hot pink
+    cr->set_line_width(0.6);
+    for (int x = 0; x < w; x += 16) {
+        cr->move_to(x, 0);
+        cr->line_to(x, h);
+        cr->stroke();
+    }
+    for (int y = 0; y < h; y += 12) {
+        cr->move_to(0, y);
+        cr->line_to(w, y);
+        cr->stroke();
+    }
 
     if (!collector_ || !net_ ||
         net_->info().wifi_role == wf_net::WifiRole::ParentRadio)
@@ -1724,7 +1790,7 @@ void FreeBSDDetailsWindow::draw_graph(const Cairo::RefPtr<Cairo::Context>& cr, i
 
     const std::string style = wf_net::safe_traffic_graph_style(graph_style_);
 
-    auto stroke_line = [&] (bool rx_side, double line_w = 1.8) {
+    auto stroke_line = [&] (bool rx_side, double line_w = 1.5) {
         cr->begin_new_path();
         for (size_t i = 0; i < n; ++i)
         {
@@ -1738,13 +1804,24 @@ void FreeBSDDetailsWindow::draw_graph(const Cairo::RefPtr<Cairo::Context>& cr, i
                 cr->line_to(x, y);
             }
         }
-        if (rx_side)
-        {
-            cr->set_source_rgb(0.54, 0.71, 0.98);
-        } else
-        {
-            cr->set_source_rgb(0.65, 0.89, 0.63);
-        }
+        
+        double r = rx_side ? 0.0 : 1.0;
+        double g = rx_side ? 0.94 : 0.0;
+        double b = rx_side ? 1.0 : 0.5;
+
+        // Draw multi-pass neon glow for the line
+        // Pass 1: Bloom
+        cr->set_source_rgba(r, g, b, 0.18);
+        cr->set_line_width(line_w * 3.0);
+        cr->stroke_preserve();
+
+        // Pass 2: Light glow
+        cr->set_source_rgba(r, g, b, 0.45);
+        cr->set_line_width(line_w * 1.8);
+        cr->stroke_preserve();
+
+        // Pass 3: Core beam
+        cr->set_source_rgba(r, g, b, 1.0);
         cr->set_line_width(line_w);
         cr->stroke();
     };
@@ -1766,14 +1843,19 @@ void FreeBSDDetailsWindow::draw_graph(const Cairo::RefPtr<Cairo::Context>& cr, i
         cr->line_to(x_at(n - 1), pad_t + plot_h);
         cr->line_to(x_at(0), pad_t + plot_h);
         cr->close_path();
-        if (rx_side)
-        {
-            cr->set_source_rgba(0.54, 0.71, 0.98, 0.32);
-        } else
-        {
-            cr->set_source_rgba(0.65, 0.89, 0.63, 0.32);
-        }
+
+        double r = rx_side ? 0.0 : 1.0;
+        double g = rx_side ? 0.94 : 0.0;
+        double b = rx_side ? 1.0 : 0.5;
+
+        // Draw translucent gradient fill
+        Cairo::RefPtr<Cairo::LinearGradient> area_grad = Cairo::LinearGradient::create(0.0, pad_t + plot_h, 0.0, pad_t);
+        area_grad->add_color_stop_rgba(0.0, r, g, b, 0.02);
+        area_grad->add_color_stop_rgba(1.0, r, g, b, 0.20);
+        cr->set_source(area_grad);
         cr->fill();
+
+        // Stroke glowing edge
         stroke_line(rx_side);
     };
 
@@ -1784,6 +1866,8 @@ void FreeBSDDetailsWindow::draw_graph(const Cairo::RefPtr<Cairo::Context>& cr, i
     } else if (style == "mirror")
     {
         const double mid = pad_t + plot_h / 2.0;
+
+        // Symmetrical filled area
         cr->begin_new_path();
         for (size_t i = 0; i < n; ++i)
         {
@@ -1802,10 +1886,18 @@ void FreeBSDDetailsWindow::draw_graph(const Cairo::RefPtr<Cairo::Context>& cr, i
             cr->line_to(x_at(i), y);
         }
         cr->close_path();
-        cr->set_source_rgba(0.54, 0.71, 0.98, 0.28);
+
+        // Translucent magenta/cyan blend
+        Cairo::RefPtr<Cairo::LinearGradient> fill_grad = Cairo::LinearGradient::create(0.0, mid - plot_h/2.0, 0.0, mid + plot_h/2.0);
+        fill_grad->add_color_stop_rgba(0.0, 0.0, 0.94, 1.0, 0.18); // Cyan top (RX)
+        fill_grad->add_color_stop_rgba(0.5, 0.6, 0.0, 0.8, 0.1);  // Purple mid
+        fill_grad->add_color_stop_rgba(1.0, 1.0, 0.0, 0.5, 0.18); // Pink bottom (TX)
+        cr->set_source(fill_grad);
         cr->fill_preserve();
-        cr->set_source_rgb(0.54, 0.71, 0.98);
-        cr->set_line_width(1.5);
+
+        // Glowing border
+        cr->set_source_rgba(0.0, 0.94, 1.0, 1.0);
+        cr->set_line_width(1.2);
         cr->stroke();
     } else if (style == "scope")
     {
@@ -1824,35 +1916,66 @@ void FreeBSDDetailsWindow::draw_graph(const Cairo::RefPtr<Cairo::Context>& cr, i
                 cr->line_to(x_at(i), mid - v * (plot_h / 2.0));
             }
         }
-        cr->set_source_rgb(0.80, 0.65, 0.97);
-        cr->set_line_width(1.7);
+        // Glowing purple vector beam
+        cr->set_source_rgba(0.80, 0.65, 0.97, 0.15);
+        cr->set_line_width(4.5);
+        cr->stroke_preserve();
+
+        cr->set_source_rgba(0.80, 0.65, 0.97, 0.45);
+        cr->set_line_width(2.2);
+        cr->stroke_preserve();
+
+        cr->set_source_rgba(0.80, 0.65, 0.97, 1.0);
+        cr->set_line_width(1.0);
         cr->stroke();
     } else if (style == "dots")
     {
-        stroke_line(true);
-        stroke_line(false);
         for (size_t i = 0; i < n; ++i)
         {
-            cr->set_source_rgb(0.54, 0.71, 0.98);
-            cr->arc(x_at(i), y_of(series.samples[i].rx_Bps), 2.0, 0, 2 * G_PI);
+            double rx_y = y_of(series.samples[i].rx_Bps);
+            double tx_y = y_of(series.samples[i].tx_Bps);
+
+            // RX Stem & Dot (Cyan)
+            cr->set_source_rgba(0.0, 0.94, 1.0, 0.15);
+            cr->set_line_width(1.0);
+            cr->move_to(x_at(i), pad_t + plot_h);
+            cr->line_to(x_at(i), rx_y);
+            cr->stroke();
+
+            cr->set_source_rgba(0.0, 0.94, 1.0, 0.40);
+            cr->arc(x_at(i), rx_y, 3.5, 0, 2 * G_PI);
             cr->fill();
-            cr->set_source_rgb(0.65, 0.89, 0.63);
-            cr->arc(x_at(i), y_of(series.samples[i].tx_Bps), 2.0, 0, 2 * G_PI);
+            cr->set_source_rgba(0.0, 0.94, 1.0, 1.0);
+            cr->arc(x_at(i), rx_y, 1.5, 0, 2 * G_PI);
+            cr->fill();
+
+            // TX Stem & Dot (Pink)
+            cr->set_source_rgba(1.0, 0.0, 0.5, 0.15);
+            cr->set_line_width(1.0);
+            cr->move_to(x_at(i), pad_t + plot_h);
+            cr->line_to(x_at(i), tx_y);
+            cr->stroke();
+
+            cr->set_source_rgba(1.0, 0.0, 0.5, 0.40);
+            cr->arc(x_at(i), tx_y, 3.5, 0, 2 * G_PI);
+            cr->fill();
+            cr->set_source_rgba(1.0, 0.0, 0.5, 1.0);
+            cr->arc(x_at(i), tx_y, 1.5, 0, 2 * G_PI);
             cr->fill();
         }
     } else if (style == "ribbon")
     {
-        stroke_line(true, 7.0);
-        stroke_line(false, 7.0);
-        stroke_line(true, 1.6);
-        stroke_line(false, 1.6);
+        stroke_line(true, 5.0);
+        stroke_line(false, 5.0);
+        stroke_line(true, 1.2);
+        stroke_line(false, 1.2);
     } else
     {
         fill_under(true);
         fill_under(false);
     }
 
-    cr->set_source_rgb(0.19, 0.20, 0.27);
+    cr->set_source_rgba(0.0, 0.94, 1.0, 0.35);
     cr->set_line_width(1);
     cr->move_to(pad_l, pad_t + plot_h);
     cr->line_to(pad_l + plot_w, pad_t + plot_h);
