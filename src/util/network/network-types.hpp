@@ -5,9 +5,9 @@
  * UI and FreeBSD/Linux backends translate live OS state into these.
  */
 
+#include <cstdint>
 #include <string>
 #include <vector>
-#include <cstdint>
 
 namespace wf_net
 {
@@ -35,6 +35,11 @@ struct InterfaceInfo
     std::vector<std::string> ipv4;
     std::vector<std::string> ipv6; /**< global/ULA first; link-local last if kept */
     std::string media;     /**< e.g. "10Gbase-T <full-duplex>" */
+    /**
+     * Optional link bitrate in Kb/s (Wi‑Fi MaxBitrate / driver).
+     * 0 = unknown; prefer format_iface_speed() which uses this then media.
+     */
+    unsigned link_speed_kbps = 0;
     std::string status;    /**< ifconfig status: active / no carrier */
     bool is_default_route = false;    /**< IPv4 and/or IPv6 default route egress */
     bool is_default_route_v4 = false;
@@ -101,6 +106,41 @@ InterfaceKind classify_iface_name(const std::string& name);
  * Then IPv4 and/or IPv6 each on their own line — only if present (no blank lines).
  */
 std::string format_display_name(const InterfaceInfo& info);
+
+/**
+ * Human link speed from ifconfig media (e.g. "10Gbase-T <full-duplex>" → "10 Gbps").
+ * Empty if unknown. Pure.
+ */
+std::string format_media_speed(const std::string& media);
+
+/**
+ * Wi‑Fi / NM bitrate in Kb/s → "1.2 Gbps" / "300 Mbps". Empty if 0.
+ */
+std::string format_bitrate_kbps(unsigned max_bitrate_kbps);
+
+/**
+ * Best available speed label for an interface list row:
+ * Wi‑Fi uses max_bitrate if set, else media parse. Empty if unknown.
+ */
+std::string format_iface_speed(const InterfaceInfo& info);
+
+/**
+ * Byte count → sensible SI label: "392 B", "1.5 KB", "36.6 GB".
+ * Pure.
+ */
+std::string format_byte_count(uint64_t bytes);
+
+/**
+ * Byte rate (bytes/sec) → sensible label: "120 B/s", "1.2 MB/s", "850 KB/s".
+ * Pure.
+ */
+std::string format_byte_rate(uint64_t bytes_per_sec);
+
+/**
+ * Bit rate (bits/sec) from byte rate — network-style: "100 Mbps", "1.2 Gbps".
+ * Pure. bytes_per_sec is converted ×8.
+ */
+std::string format_bit_rate_from_bytes(uint64_t bytes_per_sec);
 
 /**
  * Address lines only: IPv4 then IPv6, newline-separated, omit missing.

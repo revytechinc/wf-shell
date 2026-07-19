@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
+#include <cstdio>
 #include <cstring>
 
 namespace wf_net
@@ -110,6 +112,185 @@ std::string format_display_name(const InterfaceInfo& info)
         base += addrs;
     }
     return base;
+}
+
+std::string format_media_speed(const std::string& media)
+{
+    if (media.empty())
+    {
+        return {};
+    }
+    /* Prefer parenthetical active media: (10Gbase-T <full-duplex>) */
+    std::string s = media;
+    const size_t lp = media.rfind('(');
+    const size_t rp = media.rfind(')');
+    if (lp != std::string::npos && rp != std::string::npos && rp > lp)
+    {
+        s = media.substr(lp + 1, rp - lp - 1);
+    }
+
+    auto has = [&] (const char *tok) {
+        return s.find(tok) != std::string::npos;
+    };
+    /* Multi-gig first (order matters: 100G before 10G, 1000base before 100base) */
+    if (has("400G") || has("400g"))
+    {
+        return "400 Gbps";
+    }
+    if (has("200G") || has("200g"))
+    {
+        return "200 Gbps";
+    }
+    if (has("100G") || has("100g"))
+    {
+        return "100 Gbps";
+    }
+    if (has("50G") || has("50g") || has("50Gbase"))
+    {
+        return "50 Gbps";
+    }
+    if (has("40G") || has("40g") || has("40Gbase"))
+    {
+        return "40 Gbps";
+    }
+    if (has("25G") || has("25g") || has("25Gbase"))
+    {
+        return "25 Gbps";
+    }
+    if (has("10G") || has("10g") || has("10Gbase") || has("10Gbase-T") ||
+        has("10Gbase-SR") || has("10Gbase-LR"))
+    {
+        return "10 Gbps";
+    }
+    if (has("5Gbase") || has("5Gbase-T") || has("5000base"))
+    {
+        return "5 Gbps";
+    }
+    if (has("2.5G") || has("2500base") || has("2.5Gbase"))
+    {
+        return "2.5 Gbps";
+    }
+    if (has("1000base") || has("1000Base") || has("1Gbase") || has("Gigabit"))
+    {
+        return "1 Gbps";
+    }
+    if (has("100base") || has("100Base") || has("Fast Ethernet"))
+    {
+        return "100 Mbps";
+    }
+    if (has("10base") || has("10Base"))
+    {
+        return "10 Mbps";
+    }
+    return {};
+}
+
+std::string format_bitrate_kbps(unsigned max_bitrate_kbps)
+{
+    if (max_bitrate_kbps == 0)
+    {
+        return {};
+    }
+    /* NM / wpa MaxBitrate is Kb/s */
+    if (max_bitrate_kbps >= 1000000)
+    {
+        /* ≥ 1 Gb/s — one decimal if not whole */
+        const double gbps = max_bitrate_kbps / 1000000.0;
+        if (gbps >= 10.0 || std::fabs(gbps - std::round(gbps)) < 0.05)
+        {
+            return std::to_string(static_cast<int>(std::lround(gbps))) + " Gbps";
+        }
+        char buf[32];
+        std::snprintf(buf, sizeof(buf), "%.1f Gbps", gbps);
+        return buf;
+    }
+    if (max_bitrate_kbps >= 1000)
+    {
+        const unsigned mbps = (max_bitrate_kbps + 500) / 1000;
+        return std::to_string(mbps) + " Mbps";
+    }
+    return std::to_string(max_bitrate_kbps) + " Kbps";
+}
+
+std::string format_iface_speed(const InterfaceInfo& info)
+{
+    if (info.link_speed_kbps > 0)
+    {
+        return format_bitrate_kbps(info.link_speed_kbps);
+    }
+    return format_media_speed(info.media);
+}
+
+namespace
+{
+
+std::string format_scaled(double value, const char *const *units, size_t n_units,
+    const char *suffix)
+{
+    size_t u = 0;
+    while (u + 1 < n_units && value >= 1000.0)
+    {
+        value /= 1000.0;
+        ++u;
+    }
+    char buf[48];
+    if (value >= 100.0 || u == 0)
+    {
+        std::snprintf(buf, sizeof(buf), "%.0f %s%s", value, units[u], suffix);
+    }
+    else if (value >= 10.0)
+    {
+        std::snprintf(buf, sizeof(buf), "%.1f %s%s", value, units[u], suffix);
+    }
+    else
+    {
+        std::snprintf(buf, sizeof(buf), "%.2f %s%s", value, units[u], suffix);
+    }
+    return buf;
+}
+
+} // namespace
+
+std::string format_byte_count(uint64_t bytes)
+{
+    static const char *units[] = {"B", "KB", "MB", "GB", "TB", "PB"};
+    return format_scaled(static_cast<double>(bytes), units,
+        sizeof(units) / sizeof(units[0]), "");
+}
+
+std::string format_byte_rate(uint64_t bytes_per_sec)
+{
+    static const char *units[] = {"B", "KB", "MB", "GB", "TB"};
+    return format_scaled(static_cast<double>(bytes_per_sec), units,
+        sizeof(units) / sizeof(units[0]), "/s");
+}
+
+std::string format_bit_rate_from_bytes(uint64_t bytes_per_sec)
+{
+    /* Network link rates conventionally use decimal bits */
+    const double bits = static_cast<double>(bytes_per_sec) * 8.0;
+    static const char *units[] = {"bps", "Kbps", "Mbps", "Gbps", "Tbps"};
+    size_t u = 0;
+    double v = bits;
+    while (u + 1 < sizeof(units) / sizeof(units[0]) && v >= 1000.0)
+    {
+        v /= 1000.0;
+        ++u;
+    }
+    char buf[48];
+    if (v >= 100.0 || u == 0)
+    {
+        std::snprintf(buf, sizeof(buf), "%.0f %s", v, units[u]);
+    }
+    else if (v >= 10.0)
+    {
+        std::snprintf(buf, sizeof(buf), "%.1f %s", v, units[u]);
+    }
+    else
+    {
+        std::snprintf(buf, sizeof(buf), "%.2f %s", v, units[u]);
+    }
+    return buf;
 }
 
 std::string icon_for_interface(const InterfaceInfo& info)

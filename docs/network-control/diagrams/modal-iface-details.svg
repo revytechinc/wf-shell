@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 440 480" width="100%" preserveAspectRatio="xMidYMid meet">
+  <foreignObject x="0" y="0" width="440" height="480">
+    <div xmlns="http://www.w3.org/1999/xhtml" style="width:440px;height:480px;box-sizing:border-box;font-family:system-ui,sans-serif;background:#0c0c14;color:#cdd6f4;padding:14px;">
+      <div style="font-size:11px;color:#a6adc8;margin-bottom:8px;">Right-click → Details… — full iface + traffic histogram</div>
+      <div style="background:#1e1e2e;border:1px solid #45475a;border-radius:12px;overflow:hidden;max-width:400px;">
+        <div style="padding:10px 12px;border-bottom:1px solid #313244;font-size:13px;font-weight:600;">aq0</div>
+        <div style="padding:12px;font-size:12px;">
+          <div style="display:grid;grid-template-columns:100px 1fr;gap:5px 8px;margin-bottom:12px;">
+            <div style="color:#6c7086;font-size:10px;">STATE</div><div style="color:#a6e3a1;">Up · running</div>
+            <div style="color:#6c7086;font-size:10px;">SPEED</div><div>10 Gbps</div>
+            <div style="color:#6c7086;font-size:10px;">MEDIA</div><div style="color:#a6adc8;font-size:11px;">10Gbase-T full-duplex</div>
+            <div style="color:#6c7086;font-size:10px;">IPv4</div><div>99.48.162.238</div>
+            <div style="color:#6c7086;font-size:10px;">IPv6</div><div style="font-size:11px;">2600:1700:…</div>
+            <div style="color:#6c7086;font-size:10px;">MAC</div><div style="font-size:11px;">2c:f0:5d:8b:0e:3c</div>
+          </div>
+          <div style="font-size:10px;color:#6c7086;text-transform:uppercase;margin-bottom:4px;">Traffic</div>
+          <div style="font-size:11px;color:#a6adc8;margin-bottom:6px;font-variant-numeric:tabular-nums;">
+            RX 1.2 Gbps · TX 340 Mbps<br/>Total RX 36.6 GB · TX 3.0 GB
+          </div>
+          <div style="background:#181825;border:1px solid #45475a;border-radius:8px;padding:8px;height:90px;display:flex;align-items:flex-end;gap:2px;">
+            <!-- fake histogram bars -->
+            <div style="flex:1;background:#89b4fa;height:40%;border-radius:1px;"></div>
+            <div style="flex:1;background:#a6e3a1;height:25%;border-radius:1px;"></div>
+            <div style="flex:1;background:#89b4fa;height:70%;border-radius:1px;"></div>
+            <div style="flex:1;background:#a6e3a1;height:45%;border-radius:1px;"></div>
+            <div style="flex:1;background:#89b4fa;height:55%;border-radius:1px;"></div>
+            <div style="flex:1;background:#a6e3a1;height:30%;border-radius:1px;"></div>
+            <div style="flex:1;background:#89b4fa;height:85%;border-radius:1px;"></div>
+            <div style="flex:1;background:#a6e3a1;height:50%;border-radius:1px;"></div>
+            <div style="flex:1;background:#89b4fa;height:60%;border-radius:1px;"></div>
+            <div style="flex:1;background:#a6e3a1;height:35%;border-radius:1px;"></div>
+            <div style="flex:1;background:#89b4fa;height:75%;border-radius:1px;"></div>
+            <div style="flex:1;background:#a6e3a1;height:40%;border-radius:1px;"></div>
+          </div>
+          <div style="display:flex;justify-content:flex-end;gap:12px;font-size:10px;color:#6c7086;margin-top:4px;">
+            <span>■ Receive</span><span style="color:#a6e3a1;">■ Transmit</span>
+          </div>
+        </div>
+        <div style="padding:10px 12px;border-top:1px solid #313244;display:flex;justify-content:flex-end;">
+          <span style="border:1px solid #45475a;border-radius:6px;padding:6px 10px;font-size:11px;color:#a6adc8;">Close</span>
+        </div>
+      </div>
+    </div>
+  </foreignObject>
+</svg>

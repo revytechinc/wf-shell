@@ -107,8 +107,45 @@
     .iface .ico svg, .tray-ico svg { width: 18px; height: 18px; display: block; }
     .tray-ico { display: inline-flex; width: 18px; height: 18px; }
     .iface .body { flex: 1; min-width: 0; }
-    .iface .title { font-size: 12px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .iface .title {
+      font-size: 12px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+      width: 100%;
+    }
+    .iface .title .name-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; flex: 1; min-width: 0; }
+    .iface .speed {
+      font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums;
+      margin-left: auto; flex-shrink: 0; white-space: nowrap;
+    }
+    .iface.is-up .speed { color: #a6adc8; }
+    .iface.is-down .speed { color: var(--dim); }
     .iface .sub { font-size: 10px; color: var(--muted); margin-top: 2px; line-height: 1.35; }
+    .details-grid {
+      display: grid; grid-template-columns: 110px 1fr; gap: 6px 10px;
+      font-size: 12px; line-height: 1.35;
+    }
+    .details-grid .k { color: var(--dim); font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; padding-top: 2px; }
+    .details-grid .v { color: var(--text); word-break: break-all; font-variant-numeric: tabular-nums; }
+    .details-grid .v.up { color: var(--green); }
+    .details-grid .v.down { color: var(--red); }
+    .traffic-meta {
+      font-size: 11px; color: var(--muted); margin-bottom: 8px;
+      font-variant-numeric: tabular-nums; line-height: 1.4;
+    }
+    .hist-wrap {
+      background: #181825; border: 1px solid var(--border); border-radius: 8px;
+      padding: 8px 8px 4px;
+    }
+    .hist-wrap canvas { width: 100%; height: 120px; display: block; }
+    .hist-legend {
+      display: flex; gap: 14px; justify-content: flex-end;
+      font-size: 10px; color: var(--muted); padding: 4px 2px 2px;
+    }
+    .hist-legend .leg::before {
+      content: ""; display: inline-block; width: 8px; height: 8px;
+      border-radius: 2px; margin-right: 5px; vertical-align: middle;
+    }
+    .hist-legend .leg.rx::before { background: #89b4fa; }
+    .hist-legend .leg.tx::before { background: #a6e3a1; }
     .badge {
       font-size: 9px; text-transform: uppercase; letter-spacing: 0.04em;
       padding: 1px 5px; border-radius: 4px; background: var(--surface2); color: var(--blue);
@@ -316,8 +353,34 @@
   <div class="ctx" id="ctxMenu" role="menu">
     <button type="button" id="ctxToggle" role="menuitem">Turn off</button>
     <button type="button" id="ctxConfigure" role="menuitem">Configure…</button>
+    <button type="button" id="ctxDetails" role="menuitem">Details…</button>
     <div class="sep"></div>
     <button type="button" id="ctxDelete" class="danger" role="menuitem">Delete interface…</button>
+  </div>
+
+  <!-- Interface details + traffic histogram -->
+  <div class="modal-backdrop" id="detailsModal" role="dialog" aria-modal="true" aria-labelledby="detailsTitle">
+    <div class="modal" style="max-width:480px">
+      <div class="modal-head">
+        <h3 id="detailsTitle">Interface details</h3>
+        <button type="button" class="btn ghost" id="btnDetailsClose" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="detailsGrid" class="details-grid"></div>
+        <div class="section-title" style="margin:12px 0 6px">Traffic</div>
+        <div class="traffic-meta" id="detailsTrafficMeta">—</div>
+        <div class="hist-wrap">
+          <canvas id="detailsHist" width="420" height="120" aria-label="Traffic histogram"></canvas>
+          <div class="hist-legend">
+            <span class="leg rx">Receive</span>
+            <span class="leg tx">Transmit</span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn ghost" id="btnDetailsClose2">Close</button>
+      </div>
+    </div>
   </div>
 
   <!-- FreeBSD network config editor (rc.conf-oriented) -->
@@ -702,11 +765,178 @@
     );
   }
 
+  /** Parse FreeBSD ifconfig media → "10 Gbps" / "1 Gbps" (mirrors format_media_speed). */
+  function formatMediaSpeed(media) {
+    if (!media) return "";
+    let s = media;
+    const lp = media.lastIndexOf("(");
+    const rp = media.lastIndexOf(")");
+    if (lp >= 0 && rp > lp) s = media.slice(lp + 1, rp);
+    const has = (t) => s.toLowerCase().indexOf(t.toLowerCase()) >= 0;
+    if (has("400G")) return "400 Gbps";
+    if (has("200G")) return "200 Gbps";
+    if (has("100G")) return "100 Gbps";
+    if (has("50G")) return "50 Gbps";
+    if (has("40G")) return "40 Gbps";
+    if (has("25G")) return "25 Gbps";
+    if (has("10G") || has("10Gbase")) return "10 Gbps";
+    if (has("5Gbase") || has("5000base")) return "5 Gbps";
+    if (has("2.5G") || has("2500base")) return "2.5 Gbps";
+    if (has("1000base") || has("1Gbase") || has("Gigabit")) return "1 Gbps";
+    if (has("100base") || has("Fast Ethernet")) return "100 Mbps";
+    if (has("10base")) return "10 Mbps";
+    return "";
+  }
+  function formatBitrateKbps(kbps) {
+    kbps = Number(kbps) || 0;
+    if (kbps <= 0) return "";
+    if (kbps >= 1000000) {
+      const g = kbps / 1000000;
+      if (g >= 10 || Math.abs(g - Math.round(g)) < 0.05) return Math.round(g) + " Gbps";
+      return g.toFixed(1) + " Gbps";
+    }
+    if (kbps >= 1000) return Math.round(kbps / 1000) + " Mbps";
+    return kbps + " Kbps";
+  }
+  /** Best speed label for an interface row (bitrate first, else media). */
+  function formatIfaceSpeed(i) {
+    if (!i) return "";
+    if (i.linkSpeedKbps || i.maxKbps)
+      return formatBitrateKbps(i.linkSpeedKbps || i.maxKbps);
+    return formatMediaSpeed(i.media || "");
+  }
+
+  /** Byte count / rate helpers (mirrors wf_net::format_byte_*) */
+  function formatByteCount(bytes) {
+    bytes = Math.max(0, Number(bytes) || 0);
+    const u = ["B", "KB", "MB", "GB", "TB", "PB"];
+    let v = bytes, i = 0;
+    while (v >= 1000 && i < u.length - 1) { v /= 1000; i++; }
+    if (v >= 100 || i === 0) return Math.round(v) + " " + u[i];
+    if (v >= 10) return v.toFixed(1) + " " + u[i];
+    return v.toFixed(2) + " " + u[i];
+  }
+  function formatByteRate(bps) {
+    return formatByteCount(bps).replace(/ ([A-Z]+)$/, " $1/s");
+  }
+  function formatBitRateFromBytes(bytesPerSec) {
+    let v = (Number(bytesPerSec) || 0) * 8;
+    const u = ["bps", "Kbps", "Mbps", "Gbps", "Tbps"];
+    let i = 0;
+    while (v >= 1000 && i < u.length - 1) { v /= 1000; i++; }
+    if (v >= 100 || i === 0) return Math.round(v) + " " + u[i];
+    if (v >= 10) return v.toFixed(1) + " " + u[i];
+    return v.toFixed(2) + " " + u[i];
+  }
+
+  /**
+   * Per-iface traffic series: mock netstat-style counters + rates.
+   * Live path: poll netstat -I IF -b / getifmib / sysctl.
+   */
+  const trafficStore = {}; /* name → { rx:[], tx:[], rxTotal, txTotal, ... } */
+  const HIST_N = 48;
+
+  function ensureTraffic(name, iface) {
+    if (trafficStore[name]) return trafficStore[name];
+    const baseRx = name === "aq0" ? 39e9 : name === "igb0" ? 1.2e9 : 5e7;
+    const baseTx = name === "aq0" ? 3.2e9 : name === "igb0" ? 4e8 : 2e7;
+    const t = {
+      rxTotal: baseRx,
+      txTotal: baseTx,
+      rxPkts: Math.floor(baseRx / 900),
+      txPkts: Math.floor(baseTx / 600),
+      rx: [],
+      tx: [],
+      lastRx: 0,
+      lastTx: 0,
+    };
+    /* Seed histogram with plausible load */
+    const load = iface && iface.up ? 1 : 0.05;
+    for (let i = 0; i < HIST_N; i++) {
+      const r = load * (20000 + Math.random() * 180000) * (name === "aq0" ? 8 : 1);
+      const x = load * (8000 + Math.random() * 60000) * (name === "aq0" ? 3 : 1);
+      t.rx.push(r);
+      t.tx.push(x);
+      t.lastRx = r;
+      t.lastTx = x;
+    }
+    trafficStore[name] = t;
+    return t;
+  }
+
+  function tickTraffic(name, iface) {
+    const t = ensureTraffic(name, iface);
+    if (!iface || !iface.up) {
+      t.rx.push(0);
+      t.tx.push(0);
+    } else {
+      const spike = Math.random() < 0.08 ? 4 : 1;
+      const r = spike * (15000 + Math.random() * 220000) * (name === "aq0" ? 10 : name.indexOf("wlan") === 0 ? 3 : 1);
+      const x = spike * (5000 + Math.random() * 90000) * (name === "aq0" ? 4 : 1);
+      t.rx.push(r);
+      t.tx.push(x);
+      t.rxTotal += r;
+      t.txTotal += x;
+      t.rxPkts += Math.floor(r / 800) + 1;
+      t.txPkts += Math.floor(x / 600) + 1;
+      t.lastRx = r;
+      t.lastTx = x;
+    }
+    while (t.rx.length > HIST_N) t.rx.shift();
+    while (t.tx.length > HIST_N) t.tx.shift();
+    return t;
+  }
+
+  function drawTrafficHist(canvas, series) {
+    if (!canvas || !series) return;
+    const dpr = window.devicePixelRatio || 1;
+    const cssW = canvas.clientWidth || 420;
+    const cssH = 120;
+    canvas.width = Math.floor(cssW * dpr);
+    canvas.height = Math.floor(cssH * dpr);
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const W = cssW, H = cssH;
+    ctx.clearRect(0, 0, W, H);
+    const pad = { t: 8, r: 6, b: 18, l: 6 };
+    const plotW = W - pad.l - pad.r;
+    const plotH = H - pad.t - pad.b;
+    const n = series.rx.length;
+    let max = 1;
+    for (let i = 0; i < n; i++) {
+      max = Math.max(max, series.rx[i], series.tx[i]);
+    }
+    /* y-axis unit from max rate */
+    const unitLabel = formatBitRateFromBytes(max);
+    ctx.fillStyle = "#6c7086";
+    ctx.font = "10px system-ui,sans-serif";
+    ctx.textAlign = "right";
+    ctx.fillText(unitLabel + " peak", W - pad.r, 12);
+
+    const barGroup = plotW / Math.max(n, 1);
+    const barW = Math.max(1, barGroup * 0.35);
+    for (let i = 0; i < n; i++) {
+      const x0 = pad.l + i * barGroup;
+      const hRx = (series.rx[i] / max) * plotH;
+      const hTx = (series.tx[i] / max) * plotH;
+      ctx.fillStyle = "#89b4fa";
+      ctx.fillRect(x0, pad.t + plotH - hRx, barW, hRx);
+      ctx.fillStyle = "#a6e3a1";
+      ctx.fillRect(x0 + barW + 1, pad.t + plotH - hTx, barW, hTx);
+    }
+    /* baseline */
+    ctx.strokeStyle = "#313244";
+    ctx.beginPath();
+    ctx.moveTo(pad.l, pad.t + plotH);
+    ctx.lineTo(W - pad.r, pad.t + plotH);
+    ctx.stroke();
+  }
+
   /** Host-shaped sample + overrides (up/down/create/destroy in the mock). */
   function buildIfaces(s) {
     const list = [];
     list.push({
-      name: "aq0", kind: "Ethernet", media: "10Gbase-T <full-duplex>",
+      name: "aq0", kind: "Ethernet", media: "Ethernet autoselect (10Gbase-T <full-duplex>)",
       ipv4: s.online ? ["99.48.162.238"] : [],
       ipv6: s.online ? ["2600:1700:1c14:4040:b49b:83f6:0:55"] : [],
       gateway4: s.online ? "99.48.162.254" : "",
@@ -715,7 +945,7 @@
       status: s.online ? "active" : "no carrier", permanent: true,
     });
     list.push({
-      name: "igb0", kind: "Ethernet", media: "1000baseT <full-duplex>",
+      name: "igb0", kind: "Ethernet", media: "Ethernet autoselect (1000baseT <full-duplex>)",
       ipv4: ["192.168.1.154"],
       ipv6: ["fe80::2ef0:5dff:fe8b:e3b"],
       up: true, running: true, isDefault: false,
@@ -724,18 +954,19 @@
     if (s.bridge) {
       list.push({
         name: "vm-public", kind: "Bridge", media: "",
+        /* bridges often have no single PHY speed */
         ipv4: [], up: true, running: true, isDefault: false, status: "active", permanent: false,
       });
       list.push({
-        name: "tap0", kind: "Virtual", media: "1000baseT",
+        name: "tap0", kind: "Virtual", media: "Ethernet autoselect (1000baseT <full-duplex>)",
         ipv4: [], up: true, running: true, isDefault: false, status: "active", permanent: false,
       });
     }
     if (s.wifi) {
       list.push({
-        name: "wlan0", kind: "Wireless", media: "IEEE 802.11",
+        name: "wlan0", kind: "Wireless", media: "IEEE 802.11 Wireless Ethernet",
         ipv4: ["10.0.0.42"], ipv6: [], ssid: "CloudBSD-Lab",
-        freqMhz: 5180, maxKbps: 1200000,
+        freqMhz: 5180, maxKbps: 1200000, linkSpeedKbps: 1200000,
         up: true, running: true, isDefault: !s.online,
         status: "associated", permanent: true,
       });
@@ -826,6 +1057,9 @@
     wifiJoinSec: "wpa",
     wifiScanning: false,
     wifiLastScan: null,
+    detailsOpen: false,
+    detailsName: null,
+    detailsTimer: null,
     ctxName: null,
     extraIfaces: [], /* dynamically created in mock */
     ifaceOverrides: {}, /* up/down/delete from context menu */
@@ -1037,13 +1271,24 @@
       if (i.isDefault) badges.push('<span class="badge def">default</span>');
       if (i.kind) badges.push(`<span class="badge">${i.kind}</span>`);
       const addrs = addrLines(i);
-      const media = i.media || "";
-      const sub = addrs.join("\n") + (media && addrs.length ? "\n" : "") + media;
+      /* Speed for every iface when known (media or Wi‑Fi bitrate) — not raw ifconfig text */
+      const speed = formatIfaceSpeed(i);
+      const subParts = [];
+      if (i.ssid) subParts.push(i.ssid);
+      addrs.forEach((a) => subParts.push(a));
+      if (i.kind === "Wireless" && i.freqMhz) {
+        const radio = wifiRadioLabel(i.freqMhz, i.maxKbps);
+        if (radio) subParts.push(radio);
+      }
+      const sub = subParts.join("\n");
       return `<div class="iface ${st}${sel}" data-name="${i.name}">
         <span class="state-dot" title="${i.up ? "Up" : "Down"}" aria-label="${i.up ? "Up" : "Down"}"></span>
         <div class="ico">${svgIcon(iconFor(i))}</div>
         <div class="body">
-          <div class="title"><strong>${i.name}</strong>${badges.join("")}</div>
+          <div class="title">
+            <span class="name-row"><strong>${i.name}</strong>${badges.join("")}</span>
+            ${speed ? `<span class="speed">${speed}</span>` : ""}
+          </div>
           ${sub ? `<div class="sub">${sub.replace(/</g, "&lt;")}</div>` : ""}
         </div>
       </div>`;
@@ -1139,6 +1384,90 @@
     $("authModal").classList.toggle("open", state.authOpen);
     $("wifiJoinModal").classList.toggle("open", state.wifiJoinOpen);
     if (state.wifiJoinOpen) syncWifiKeyUi();
+
+    $("detailsModal").classList.toggle("open", state.detailsOpen);
+    if (state.detailsOpen && state.detailsName) {
+      fillDetails(state.detailsName);
+    }
+  }
+
+  function openDetails(name) {
+    state.detailsOpen = true;
+    state.detailsName = name;
+    state.editorOpen = false;
+    state.createOpen = false;
+    state.authOpen = false;
+    state.wifiJoinOpen = false;
+    hideCtx();
+    const iface = ifaceByName(name);
+    ensureTraffic(name, iface);
+    if (state.detailsTimer) clearInterval(state.detailsTimer);
+    state.detailsTimer = setInterval(() => {
+      if (!state.detailsOpen) return;
+      const i = ifaceByName(state.detailsName);
+      tickTraffic(state.detailsName, i);
+      fillDetails(state.detailsName);
+    }, 1000);
+    render();
+  }
+
+  function closeDetails() {
+    state.detailsOpen = false;
+    state.detailsName = null;
+    if (state.detailsTimer) {
+      clearInterval(state.detailsTimer);
+      state.detailsTimer = null;
+    }
+    render();
+  }
+
+  function fillDetails(name) {
+    const i = ifaceByName(name);
+    const grid = $("detailsGrid");
+    if (!i) {
+      grid.innerHTML = "";
+      return;
+    }
+    $("detailsTitle").textContent = name;
+    const t = ensureTraffic(name, i);
+    const speed = formatIfaceSpeed(i);
+    const stClass = i.up ? "up" : "down";
+    const stLabel = i.up ? (i.running ? "Up · running" : "Up · no link") : "Down";
+    const rows = [
+      ["Name", i.name],
+      ["Kind", i.kind || "—"],
+      ["State", stLabel, stClass],
+      ["Speed", speed || "—"],
+      ["Media", i.media || "—"],
+      ["Status", i.status || "—"],
+      ["MAC", i.mac || (i.permanent ? "—" : "—")],
+      ["IPv4", (i.ipv4 && i.ipv4[0]) || "—"],
+      ["IPv6", (i.ipv6 && i.ipv6.filter((a) => !String(a).startsWith("fe80")).join(", ")) ||
+        ((i.ipv6 && i.ipv6[0]) || "—")],
+      ["Gateway v4", i.gateway4 || "—"],
+      ["Gateway v6", i.gateway6 || "—"],
+      ["Default route", i.isDefault ? "yes" : "no"],
+    ];
+    if (i.ssid) rows.splice(4, 0, ["SSID", i.ssid]);
+    if (i.kind === "Wireless" && i.freqMhz) {
+      rows.push(["Radio", wifiRadioLabel(i.freqMhz, i.maxKbps) || (i.freqMhz + " MHz")]);
+    }
+    /* Seed MAC from name for demo if missing */
+    if (!i.mac && i.name === "aq0") rows.find((r) => r[0] === "MAC")[1] = "2c:f0:5d:8b:0e:3c";
+    if (!i.mac && i.name === "igb0") rows.find((r) => r[0] === "MAC")[1] = "2c:f0:5d:8b:e3:b0";
+
+    grid.innerHTML = rows.map(([k, v, cls]) =>
+      `<div class="k">${k}</div><div class="v${cls ? " " + cls : ""}">${String(v).replace(/</g, "&lt;")}</div>`
+    ).join("");
+
+    $("detailsTrafficMeta").innerHTML =
+      "RX " + formatBitRateFromBytes(t.lastRx) + " (" + formatByteRate(t.lastRx) + ")" +
+      " · TX " + formatBitRateFromBytes(t.lastTx) + " (" + formatByteRate(t.lastTx) + ")" +
+      "<br/>Total RX " + formatByteCount(t.rxTotal) +
+      " · TX " + formatByteCount(t.txTotal) +
+      " · " + t.rxPkts.toLocaleString() + " / " + t.txPkts.toLocaleString() + " packets";
+
+    drawTrafficHist($("detailsHist"), t);
   }
 
   function openWifiJoin(ssid, security, opts) {
@@ -1305,8 +1634,9 @@
     const canToggle = !!feat.mutate_iface;
     const canCfg = !!feat.config_editor;
     const canDel = !!feat.mutate_iface && isDestroyable(i);
-    /* No actionable items → do not open a useless menu */
-    if (!canToggle && !canCfg && !canDel) {
+    const canDetails = true; /* read-only — always available */
+    /* No actionable items → do not open a useless menu (Details counts) */
+    if (!canToggle && !canCfg && !canDel && !canDetails) {
       hideCtx();
       return false;
     }
@@ -1316,13 +1646,15 @@
     $("ctxToggle").disabled = false;
     $("ctxConfigure").style.display = canCfg ? "" : "none";
     $("ctxConfigure").disabled = false;
+    $("ctxDetails").style.display = canDetails ? "" : "none";
+    $("ctxDetails").disabled = false;
     $("ctxDelete").style.display = canDel ? "" : "none";
     $("ctxDelete").disabled = false;
     const sep = menu.querySelector(".sep");
-    if (sep) sep.style.display = (canDel && (canToggle || canCfg)) ? "" : "none";
+    if (sep) sep.style.display = (canDel && (canToggle || canCfg || canDetails)) ? "" : "none";
     menu.classList.add("open");
     menu.style.left = Math.min(x, window.innerWidth - 200) + "px";
-    menu.style.top = Math.min(y, window.innerHeight - 140) + "px";
+    menu.style.top = Math.min(y, window.innerHeight - 160) + "px";
     return true;
   }
 
@@ -1504,6 +1836,7 @@
         state.createOpen = false;
         state.authOpen = false;
         state.wifiJoinOpen = false;
+        closeDetails();
         hideCtx();
       }
       $("btnNet").setAttribute("aria-expanded", state.open ? "true" : "false");
@@ -1515,6 +1848,7 @@
       state.createOpen = false;
       state.authOpen = false;
       state.wifiJoinOpen = false;
+      closeDetails();
       hideCtx();
       render();
     });
@@ -1641,10 +1975,20 @@
       hideCtx();
       openEditor();
     });
+    $("ctxDetails").addEventListener("click", () => {
+      const n = state.selected;
+      hideCtx();
+      openDetails(n);
+    });
     $("ctxDelete").addEventListener("click", () => {
       const n = state.selected;
       hideCtx();
       withAdmin({ kind: "delete", name: n });
+    });
+    $("btnDetailsClose").addEventListener("click", closeDetails);
+    $("btnDetailsClose2").addEventListener("click", closeDetails);
+    $("detailsModal").addEventListener("click", (e) => {
+      if (e.target === $("detailsModal")) closeDetails();
     });
     document.addEventListener("click", (e) => {
       if (!$("ctxMenu").contains(e.target)) hideCtx();

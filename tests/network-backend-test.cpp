@@ -51,6 +51,46 @@ TEST(NetworkTypes, ClassifyIfaceNames)
     EXPECT_STREQ(kind_label(InterfaceKind::Other), "Network");
 }
 
+TEST(NetworkTypes, TrafficFormatUnits)
+{
+    EXPECT_EQ(format_byte_count(0), "0 B");
+    EXPECT_EQ(format_byte_count(512), "512 B");
+    EXPECT_EQ(format_byte_count(1500), "1.50 KB");
+    EXPECT_NE(format_byte_count(39279217717ULL).find("GB"), std::string::npos);
+
+    EXPECT_NE(format_byte_rate(1500).find("/s"), std::string::npos);
+    EXPECT_NE(format_bit_rate_from_bytes(125000).find("Mbps"), std::string::npos); /* 1 Mbps */
+    EXPECT_NE(format_bit_rate_from_bytes(125000000).find("Gbps"), std::string::npos);
+}
+
+TEST(NetworkTypes, LinkSpeedLabels)
+{
+    EXPECT_EQ(format_media_speed("Ethernet autoselect (10Gbase-T <full-duplex>)"), "10 Gbps");
+    EXPECT_EQ(format_media_speed("Ethernet autoselect (1000baseT <full-duplex>)"), "1 Gbps");
+    EXPECT_EQ(format_media_speed("1000baseT <full-duplex>"), "1 Gbps");
+    EXPECT_EQ(format_media_speed("100baseTX <full-duplex>"), "100 Mbps");
+    EXPECT_EQ(format_media_speed("25Gbase-CR <full-duplex>"), "25 Gbps");
+    EXPECT_EQ(format_media_speed("IEEE 802.11"), "");
+    EXPECT_EQ(format_media_speed(""), "");
+
+    EXPECT_EQ(format_bitrate_kbps(0), "");
+    EXPECT_EQ(format_bitrate_kbps(54000), "54 Mbps");
+    EXPECT_EQ(format_bitrate_kbps(1200000), "1.2 Gbps");
+    EXPECT_EQ(format_bitrate_kbps(1000000), "1 Gbps");
+
+    InterfaceInfo eth;
+    eth.media = "Ethernet autoselect (10Gbase-T <full-duplex>)";
+    EXPECT_EQ(format_iface_speed(eth), "10 Gbps");
+    eth.link_speed_kbps = 2500000;
+    EXPECT_EQ(format_iface_speed(eth), "2.5 Gbps"); /* bitrate wins */
+
+    InterfaceInfo wifi;
+    wifi.kind = InterfaceKind::Wireless;
+    wifi.media = "IEEE 802.11";
+    wifi.link_speed_kbps = 866000;
+    EXPECT_EQ(format_iface_speed(wifi), "866 Mbps");
+}
+
 TEST(NetworkTypes, FormatAndIcon)
 {
     InterfaceInfo i;

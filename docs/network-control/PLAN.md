@@ -289,7 +289,13 @@ flowchart TB
 | **Turn off** | `InterfaceInfo.up == true` → label “Turn off” | `ifconfig IF down` | `can_admin` |
 | **Turn on** | `InterfaceInfo.up == false` → label “Turn on” | `ifconfig IF up` | `can_admin` |
 | **Configure…** | always (when FreeBSD + admin) | editor → sysrc | `config_editor` |
+| **Details…** | always (read-only) | full props + traffic histogram | always |
 | **Delete interface…** | `is_destroyable_iface(name)` | `ifconfig IF destroy` | `can_admin` + destroyable |
+
+**Details…** shows everything known about the interface (addresses, media, speed,  
+gateways, state) and a live **RX/TX histogram** with auto-scaled units  
+(Mbps/Gbps and B/s…GB/s). Counters from `netstat -I` / ifmib; rates from  
+deltas. Information-only mode still gets Details (no mutations).
 
 Label comes from **live probe flags**, not a stale toggle. Status is **colour**, not text:  
 **green = up** · **red + greyed row = down**. Never “admin down” wording.
@@ -447,6 +453,7 @@ flowchart TB
 | [diagrams/modal-create-preflight.svg](diagrams/modal-create-preflight.svg) | Create… lists only available types |
 | [diagrams/modal-auth-password.svg](diagrams/modal-auth-password.svg) | Password when doas/sudo needs it |
 | [diagrams/modal-wifi-join.svg](diagrams/modal-wifi-join.svg) | Wi‑Fi join · WPA/WEP key · wpa_supplicant |
+| [diagrams/modal-iface-details.svg](diagrams/modal-iface-details.svg) | Details… + RX/TX histogram |
 | [diagrams/information-only.svg](diagrams/information-only.svg) | No doas/sudo — read-only list |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Factory/Builder + Mermaid wiring |
 
