@@ -230,16 +230,16 @@ text-shadow: 1px  1px 0 var(--bcol),
 
 /* Wi-Fi AP list: signal + optional lock — Adwaita symbolic names only */
 .network-control-center image.access-point {
-    -gtk-icon-size: 40px;
+    -gtk-icon-size: 32px;
 }
 
 .network-control-center .access-point .security {
-    -gtk-icon-size: 16px;
+    -gtk-icon-size: 14px;
     color: #a6adc8; /* visible lock overlay */
 }
 
 .network-control-center .access-point.secure .security {
-    -gtk-icon-size: 16px;
+    -gtk-icon-size: 14px;
     color: #f9e2af;
 }
 
@@ -249,32 +249,33 @@ text-shadow: 1px  1px 0 var(--bcol),
 
 .network-control-center .access-point.has-password{
   font-weight: bold;
-  background: #8f83;
+  background-color: #313244;
 }
 
 .network-control-center .vpn.active{
   font-weight: bold;
-  background: #8f83;
+  background-color: rgba(137, 180, 250, 0.15);
 }
 
 .network-control-center .access-point .band {
-    font-size: 1em;
-    font-weight: bolder;
+    font-size: 0.85em;
+    color: #a6adc8;
 }
 
 /* Connected AP on this wlan interface */
 .network-control-center .access-point.connected,
 .network-control-center .access-point.active {
     font-weight: bold;
-    background: rgba(166, 227, 161, 0.22);
-    border-radius: 6px;
-    border-left: 3px solid #a6e3a1;
-    padding-left: 6px;
+    background-color: rgba(166, 227, 161, 0.15);
+    border: 1px solid rgba(166, 227, 161, 0.3);
+    border-left: 4px solid #a6e3a1;
+    padding-left: 8px;
 }
 .network-control-center .access-point.connected .ap-connected-badge {
     font-size: 0.8em;
     color: #a6e3a1;
     margin-right: 6px;
+    font-weight: bold;
 }
 .network-control-center .access-point.saved .ap-saved-badge {
     font-size: 0.8em;
@@ -457,5 +458,268 @@ entry.wifi-password-entry,
   100% {
     transform: translateX(0px);
   }
+}
+
+/* ========================================== */
+/* Volume Popover & Sound Settings Aesthetics */
+/* ========================================== */
+
+.volume-popover-root {
+    padding: 6px;
+}
+
+.volume-popover-header {
+    margin-bottom: 6px;
+}
+
+.volume-popover-title {
+    font-size: 1.1em;
+    font-weight: 800;
+}
+
+.volume-popover-section {
+    padding: 6px 0;
+}
+
+.volume-popover-section-title {
+    font-size: 0.75em;
+    font-weight: bold;
+    letter-spacing: 0.12em;
+    margin-bottom: 8px;
+    opacity: 0.7; /* Respect active theme color with opacity */
+}
+
+.volume-popover-row {
+    margin-bottom: 8px;
+}
+
+.volume-popover-mute-btn {
+    border-radius: 8px;
+    padding: 6px;
+    background-color: transparent;
+    border: none;
+    min-width: 32px;
+    min-height: 32px;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+}
+
+.volume-popover-mute-btn:hover {
+    background-color: alpha(currentColor, 0.08);
+    transform: scale(1.05);
+}
+
+.volume-popover-pct {
+    font-size: 0.9em;
+    font-weight: bold;
+    min-width: 42px;
+}
+
+/* Volume sliders (scales) - theme-compliant layouts */
+.volume-popover-scale trough {
+    min-height: 6px;
+    border-radius: 3px;
+    background-color: alpha(currentColor, 0.12);
+}
+
+.volume-popover-scale highlight {
+    border-radius: 3px;
+    background-color: @theme_selected_bg_color;
+}
+
+.volume-popover-scale slider {
+    border-radius: 50%;
+    min-width: 14px;
+    min-height: 14px;
+    margin: -4px;
+    background-color: @theme_selected_fg_color;
+    border: 2px solid @theme_selected_bg_color;
+    transition: transform 0.15s ease;
+}
+
+.volume-popover-scale slider:hover {
+    transform: scale(1.25);
+}
+
+/* Dropdowns / Comboboxes */
+.volume-popover-combo,
+.volume-popover-device-combo {
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-size: 0.95em;
+    background-color: alpha(currentColor, 0.03);
+    border: 1px solid alpha(currentColor, 0.08);
+    color: currentColor;
+    transition: all 0.2s ease;
+}
+
+.volume-popover-combo:hover,
+.volume-popover-device-combo:hover {
+    background-color: alpha(currentColor, 0.08);
+}
+
+/* Drawing Area level meters */
+.volume-popover-meter {
+    border-radius: 8px;
+    background-color: alpha(currentColor, 0.02);
+    border: 1px solid alpha(currentColor, 0.08);
+    margin: 6px 0;
+}
+
+/* Footer & Advanced Button */
+.volume-popover-footer {
+    margin-top: 8px;
+}
+
+.volume-popover-adv-btn {
+    border-radius: 6px;
+    padding: 4px 12px;
+    font-size: 0.85em;
+    background-color: alpha(currentColor, 0.03);
+    border: 1px solid alpha(currentColor, 0.08);
+    color: currentColor;
+    transition: all 0.2s ease;
+}
+
+.volume-popover-adv-btn:hover {
+    background-color: alpha(currentColor, 0.08);
+}
+
+/* ========================================== */
+/* Network Popover & Wireless Aesthetics     */
+/* ========================================== */
+
+/* Transparent scrolled window and viewport to prevent dark text on white view background */
+.network-control-center scrolledwindow,
+.network-control-center scrolledwindow viewport {
+    background: transparent;
+    background-color: transparent;
+    border: none;
+    box-shadow: none;
+}
+
+.network-global-toggles {
+    padding: 8px 12px;
+    margin-bottom: 10px;
+    border-radius: 8px;
+    background-color: alpha(currentColor, 0.03);
+    border: 1px solid alpha(currentColor, 0.08);
+}
+
+.network-toggle-button {
+    margin-right: 14px;
+    font-weight: bold;
+    font-size: 0.9em;
+}
+
+.network-toggle-button check {
+    border-radius: 4px;
+}
+
+/* Device section blocks */
+.network-control-center .device {
+    margin-bottom: 10px;
+    border-radius: 8px;
+    padding: 10px;
+    background-color: alpha(currentColor, 0.03);
+    border: 1px solid alpha(currentColor, 0.08);
+}
+
+.network-control-center .device-header {
+    min-height: 32px;
+    margin-bottom: 6px;
+}
+
+.network-control-center .device-label {
+    font-weight: bold;
+    font-size: 1em;
+    margin-left: 8px;
+}
+
+.network-control-center .device-content {
+    margin-top: 6px;
+}
+
+/* Access Point Items */
+.network-control-center .access-point {
+    padding: 8px 10px;
+    margin: 3px 0;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+}
+
+.network-control-center .access-point:hover {
+    background-color: alpha(currentColor, 0.06);
+}
+
+.network-control-center .access-point label {
+    font-size: 0.95em;
+}
+
+.network-control-center .access-point .band {
+    font-size: 0.85em;
+    margin-left: 8px;
+    opacity: 0.75;
+}
+
+/* Connected / Active Network Item */
+.network-control-center .access-point.connected,
+.network-control-center .access-point.active {
+    font-weight: bold;
+    background-color: alpha(@theme_selected_bg_color, 0.12);
+    border-left: 4px solid @theme_selected_bg_color;
+    padding-left: 8px;
+}
+
+.network-control-center .access-point.connected label {
+    color: @theme_selected_bg_color;
+}
+
+.network-control-center .access-point.connected .ap-connected-badge {
+    color: @theme_selected_bg_color;
+    font-weight: bold;
+    font-size: 0.85em;
+}
+
+/* VPN items */
+.network-control-center .vpn {
+    padding: 8px 12px;
+    margin: 4px 0;
+    border-radius: 6px;
+    background-color: alpha(currentColor, 0.03);
+    border: 1px solid alpha(currentColor, 0.08);
+    transition: all 0.2s ease;
+}
+
+.network-control-center .vpn:hover {
+    background-color: alpha(currentColor, 0.08);
+}
+
+.network-control-center .vpn.active {
+    font-weight: bold;
+    background-color: alpha(@theme_selected_bg_color, 0.12);
+    border-left: 4px solid @theme_selected_bg_color;
+}
+
+.network-control-center .vpn.active label {
+    color: @theme_selected_bg_color;
+}
+
+/* Panel Buttons styling */
+.wf-panel .volume,
+.wf-panel .network {
+    border-radius: 6px;
+    padding: 2px 6px;
+    margin: 2px;
+    transition: all 0.2s ease;
+}
+
+.wf-panel .volume:hover,
+.wf-panel .network:hover {
+    background-color: alpha(currentColor, 0.1);
+}
+
+.wf-panel .volume.selected,
+.wf-panel .network.selected {
+    background-color: alpha(currentColor, 0.18);
 }
 
