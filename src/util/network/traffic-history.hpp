@@ -28,15 +28,15 @@ inline constexpr size_t k_traffic_history_cap =
     static_cast<size_t>(k_traffic_history_sec);
 
 /**
- * Traffic graph styles (same family as sound meters: volume_graph_style).
+ * Traffic graph styles — line-oriented only (no bar charts).
  * Null-terminated list of stable ids for UI combos + ini.
  */
 inline constexpr const char *TRAFFIC_GRAPH_STYLES[] = {
-    "bars", "wave", "wave-fill", "mirror", "scope", "spectrum", "dots", "ribbon",
+    "wave", "wave-fill", "mirror", "scope", "dots", "ribbon",
     nullptr
 };
 
-/** Return @s if known, else "bars". Pure. */
+/** Return @s if known, else "wave-fill". Pure. */
 std::string safe_traffic_graph_style(const std::string& s);
 
 /** Human label for a style id (empty if unknown). Pure. */

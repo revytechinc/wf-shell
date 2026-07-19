@@ -309,12 +309,12 @@ gateways, state) and a live **RX/TX histogram** with auto-scaled units
 | Bad name | rejected (`is_valid_traffic_ifname`) — no shell injection |
 | Counter reset | rate 0 that interval; no crash |
 
-**Graph styles** (same ids as Sound Settings meters):
+**Graph styles** (line graphs only — no bars):
 
-`bars` · `wave` · `wave-fill` · `mirror` · `scope` · `spectrum` · `dots` · `ribbon`  
+`wave` · `wave-fill` · `mirror` · `scope` · `dots` · `ribbon`  
 
-`safe_traffic_graph_style()`; default **wave-fill**. Independent per Details view  
-(persist later as e.g. `panel/network_traffic_graph_style`).
+`safe_traffic_graph_style()`; default **wave-fill**. Persist later as  
+e.g. `panel/network_traffic_graph_style`.
 
 **Tests (red/green + integration):** ring/rate/parse; dynamic add/remove; miss  
 streak; hooks; concurrent thread; live FreeBSD netstat; graph style ids  

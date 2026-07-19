@@ -18,23 +18,18 @@
           <div style="font-size:11px;color:#a6adc8;margin-bottom:6px;font-variant-numeric:tabular-nums;">
             RX 1.2 Gbps · TX 340 Mbps<br/>Total RX 36.6 GB · TX 3.0 GB
           </div>
-          <div style="background:#181825;border:1px solid #45475a;border-radius:8px;padding:8px;height:90px;display:flex;align-items:flex-end;gap:2px;">
-            <!-- fake histogram bars -->
-            <div style="flex:1;background:#89b4fa;height:40%;border-radius:1px;"></div>
-            <div style="flex:1;background:#a6e3a1;height:25%;border-radius:1px;"></div>
-            <div style="flex:1;background:#89b4fa;height:70%;border-radius:1px;"></div>
-            <div style="flex:1;background:#a6e3a1;height:45%;border-radius:1px;"></div>
-            <div style="flex:1;background:#89b4fa;height:55%;border-radius:1px;"></div>
-            <div style="flex:1;background:#a6e3a1;height:30%;border-radius:1px;"></div>
-            <div style="flex:1;background:#89b4fa;height:85%;border-radius:1px;"></div>
-            <div style="flex:1;background:#a6e3a1;height:50%;border-radius:1px;"></div>
-            <div style="flex:1;background:#89b4fa;height:60%;border-radius:1px;"></div>
-            <div style="flex:1;background:#a6e3a1;height:35%;border-radius:1px;"></div>
-            <div style="flex:1;background:#89b4fa;height:75%;border-radius:1px;"></div>
-            <div style="flex:1;background:#a6e3a1;height:40%;border-radius:1px;"></div>
+          <div style="background:#181825;border:1px solid #45475a;border-radius:8px;padding:10px 8px;height:90px;position:relative;">
+            <!-- line graph mock (wave-fill) -->
+            <svg viewBox="0 0 200 70" width="100%" height="70" preserveAspectRatio="none">
+              <polyline fill="rgba(137,180,250,0.3)" stroke="#89b4fa" stroke-width="1.5"
+                points="0,50 20,40 40,45 60,25 80,35 100,15 120,28 140,20 160,32 180,18 200,30 200,70 0,70"/>
+              <polyline fill="none" stroke="#a6e3a1" stroke-width="1.5"
+                points="0,55 20,50 40,52 60,42 80,48 100,38 120,44 140,36 160,40 180,34 200,38"/>
+            </svg>
           </div>
           <div style="display:flex;justify-content:flex-end;gap:12px;font-size:10px;color:#6c7086;margin-top:4px;">
-            <span>■ Receive</span><span style="color:#a6e3a1;">■ Transmit</span>
+            <span style="color:#89b4fa;">— Receive</span><span style="color:#a6e3a1;">— Transmit</span>
+            <span>· wave-fill</span>
           </div>
         </div>
         <div style="padding:10px 12px;border-top:1px solid #313244;display:flex;justify-content:flex-end;">

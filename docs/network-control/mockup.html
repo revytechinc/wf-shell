@@ -377,13 +377,11 @@
           <span>Traffic</span>
           <label class="dim" style="font-size:10px;text-transform:none;letter-spacing:0;display:flex;align-items:center;gap:6px;font-weight:400">
             Graph
-            <select id="detailsGraphStyle" class="graph-dd" title="Graph style (like Sound Settings)">
-              <option value="bars">bars</option>
+            <select id="detailsGraphStyle" class="graph-dd" title="Line graph style">
               <option value="wave">wave</option>
               <option value="wave-fill" selected>wave-fill</option>
               <option value="mirror">mirror</option>
               <option value="scope">scope</option>
-              <option value="spectrum">spectrum</option>
               <option value="dots">dots</option>
               <option value="ribbon">ribbon</option>
             </select>
@@ -964,9 +962,9 @@
     }
   }
 
-  /** Same style ids as sound meters (volume_graph_style). */
+  /** Line graph styles only (no bars / spectrum columns). */
   const TRAFFIC_GRAPH_STYLES = [
-    "bars", "wave", "wave-fill", "mirror", "scope", "spectrum", "dots", "ribbon",
+    "wave", "wave-fill", "mirror", "scope", "dots", "ribbon",
   ];
   function safeTrafficGraphStyle(s) {
     return TRAFFIC_GRAPH_STYLES.indexOf(s) >= 0 ? s : "wave-fill";
@@ -1011,7 +1009,7 @@
     const pad = { t: 18, r: 10, b: 12, l: 10 };
     const plotW = W - pad.l - pad.r;
     const plotH = H - pad.t - pad.b;
-    const targetPts = style === "bars" || style === "spectrum" ? 64 : 120;
+    const targetPts = 120;
     const rx = downsampleSeries(series.rx, targetPts);
     const tx = downsampleSeries(series.tx, targetPts);
     const n = rx.length;
@@ -1029,14 +1027,14 @@
     const colTx = "#a6e3a1";
     const midY = pad.t + plotH / 2;
 
-    function strokeLine(vals, color) {
+    function strokeLine(vals, color, width) {
       ctx.beginPath();
       for (let i = 0; i < n; i++) {
         const x = xAt(i), y = yOf(vals[i]);
         if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       }
       ctx.strokeStyle = color;
-      ctx.lineWidth = 1.8;
+      ctx.lineWidth = width || 1.8;
       ctx.lineJoin = "round";
       ctx.lineCap = "round";
       ctx.stroke();
@@ -1054,7 +1052,7 @@
       ctx.globalAlpha = 0.32;
       ctx.fill();
       ctx.globalAlpha = 1;
-      strokeLine(vals, color);
+      strokeLine(vals, color, 1.8);
     }
     function baseline() {
       ctx.strokeStyle = "#313244";
@@ -1065,35 +1063,11 @@
       ctx.stroke();
     }
 
-    if (style === "bars") {
-      const gap = plotW / n;
-      const barW = Math.max(2, gap * 0.32);
-      for (let i = 0; i < n; i++) {
-        const x0 = pad.l + i * gap + gap * 0.1;
-        const hRx = (rx[i] / max) * plotH;
-        const hTx = (tx[i] / max) * plotH;
-        ctx.fillStyle = colRx;
-        ctx.fillRect(x0, pad.t + plotH - hRx, barW, Math.max(0.5, hRx));
-        ctx.fillStyle = colTx;
-        ctx.fillRect(x0 + barW + 1, pad.t + plotH - hTx, barW, Math.max(0.5, hTx));
-      }
-      baseline();
-      return;
-    }
-
+    /* Line graphs only — no bars */
     if (style === "wave") {
-      strokeLine(rx, colRx);
-      strokeLine(tx, colTx);
-      baseline();
-      return;
-    }
-    if (style === "wave-fill") {
-      fillUnder(rx, colRx);
-      fillUnder(tx, colTx);
-      baseline();
-      return;
-    }
-    if (style === "mirror") {
+      strokeLine(rx, colRx, 1.8);
+      strokeLine(tx, colTx, 1.8);
+    } else if (style === "mirror") {
       ctx.beginPath();
       for (let i = 0; i < n; i++) {
         const y = midY - (rx[i] / max) * (plotH / 2);
@@ -1103,7 +1077,7 @@
         ctx.lineTo(xAt(i), midY + (tx[i] / max) * (plotH / 2));
       }
       ctx.closePath();
-      ctx.fillStyle = "rgba(137,180,250,0.3)";
+      ctx.fillStyle = "rgba(137,180,250,0.28)";
       ctx.fill();
       ctx.strokeStyle = colRx;
       ctx.lineWidth = 1.5;
@@ -1114,8 +1088,7 @@
       ctx.strokeStyle = "#45475a";
       ctx.stroke();
       return;
-    }
-    if (style === "scope") {
+    } else if (style === "scope") {
       ctx.beginPath();
       for (let i = 0; i < n; i++) {
         const v = (rx[i] - tx[i] * 0.55) / max;
@@ -1123,7 +1096,8 @@
         if (i === 0) ctx.moveTo(xAt(i), y); else ctx.lineTo(xAt(i), y);
       }
       ctx.strokeStyle = "#cba6f7";
-      ctx.lineWidth = 1.6;
+      ctx.lineWidth = 1.7;
+      ctx.lineJoin = "round";
       ctx.stroke();
       ctx.beginPath();
       ctx.moveTo(pad.l, midY);
@@ -1131,66 +1105,33 @@
       ctx.strokeStyle = "#45475a";
       ctx.stroke();
       return;
-    }
-    if (style === "spectrum") {
-      const bins = 40;
-      for (let b = 0; b < bins; b++) {
-        const i0 = Math.floor((b / bins) * n);
-        const i1 = Math.max(i0 + 1, Math.floor(((b + 1) / bins) * n));
-        let eR = 0, eT = 0, c = 0;
-        for (let i = i0; i < i1; i++) { eR += rx[i]; eT += tx[i]; c++; }
-        eR = c ? eR / c : 0;
-        eT = c ? eT / c : 0;
-        const bw = plotW / bins;
-        const x = pad.l + b * bw;
-        ctx.fillStyle = colRx;
-        ctx.fillRect(x + 1, pad.t + plotH - (eR / max) * plotH, bw * 0.42, Math.max(1, (eR / max) * plotH));
-        ctx.fillStyle = colTx;
-        ctx.fillRect(x + bw * 0.48, pad.t + plotH - (eT / max) * plotH, bw * 0.42, Math.max(1, (eT / max) * plotH));
-      }
-      baseline();
-      return;
-    }
-    if (style === "dots") {
+    } else if (style === "dots") {
+      strokeLine(rx, colRx, 1);
+      strokeLine(tx, colTx, 1);
       for (let i = 0; i < n; i++) {
         ctx.fillStyle = colRx;
         ctx.beginPath();
-        ctx.arc(xAt(i), yOf(rx[i]), 2.2, 0, Math.PI * 2);
+        ctx.arc(xAt(i), yOf(rx[i]), 2.4, 0, Math.PI * 2);
         ctx.fill();
         ctx.fillStyle = colTx;
         ctx.beginPath();
-        ctx.arc(xAt(i), yOf(tx[i]), 2.2, 0, Math.PI * 2);
+        ctx.arc(xAt(i), yOf(tx[i]), 2.4, 0, Math.PI * 2);
         ctx.fill();
       }
-      baseline();
-      return;
-    }
-    if (style === "ribbon") {
-      ctx.lineWidth = 7;
+    } else if (style === "ribbon") {
       ctx.lineJoin = "round";
       ctx.lineCap = "round";
       ctx.globalAlpha = 0.4;
-      ctx.strokeStyle = colRx;
-      ctx.beginPath();
-      for (let i = 0; i < n; i++) {
-        if (i === 0) ctx.moveTo(xAt(i), yOf(rx[i])); else ctx.lineTo(xAt(i), yOf(rx[i]));
-      }
-      ctx.stroke();
-      ctx.strokeStyle = colTx;
-      ctx.beginPath();
-      for (let i = 0; i < n; i++) {
-        if (i === 0) ctx.moveTo(xAt(i), yOf(tx[i])); else ctx.lineTo(xAt(i), yOf(tx[i]));
-      }
-      ctx.stroke();
+      strokeLine(rx, colRx, 8);
+      strokeLine(tx, colTx, 8);
       ctx.globalAlpha = 1;
-      strokeLine(rx, colRx);
-      strokeLine(tx, colTx);
-      baseline();
-      return;
+      strokeLine(rx, colRx, 1.6);
+      strokeLine(tx, colTx, 1.6);
+    } else {
+      /* wave-fill (default) */
+      fillUnder(rx, colRx);
+      fillUnder(tx, colTx);
     }
-    /* fallback */
-    fillUnder(rx, colRx);
-    fillUnder(tx, colTx);
     baseline();
   }
 
@@ -1722,10 +1663,15 @@
       "<br/>History " + histMin + "s / " + HIST_SEC + "s (full window · 1 Hz)";
 
     const gsel = $("detailsGraphStyle");
-    if (gsel && gsel.value !== state.trafficGraphStyle) {
-      gsel.value = safeTrafficGraphStyle(state.trafficGraphStyle);
+    if (gsel) {
+      /* Keep dropdown in sync without clobbering a user mid-change */
+      const want = safeTrafficGraphStyle(state.trafficGraphStyle);
+      if (gsel.value !== want) gsel.value = want;
     }
-    drawTrafficHist($("detailsHist"), t, state.trafficGraphStyle);
+    /* Draw after layout so canvas.clientWidth is valid */
+    requestAnimationFrame(() => {
+      drawTrafficHist($("detailsHist"), t, state.trafficGraphStyle);
+    });
   }
 
   function openWifiJoin(ssid, security, opts) {
@@ -2252,7 +2198,21 @@
     });
     $("detailsGraphStyle").addEventListener("change", (e) => {
       state.trafficGraphStyle = safeTrafficGraphStyle(e.target.value);
-      if (state.detailsOpen && state.detailsName) fillDetails(state.detailsName);
+      e.target.value = state.trafficGraphStyle;
+      /* Redraw graph only — do not rebuild the whole details grid */
+      if (state.detailsOpen && state.detailsName) {
+        const i = ifaceByName(state.detailsName);
+        const t = ensureTraffic(state.detailsName, i);
+        drawTrafficHist($("detailsHist"), t, state.trafficGraphStyle);
+      }
+    });
+    $("detailsGraphStyle").addEventListener("input", (e) => {
+      /* some browsers fire input on select */
+      state.trafficGraphStyle = safeTrafficGraphStyle(e.target.value);
+      if (state.detailsOpen && state.detailsName) {
+        const i = ifaceByName(state.detailsName);
+        drawTrafficHist($("detailsHist"), ensureTraffic(state.detailsName, i), state.trafficGraphStyle);
+      }
     });
     document.addEventListener("click", (e) => {
       if (!$("ctxMenu").contains(e.target)) hideCtx();
