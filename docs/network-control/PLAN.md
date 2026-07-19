@@ -296,18 +296,25 @@ flowchart TB
 gateways, state) and a live **RX/TX histogram** with auto-scaled units  
 (Mbps/Gbps and B/s…GB/s). Information-only mode still gets Details (no mutations).
 
-**Traffic history (5 minutes, non-blocking):**
+**Traffic history (5 minutes, non-blocking, dynamic ifaces):**
 
 | Rule | Detail |
 |------|--------|
-| Window | **Last 300 s only** (ring buffer @ 1 Hz) |
-| Sample | `netstat -I IF -b -n` Link row → Ibytes/Obytes; rate from delta |
-| Thread | `wf_net::TrafficCollector` worker thread — I/O **never** on GTK main loop |
-| UI | `snapshot(ifname)` under mutex (copy only); paint histogram from copy |
-| Start | `watch()` when iface list known; collector runs continuously |
+| Window | **Last 300 s only** (ring @ 1 Hz) |
+| Sample | `netstat -I IF -b -n` Link row; rate from delta |
+| Thread | `TrafficCollector` worker — I/O **never** on GTK main loop |
+| UI | `snapshot(ifname)` mutex copy only |
+| Add/remove | `watch` / `unwatch` / **`sync_ifaces(live)`** from each probe tick |
+| Vanish | consecutive poll misses → `present=false`, re-baseline on return |
+| Bad name | rejected (`is_valid_traffic_ifname`) — no shell injection |
+| Counter reset | rate 0 that interval; no crash |
+
+**Tests (red/green + integration):** ring/rate/parse edge cases; dynamic  
+sync add/remove; miss streak; hooks simulation; concurrent churn under  
+running thread; FreeBSD live netstat (`TrafficHistory.*`).
 
 Pure helpers: `traffic_ring_push`, `traffic_rate_Bps`, `parse_netstat_if_bytes`,  
-`format_byte_count` / `format_byte_rate` / `format_bit_rate_from_bytes`.
+`is_valid_traffic_ifname`, byte/bit formatters.
 
 Label comes from **live probe flags**, not a stale toggle. Status is **colour**, not text:  
 **green = up** · **red + greyed row = down**. Never “admin down” wording.

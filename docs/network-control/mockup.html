@@ -886,15 +886,28 @@
     return t;
   }
 
-  /** Background collector — not tied to Details modal open. */
+  /** Background collector — syncs watch set as ifaces appear/disappear. */
   function startTrafficCollector() {
     if (trafficCollectorId != null) return;
     trafficCollectorId = setInterval(() => {
       try {
         const ifaces = buildIfaces(state);
-        ifaces.forEach((i) => tickTraffic(i.name, i));
-        /* UI only redraws if details is open — never blocks sampling */
+        const live = {};
+        ifaces.forEach((i) => {
+          live[i.name] = true;
+          tickTraffic(i.name, i);
+        });
+        /* Drop history for destroyed ifaces (tap destroy, etc.) */
+        Object.keys(trafficStore).forEach((n) => {
+          if (!live[n]) delete trafficStore[n];
+        });
         if (state.detailsOpen && state.detailsName) {
+          if (!live[state.detailsName]) {
+            /* iface vanished while Details open */
+            $("detailsTrafficMeta").textContent =
+              "Interface " + state.detailsName + " is no longer present.";
+            return;
+          }
           fillDetails(state.detailsName);
         }
       } catch (e) { /* fail-soft */ }

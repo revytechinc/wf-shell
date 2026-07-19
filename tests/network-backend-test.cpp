@@ -8,8 +8,12 @@
 #include "platform.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cstring>
+#include <deque>
+#include <sstream>
 #include <string>
+#include <thread>
 #include <unistd.h>
 #include <vector>
 
@@ -52,16 +56,32 @@ TEST(NetworkTypes, ClassifyIfaceNames)
     EXPECT_STREQ(kind_label(InterfaceKind::Other), "Network");
 }
 
-TEST(TrafficHistory, RingAndRateAndNetstatParse)
+/* ─── Traffic history: pure + collector (red/green + integration) ───────── */
+
+TEST(TrafficHistory, PureRingRateIfnameNetstat)
 {
     EXPECT_EQ(k_traffic_history_sec, 300);
     EXPECT_EQ(k_traffic_history_cap, 300u);
 
-    EXPECT_EQ(traffic_rate_Bps(2000, 1000, 1000), 1000u); /* 1000 B/s */
-    EXPECT_EQ(traffic_rate_Bps(1000, 2000, 1000), 0u);    /* reset */
+    /* RED: bad deltas */
+    EXPECT_EQ(traffic_rate_Bps(1000, 2000, 1000), 0u);
     EXPECT_EQ(traffic_rate_Bps(1000, 1000, 0), 0u);
+    EXPECT_EQ(traffic_rate_Bps(1000, 1000, -5), 0u);
+    /* GREEN: normal */
+    EXPECT_EQ(traffic_rate_Bps(2000, 1000, 1000), 1000u);
 
-    std::vector<TrafficSample> ring;
+    EXPECT_TRUE(is_valid_traffic_ifname("aq0"));
+    EXPECT_TRUE(is_valid_traffic_ifname("tap12"));
+    EXPECT_TRUE(is_valid_traffic_ifname("epair0a"));
+    EXPECT_TRUE(is_valid_traffic_ifname("vm-public"));
+    EXPECT_TRUE(is_valid_traffic_ifname("lo1"));
+    EXPECT_FALSE(is_valid_traffic_ifname(""));
+    EXPECT_FALSE(is_valid_traffic_ifname("1bad"));
+    EXPECT_FALSE(is_valid_traffic_ifname("tap;rm"));
+    EXPECT_FALSE(is_valid_traffic_ifname("a/b"));
+    EXPECT_FALSE(is_valid_traffic_ifname(std::string(16, 'a')));
+
+    std::deque<TrafficSample> ring;
     for (int i = 0; i < 350; ++i)
     {
         TrafficSample s;
@@ -70,8 +90,13 @@ TEST(TrafficHistory, RingAndRateAndNetstatParse)
         traffic_ring_push(ring, k_traffic_history_cap, s);
     }
     EXPECT_EQ(ring.size(), k_traffic_history_cap);
-    EXPECT_EQ(ring.front().rx_Bps, 50u);  /* 350-300=50 dropped first 50 */
+    EXPECT_EQ(ring.front().rx_Bps, 50u);
     EXPECT_EQ(ring.back().rx_Bps, 349u);
+
+    /* capacity 0 no-op */
+    std::vector<TrafficSample> empty_cap;
+    traffic_ring_push(empty_cap, 0, TrafficSample{});
+    EXPECT_TRUE(empty_cap.empty());
 
     const char *netstat =
         "Name    Mtu Network       Address        Ipkts Ierrs Idrop     Ibytes    Opkts Oerrs    Obytes Coll\n"
@@ -84,24 +109,226 @@ TEST(TrafficHistory, RingAndRateAndNetstatParse)
     EXPECT_EQ(rxp, 100u);
     EXPECT_EQ(txp, 50u);
 
+    /* RED: garbage / empty / no Link row */
+    EXPECT_FALSE(parse_netstat_if_bytes("", &rx, &tx));
+    EXPECT_FALSE(parse_netstat_if_bytes("garbage\n", &rx, &tx));
+    EXPECT_FALSE(parse_netstat_if_bytes(
+        "Name Mtu Network Address Ipkts Ierrs Idrop Ibytes Opkts Oerrs Obytes Coll\n"
+        "aq0 - 10.0.0.0/24 10.0.0.1 1 - - 1 1 - 1 -\n", &rx, &tx));
+    EXPECT_FALSE(parse_netstat_if_bytes(netstat, nullptr, &tx));
+}
+
+TEST(TrafficHistory, DynamicAddRemoveSync)
+{
     TrafficCollector col;
+    EXPECT_EQ(col.watched_count(), 0u);
+    EXPECT_FALSE(col.snapshot("aq0").watched);
+
+    /* GREEN: watch + inject */
     col.watch("aq0");
+    col.watch("aq0"); /* idempotent */
+    EXPECT_EQ(col.watched_count(), 1u);
     col.inject_for_test("aq0", 1000, 500, 1000);
-    col.inject_for_test("aq0", 3000, 1500, 2000); /* +2000 B / 1s */
+    col.inject_for_test("aq0", 3000, 1500, 2000);
     auto snap = col.snapshot("aq0");
+    EXPECT_TRUE(snap.watched);
+    EXPECT_TRUE(snap.present);
     EXPECT_EQ(snap.samples.size(), 2u);
     EXPECT_EQ(snap.last_rx_Bps, 2000u);
-    EXPECT_EQ(snap.rx_total, 3000u);
-    /* Cap: inject > 300 samples */
-    for (int i = 0; i < 320; ++i)
+
+    /* RED: invalid names never watched */
+    col.watch("");
+    col.watch("evil;rm");
+    col.watch("1nope");
+    EXPECT_EQ(col.watched_count(), 1u);
+
+    /* GREEN: add tap0 (clone create) */
+    col.watch("tap0");
+    col.inject_for_test("tap0", 0, 0, 1000);
+    col.inject_for_test("tap0", 5000, 1000, 2000);
+    EXPECT_EQ(col.watched_count(), 2u);
+    EXPECT_EQ(col.snapshot("tap0").last_rx_Bps, 5000u);
+
+    /* GREEN: destroy tap0 → unwatch drops history */
+    col.unwatch("tap0");
+    EXPECT_EQ(col.watched_count(), 1u);
+    EXPECT_FALSE(col.snapshot("tap0").watched);
+    EXPECT_TRUE(col.snapshot("tap0").samples.empty());
+
+    /* sync_ifaces: probe now has igb0 + bridge0, aq0 gone */
+    col.sync_ifaces({"igb0", "bridge0", "bad;name", ""});
+    auto names = col.watched_names();
+    EXPECT_EQ(col.watched_count(), 2u);
+    EXPECT_FALSE(col.snapshot("aq0").watched);
+    EXPECT_TRUE(col.snapshot("igb0").watched);
+    EXPECT_TRUE(col.snapshot("bridge0").watched);
+
+    /* Cap stays ≤ 5 min after many injects */
+    for (int i = 0; i < 400; ++i)
     {
-        col.inject_for_test("aq0", 3000ull + static_cast<uint64_t>(i) * 100,
-            1500, 2000 + i * 1000);
+        col.inject_for_test("igb0", 1000ull + static_cast<uint64_t>(i) * 10,
+            100, 1000 + i * 1000);
     }
-    snap = col.snapshot("aq0");
-    EXPECT_LE(snap.samples.size(), k_traffic_history_cap);
-    EXPECT_EQ(snap.samples.size(), k_traffic_history_cap);
+    EXPECT_EQ(col.snapshot("igb0").samples.size(), k_traffic_history_cap);
 }
+
+TEST(TrafficHistory, MissStreakAndCounterReset)
+{
+    TrafficCollector col;
+    col.watch("tap1");
+    col.inject_for_test("tap1", 10000, 2000, 1000, true);
+    col.inject_for_test("tap1", 20000, 4000, 2000, true);
+    EXPECT_EQ(col.snapshot("tap1").last_rx_Bps, 10000u);
+    EXPECT_TRUE(col.snapshot("tap1").present);
+
+    /* RED: poll fails (iface down / destroyed mid-flight) */
+    for (int i = 0; i < k_traffic_miss_reset; ++i)
+    {
+        col.inject_for_test("tap1", 20000, 4000, 3000 + i * 1000, false);
+    }
+    auto miss = col.snapshot("tap1");
+    EXPECT_FALSE(miss.present);
+    ASSERT_FALSE(miss.samples.empty());
+    EXPECT_FALSE(miss.samples.back().valid);
+    EXPECT_EQ(miss.samples.back().rx_Bps, 0u);
+
+    /* GREEN: returns with new counters — re-baseline (no spike) */
+    col.inject_for_test("tap1", 100, 50, 10000, true);
+    auto back = col.snapshot("tap1");
+    EXPECT_TRUE(back.present);
+    EXPECT_EQ(back.last_rx_Bps, 0u); /* first sample after re-baseline */
+    col.inject_for_test("tap1", 1100, 50, 11000, true);
+    EXPECT_EQ(col.snapshot("tap1").last_rx_Bps, 1000u);
+
+    /* Counter wrap / reset mid-stream */
+    col.inject_for_test("tap1", 50, 10, 12000, true); /* went backwards */
+    EXPECT_EQ(col.snapshot("tap1").last_rx_Bps, 0u);
+}
+
+TEST(TrafficHistory, SampleOnceWithHooksAndDisappear)
+{
+    /* Integration-style: hooks simulate netstat; iface appears then vanishes */
+    class Hooks : public ::testing::Test
+    {
+    };
+    reset_info_hooks();
+    std::string present = "tap9";
+    uint64_t rx = 1000;
+    info_hooks().run_cmd = [&] (const std::string& cmd) -> std::string {
+        if (cmd.find("netstat -I " + present) == std::string::npos)
+        {
+            return {}; /* iface gone or other */
+        }
+        std::ostringstream oss;
+        oss << "Name Mtu Network Address Ipkts Ierrs Idrop Ibytes Opkts Oerrs Obytes Coll\n"
+            << present << " 1500 <Link#9> aa:bb:cc:dd:ee:ff "
+            << "10 0 0 " << rx << " 5 0 200 0\n";
+        return oss.str();
+    };
+
+    TrafficCollector col;
+    col.watch("tap9");
+    col.watch("gone0"); /* never returns data */
+    col.sample_once_for_test(1000);
+    col.sample_once_for_test(2000);
+    rx = 5000;
+    col.sample_once_for_test(3000);
+
+    auto tap = col.snapshot("tap9");
+    EXPECT_TRUE(tap.present);
+    EXPECT_GE(tap.samples.size(), 2u);
+    EXPECT_EQ(tap.rx_total, 5000u);
+    EXPECT_EQ(tap.last_rx_Bps, 4000u); /* 4000 B over 1s */
+
+    auto gone = col.snapshot("gone0");
+    EXPECT_FALSE(gone.present);
+    /* still has samples (zero/invalid ticks) if poll attempted */
+    EXPECT_FALSE(gone.samples.empty());
+
+    /* disappear tap9 */
+    present = "___none___";
+    for (int i = 0; i < k_traffic_miss_reset; ++i)
+    {
+        col.sample_once_for_test(4000 + i * 1000);
+    }
+    EXPECT_FALSE(col.snapshot("tap9").present);
+
+    col.unwatch("tap9");
+    col.unwatch("gone0");
+    EXPECT_EQ(col.watched_count(), 0u);
+    reset_info_hooks();
+}
+
+TEST(TrafficHistory, ThreadStartStopAndConcurrentSync)
+{
+    TrafficCollector col;
+    col.sync_ifaces({"aq0", "igb0"});
+    col.start();
+    EXPECT_TRUE(col.is_running());
+    col.start(); /* double start OK */
+    EXPECT_TRUE(col.is_running());
+
+    /* Concurrent churn while thread runs */
+    for (int i = 0; i < 50; ++i)
+    {
+        col.watch("tap" + std::to_string(i % 5));
+        col.unwatch("tap" + std::to_string((i + 1) % 5));
+        col.sync_ifaces({"aq0", "igb0", "tap0"});
+        (void)col.snapshot("aq0");
+        (void)col.watched_names();
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    col.stop();
+    EXPECT_FALSE(col.is_running());
+    col.stop(); /* double stop OK */
+    EXPECT_FALSE(col.is_running());
+}
+
+#if defined(__FreeBSD__)
+TEST(TrafficHistory, LiveNetstatIntegrationFreeBSD)
+{
+    /* Integration: real netstat against a live iface for a few ticks */
+    auto list = probe_interfaces();
+    if (list.empty())
+    {
+        GTEST_SKIP() << "no interfaces";
+    }
+    std::string name = list.front().name;
+    for (const auto& i : list)
+    {
+        if (i.up && i.running && is_valid_traffic_ifname(i.name))
+        {
+            name = i.name;
+            break;
+        }
+    }
+    ASSERT_TRUE(is_valid_traffic_ifname(name));
+
+    TrafficCollector col;
+    col.watch(name);
+    col.sample_once_for_test(1000);
+    col.sample_once_for_test(2000);
+    auto snap = col.snapshot(name);
+    EXPECT_TRUE(snap.watched);
+    /* present if netstat returned a Link row */
+    if (snap.present)
+    {
+        EXPECT_GE(snap.samples.size(), 1u);
+        EXPECT_GT(snap.rx_total + snap.tx_total, 0u);
+    }
+
+    /* Destroy path: unwatch mid-life */
+    col.unwatch(name);
+    EXPECT_FALSE(col.snapshot(name).watched);
+
+    /* Re-add clone-like name that may not exist — must not crash */
+    col.watch("tap99998");
+    col.sample_once_for_test(3000);
+    EXPECT_TRUE(col.snapshot("tap99998").watched);
+    EXPECT_FALSE(col.snapshot("tap99998").present);
+}
+#endif
 
 TEST(NetworkTypes, TrafficFormatUnits)
 {
