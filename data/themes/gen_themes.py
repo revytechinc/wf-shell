@@ -141,47 +141,49 @@ THEMES: dict[str, dict] = {
         "radius": "0",
         "glow": "none",
     },
+    # Borg collective terminal: void black, sickly phosphor green, cold data-cyan.
+    # Angular (radius 0), conduit borders, bloom glow — not soft neon candy.
     "crt-phosphor": {
         "name": "CRT Phosphor",
         "era": "retro",
         "style": "neon",
-        "panel_bg": "rgba(8, 16, 8, 0.96)",
-        "panel_fg": "#33ff66",
-        "panel_border": "#33ff66",
-        "accent": "#33ff66",
-        "accent_fg": "#001100",
-        "surface": "rgba(6, 14, 6, 0.98)",
-        "surface_fg": "#66ff99",
-        "surface_alt": "rgba(12, 28, 12, 0.95)",
-        "field_bg": "#001a00",
-        "field_fg": "#66ff99",
-        "title_bg": "#0a220a",
-        "title_fg": "#33ff66",
-        "icon": "#33ff66",
-        "icon_outline": "#001100",
-        "icon_on_accent": "#001100",
-        "icon_on_accent_outline": "#33ff66",
-        "meter_bg": "#001100",
-        "highlight": "#33ff66",
-        "highlight2": "#99ff99",
-        "destructive_bg": "rgba(40, 0, 0, 0.5)",
-        "destructive_fg": "#ff6666",
-        "destructive_hover_bg": "#660000",
-        "destructive_hover_fg": "#ffaaaa",
-        "well_bg": "rgba(0, 40, 0, 0.45)",
-        "shadow": "#003300",
-        "shine": "#66ff99",
-        "success": "#33ff66",
-        "warn": "#ccff33",
-        "danger": "#ff4444",
-        "dim": "#2a8833",
-        "net_ex": "#33ff66",
-        "net_good": "#66ff99",
-        "net_med": "#ccff33",
-        "net_weak": "#ffaa33",
-        "net_none": "#226622",
-        "radius": "2px",
-        "glow": "0 0 8px rgba(51, 255, 102, 0.35)",
+        "panel_bg": "rgba(2, 6, 4, 0.97)",
+        "panel_fg": "#39ff14",
+        "panel_border": "#1a8f2a",
+        "accent": "#39ff14",
+        "accent_fg": "#020804",
+        "surface": "rgba(3, 8, 5, 0.98)",
+        "surface_fg": "#7dff7a",
+        "surface_alt": "rgba(6, 16, 10, 0.96)",
+        "field_bg": "#010805",
+        "field_fg": "#7dff7a",
+        "title_bg": "#041208",
+        "title_fg": "#39ff14",
+        "icon": "#39ff14",
+        "icon_outline": "#020804",
+        "icon_on_accent": "#020804",
+        "icon_on_accent_outline": "#39ff14",
+        "meter_bg": "#010402",
+        "highlight": "#39ff14",
+        "highlight2": "#00e5a8",  # cold collective cyan-green
+        "destructive_bg": "rgba(48, 8, 8, 0.55)",
+        "destructive_fg": "#ff5555",
+        "destructive_hover_bg": "#5a1010",
+        "destructive_hover_fg": "#ffcccc",
+        "well_bg": "rgba(4, 14, 8, 0.75)",
+        "shadow": "#000000",
+        "shine": "#7dff7a",
+        "success": "#39ff14",
+        "warn": "#c8e000",
+        "danger": "#ff3333",
+        "dim": "#2f6b38",
+        "net_ex": "#39ff14",
+        "net_good": "#00e5a8",
+        "net_med": "#c8e000",
+        "net_weak": "#e08020",
+        "net_none": "#1a3d22",
+        "radius": "0",
+        "glow": "0 0 10px rgba(57, 255, 20, 0.28), inset 0 0 12px rgba(0, 40, 15, 0.45)",
     },
     "synthwave": {
         "name": "Synthwave 84",
@@ -1386,11 +1388,414 @@ passwordentry:focus text {{
 """
 
 
+# Theme-specific flourishes appended after the shared template.
+EXTRAS: dict[str, str] = {
+    "crt-phosphor": r"""
+/* ==========================================================================
+ * CRT Phosphor — Borg collective terminal flourishes
+ * Void chassis · conduit edges · phosphor bloom · angular nodes
+ * ========================================================================== */
+
+/* Panel: deeper void, double conduit rail */
+.wf-panel {
+    background-color: rgba(2, 6, 4, 0.97);
+    background-image:
+        linear-gradient(180deg,
+            rgba(57, 255, 20, 0.06) 0px,
+            transparent 2px,
+            transparent calc(100% - 3px),
+            rgba(0, 229, 168, 0.08) 100%);
+    border-top: 1px solid #1a8f2a;
+    border-bottom: 2px solid #39ff14;
+    box-shadow:
+        0 0 14px rgba(57, 255, 20, 0.22),
+        inset 0 1px 0 rgba(57, 255, 20, 0.15),
+        inset 0 -2px 8px rgba(0, 0, 0, 0.65);
+}
+
+/* Phosphor bloom on bar text (scanline terminal feel) */
+.wf-panel .clock,
+.wf-panel .battery,
+.wf-panel .network,
+.wf-panel .volume,
+.wf-panel .menu,
+.wf-panel .app-button,
+.wf-panel .window-list button,
+.wf-panel label {
+    color: #39ff14;
+    font-family: monospace;
+    letter-spacing: 0.04em;
+    text-shadow:
+        0 0 4px rgba(57, 255, 20, 0.55),
+        0 0 10px rgba(57, 255, 20, 0.25);
+}
+
+.wf-panel .clock:hover,
+.wf-panel .battery:hover,
+.wf-panel .network:hover,
+.wf-panel .volume:hover,
+.wf-panel .menu:hover,
+.wf-panel .app-button:hover,
+.wf-panel .window-list button:hover,
+.wf-panel .volume.selected,
+.wf-panel .network.selected,
+.wf-panel .menu.selected,
+.wf-panel .window-list button.active,
+.wf-panel .window-button.activated {
+    color: #020804;
+    background-color: #39ff14;
+    border: 1px solid #00e5a8;
+    text-shadow: none;
+    box-shadow:
+        0 0 12px rgba(57, 255, 20, 0.55),
+        inset 0 0 6px rgba(0, 229, 168, 0.35);
+}
+
+/* Node wells — hexagonal-ish hard frames (angular) */
+.wf-panel .volume,
+.wf-panel .network,
+.wf-panel .battery,
+.wf-panel .menu,
+.wf-panel .tray-button {
+    background-color: rgba(2, 10, 6, 0.9);
+    border: 1px solid #1a8f2a;
+    border-left: 2px solid #39ff14;
+    border-radius: 0;
+    box-shadow:
+        inset 0 0 8px rgba(0, 40, 15, 0.7),
+        0 0 6px rgba(57, 255, 20, 0.12);
+}
+
+.wf-panel .volume:hover,
+.wf-panel .network:hover,
+.wf-panel .battery:hover,
+.wf-panel .menu:hover,
+.wf-panel .tray-button:hover {
+    background-color: #39ff14;
+    border-color: #00e5a8;
+    box-shadow: 0 0 14px rgba(57, 255, 20, 0.5);
+}
+
+/* Icons: brighter phosphor core + black cutout for readability on void */
+.wf-panel .widget-icon,
+.wf-panel .volume image,
+.wf-panel .network image,
+.wf-panel .battery image,
+.wf-panel .menu image,
+.wf-panel .tray-button image,
+.wf-panel image.widget-icon {
+    color: #39ff14;
+    -gtk-icon-shadow:
+        0 0 4px rgba(57, 255, 20, 0.8),
+        0 1px 0 #020804,
+        0 -1px 0 #020804,
+        1px 0 0 #020804,
+        -1px 0 0 #020804,
+        1px 1px 0 #020804,
+        -1px -1px 0 #020804;
+}
+
+.wf-panel .volume:hover image,
+.wf-panel .network:hover image,
+.wf-panel .menu:hover image,
+.wf-panel .battery:hover image,
+.wf-panel .volume.selected image,
+.wf-panel .network.selected image,
+.wf-panel .menu.selected image {
+    color: #020804;
+    -gtk-icon-shadow:
+        0 0 2px #39ff14,
+        1px 1px 0 #00e5a8,
+        -1px -1px 0 #00e5a8;
+}
+
+/* Launchers: green halo around app glyphs (drones / modules) */
+.wf-panel image.launcher,
+.wf-panel .launcher image,
+.wf-panel .launchers image {
+    filter:
+        drop-shadow(0 0 1px #39ff14)
+        drop-shadow(0 0 3px rgba(57, 255, 20, 0.55))
+        drop-shadow(1px 1px 0 #020804);
+}
+
+.wf-panel .launcher-button,
+.wf-panel .launcher {
+    background-color: rgba(2, 10, 6, 0.85);
+    border: 1px solid #1a8f2a;
+    border-radius: 0;
+    box-shadow: inset 0 0 6px rgba(0, 30, 12, 0.8);
+}
+
+.wf-panel .launcher-button:hover,
+.wf-panel .launcher:hover {
+    background-color: rgba(8, 28, 14, 0.95);
+    border-color: #39ff14;
+    box-shadow: 0 0 10px rgba(57, 255, 20, 0.35);
+}
+
+/* Popovers: collective console chassis */
+popover > contents,
+popovercontents,
+.popover > contents,
+popovermenu contents,
+popovermenu > contents {
+    background-color: rgba(2, 7, 4, 0.98);
+    background-image:
+        linear-gradient(180deg, rgba(57, 255, 20, 0.05) 0px, transparent 3px);
+    border: 1px solid #1a8f2a;
+    border-top: 2px solid #39ff14;
+    border-left: 2px solid #00e5a8;
+    border-radius: 0;
+    color: #7dff7a;
+    box-shadow:
+        0 0 18px rgba(57, 255, 20, 0.2),
+        4px 4px 0 rgba(0, 0, 0, 0.75),
+        inset 0 0 24px rgba(0, 20, 8, 0.55);
+}
+
+/* Sound Settings title — assimilation header strip */
+.volume-popover-header {
+    background-color: #020804;
+    background-image:
+        linear-gradient(90deg,
+            rgba(57, 255, 20, 0.2) 0%,
+            transparent 40%,
+            rgba(0, 229, 168, 0.12) 100%);
+    border: 1px solid #1a8f2a;
+    border-left: 3px solid #39ff14;
+    border-radius: 0;
+    box-shadow: inset 0 0 12px rgba(57, 255, 20, 0.12);
+}
+
+.volume-popover-header label,
+.volume-popover-title,
+.volume-popover-title * {
+    color: #39ff14;
+    font-family: monospace;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    text-shadow:
+        0 0 6px rgba(57, 255, 20, 0.65),
+        0 0 14px rgba(57, 255, 20, 0.3);
+}
+
+.volume-popover-section {
+    background-color: rgba(4, 12, 8, 0.95);
+    border: 1px solid #1a3d22;
+    border-left: 2px solid #00e5a8;
+    border-radius: 0;
+    box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
+}
+
+.volume-popover-section-title {
+    color: #00e5a8;
+    font-family: monospace;
+    letter-spacing: 0.18em;
+    text-shadow: 0 0 4px rgba(0, 229, 168, 0.4);
+}
+
+.volume-popover-pct,
+.volume-popover-voss-title,
+.volume-popover-voss-lbl,
+.volume-popover-voss-fmt,
+.dim-label {
+    font-family: monospace;
+    color: #7dff7a;
+    text-shadow: 0 0 3px rgba(57, 255, 20, 0.25);
+}
+
+.volume-popover-meter {
+    background-color: #010402;
+    border: 1px solid #1a8f2a;
+    border-radius: 0;
+    box-shadow:
+        inset 0 0 10px rgba(0, 0, 0, 0.85),
+        0 0 6px rgba(57, 255, 20, 0.12);
+}
+
+.volume-popover-scale trough {
+    background-color: #010805;
+    border: 1px solid #1a3d22;
+    border-radius: 0;
+}
+
+.volume-popover-scale highlight {
+    background-color: #39ff14;
+    box-shadow: 0 0 8px rgba(57, 255, 20, 0.55);
+    border-radius: 0;
+}
+
+.volume-popover-section:nth-child(5) .volume-popover-scale highlight {
+    background-color: #00e5a8;
+    box-shadow: 0 0 8px rgba(0, 229, 168, 0.5);
+}
+
+.volume-popover-scale slider {
+    background-color: #041208;
+    border: 1px solid #39ff14;
+    border-radius: 0;
+    min-width: 12px;
+    min-height: 12px;
+    box-shadow: 0 0 6px rgba(57, 255, 20, 0.45);
+}
+
+/* Network: conduit list / active drone highlight */
+.network-control-center .device,
+.network-control-center .freebsd-iface {
+    background-color: rgba(4, 12, 8, 0.95);
+    border: 1px solid #1a3d22;
+    border-left: 2px solid #1a8f2a;
+    border-radius: 0;
+    box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.45);
+}
+
+.network-control-center .freebsd-iface.is-up {
+    border-left-color: #39ff14;
+    box-shadow:
+        inset 0 0 8px rgba(0, 0, 0, 0.45),
+        0 0 8px rgba(57, 255, 20, 0.12);
+}
+
+.network-control-center .access-point:hover,
+.network-control-center .access-point.connected,
+.network-control-center .access-point.active {
+    background-color: rgba(8, 28, 14, 0.95);
+    border: 1px solid #39ff14;
+    border-left: 3px solid #00e5a8;
+    color: #39ff14;
+    box-shadow: 0 0 10px rgba(57, 255, 20, 0.2);
+}
+
+.network-control-center .access-point:hover label,
+.network-control-center .access-point.connected label {
+    color: #39ff14;
+    text-shadow: 0 0 4px rgba(57, 255, 20, 0.4);
+    font-family: monospace;
+}
+
+.network-control-center .access-point.saved .ap-saved-badge {
+    background-color: #00e5a8;
+    color: #020804;
+    border-radius: 0;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+/* Buttons: hard nodes */
+.popover button,
+.network-control-center button,
+window button {
+    background-color: rgba(4, 12, 8, 0.95);
+    border: 1px solid #1a8f2a;
+    border-radius: 0;
+    color: #7dff7a;
+    font-family: monospace;
+    letter-spacing: 0.06em;
+    text-shadow: 0 0 3px rgba(57, 255, 20, 0.3);
+    box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.5);
+}
+
+.popover button:hover,
+.network-control-center button:hover,
+window button:hover {
+    background-color: #39ff14;
+    border-color: #00e5a8;
+    color: #020804;
+    text-shadow: none;
+    box-shadow: 0 0 12px rgba(57, 255, 20, 0.45);
+}
+
+/* Fields: dark wells with cyan-green caret line feel */
+entry,
+entry text,
+passwordentry,
+passwordentry text,
+.volume-popover-combo,
+.volume-popover-device-combo,
+combobox,
+combobox button {
+    background-color: #010805;
+    border: 1px solid #1a3d22;
+    border-bottom: 2px solid #00e5a8;
+    border-radius: 0;
+    color: #7dff7a;
+    font-family: monospace;
+    caret-color: #39ff14;
+}
+
+entry:focus,
+entry:focus text,
+passwordentry:focus,
+passwordentry:focus text {
+    border-color: #39ff14;
+    box-shadow: 0 0 8px rgba(57, 255, 20, 0.25);
+    color: #39ff14;
+}
+
+/* Window chrome: cube header */
+headerbar,
+window headerbar,
+.titlebar {
+    background-color: #020804;
+    background-image:
+        linear-gradient(90deg, rgba(57, 255, 20, 0.18), transparent 50%);
+    color: #39ff14;
+    border-bottom: 2px solid #39ff14;
+}
+
+headerbar label,
+headerbar .title,
+window headerbar label,
+window headerbar .title {
+    color: #39ff14;
+    font-family: monospace;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    text-shadow: 0 0 6px rgba(57, 255, 20, 0.5);
+}
+
+/* Separators as energy conduits */
+.popover separator,
+.volume-popover-root separator,
+separator {
+    background-color: #1a8f2a;
+    min-height: 1px;
+    margin: 4px 0;
+    box-shadow: 0 0 4px rgba(57, 255, 20, 0.25);
+}
+
+/* Menu / list selection = “assimilated” row */
+popover listbox row:hover,
+popover listbox row:selected,
+popover listview row:hover,
+popover listview row:selected,
+popovermenu modelbutton:hover,
+popovermenu modelbutton:selected {
+    background-color: rgba(12, 40, 20, 0.95);
+    color: #39ff14;
+    border-left: 3px solid #00e5a8;
+    box-shadow: inset 0 0 10px rgba(57, 255, 20, 0.1);
+}
+
+/* Network quality: collective signal tiers */
+.wf-panel .network.excellent image { color: #39ff14; }
+.wf-panel .network.good image      { color: #00e5a8; }
+.wf-panel .network.medium image    { color: #c8e000; }
+.wf-panel .network.weak image      { color: #e08020; }
+.wf-panel .network.none image      { color: #1a3d22; }
+""",
+}
+
+
 def main() -> None:
     for tid, pal in THEMES.items():
         css = render(tid, pal)
         # Clean up accidental escaped newlines from f-string branch hacks
         css = css.replace("\\n", "\n")
+        extra = EXTRAS.get(tid, "")
+        if extra:
+            css = css.rstrip() + "\n" + extra.lstrip("\n")
         path = OUT / f"{tid}.css"
         path.write_text(css)
         print(f"wrote {path.name} ({len(css.splitlines())} lines)")
@@ -1398,3 +1803,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

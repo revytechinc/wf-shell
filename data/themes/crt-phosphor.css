@@ -8,11 +8,11 @@
 /* ── Panel ─────────────────────────────────────────────────────────────── */
 
 .wf-panel {
-    background-color: rgba(8, 16, 8, 0.96);
+    background-color: rgba(2, 6, 4, 0.97);
     background-image: none;
-    color: #33ff66;
-    border-bottom: 2px solid #33ff66;
-    box-shadow: 0 0 8px rgba(51, 255, 102, 0.35);
+    color: #39ff14;
+    border-bottom: 2px solid #1a8f2a;
+    box-shadow: 0 0 10px rgba(57, 255, 20, 0.28), inset 0 0 12px rgba(0, 40, 15, 0.45);
 }
 
 .wf-panel .clock,
@@ -24,11 +24,11 @@
 .wf-panel .window-list button,
 .wf-panel .tray,
 .wf-panel label {
-    color: #33ff66;
+    color: #39ff14;
     font-weight: bold;
     text-shadow: none;
     border: 1px solid transparent;
-    border-radius: 2px;
+    border-radius: 0;
     padding: 2px 6px;
     margin: 1px;
 }
@@ -40,9 +40,9 @@
 .wf-panel .menu:hover,
 .wf-panel .app-button:hover,
 .wf-panel .window-list button:hover {
-    color: #001100;
-    background-color: #33ff66;
-    border-color: #33ff66;
+    color: #020804;
+    background-color: #39ff14;
+    border-color: #1a8f2a;
     text-shadow: none;
     box-shadow: none;
 }
@@ -52,16 +52,16 @@
 .wf-panel .menu.selected,
 .wf-panel .window-list button.active,
 .wf-panel .window-button.activated {
-    color: #001100;
-    background-color: #33ff66;
-    border-color: #33ff66;
+    color: #020804;
+    background-color: #39ff14;
+    border-color: #1a8f2a;
     text-shadow: none;
     box-shadow: none;
 }
 
 .wf-panel .window-button:hover {
-    background-color: rgba(12, 28, 12, 0.95);
-    color: #66ff99;
+    background-color: rgba(6, 16, 10, 0.96);
+    color: #7dff7a;
 }
 
 /* Icon wells — inspectable bounds for tray gadgets */
@@ -70,9 +70,9 @@
 .wf-panel .battery,
 .wf-panel .menu,
 .wf-panel .tray-button {
-    background-color: rgba(0, 40, 0, 0.45);
-    border: 1px solid #33ff66;
-    border-radius: 2px;
+    background-color: rgba(4, 14, 8, 0.75);
+    border: 1px solid #1a8f2a;
+    border-radius: 0;
     padding: 2px 6px;
     margin: 1px 2px;
 }
@@ -82,8 +82,8 @@
 .wf-panel .battery:hover,
 .wf-panel .menu:hover,
 .wf-panel .tray-button:hover {
-    background-color: #33ff66;
-    color: #001100;
+    background-color: #39ff14;
+    color: #020804;
 }
 
 /* Symbolic icons + outline */
@@ -95,16 +95,16 @@
 .wf-panel .tray-button image,
 .wf-panel .clock image,
 .wf-panel image.widget-icon {
-    color: #33ff66;
+    color: #39ff14;
     -gtk-icon-shadow:
-        0 1px 0 #001100,
-        0 -1px 0 #001100,
-        1px 0 0 #001100,
-        -1px 0 0 #001100,
-        1px 1px 0 #001100,
-        -1px -1px 0 #001100,
-        1px -1px 0 #001100,
-        -1px 1px 0 #001100,
+        0 1px 0 #020804,
+        0 -1px 0 #020804,
+        1px 0 0 #020804,
+        -1px 0 0 #020804,
+        1px 1px 0 #020804,
+        -1px -1px 0 #020804,
+        1px -1px 0 #020804,
+        -1px 1px 0 #020804,
         1px 1px 1px rgba(0,0,0,0.45);
 }
 
@@ -115,33 +115,33 @@
 .wf-panel .network:hover image,
 .wf-panel .menu:hover image,
 .wf-panel .battery:hover image {
-    color: #001100;
+    color: #020804;
     -gtk-icon-shadow:
-        0 1px 0 #33ff66,
-        0 -1px 0 #33ff66,
-        1px 0 0 #33ff66,
-        -1px 0 0 #33ff66,
-        1px 1px 0 #33ff66,
-        -1px -1px 0 #33ff66,
-        1px -1px 0 #33ff66,
-        -1px 1px 0 #33ff66;
+        0 1px 0 #39ff14,
+        0 -1px 0 #39ff14,
+        1px 0 0 #39ff14,
+        -1px 0 0 #39ff14,
+        1px 1px 0 #39ff14,
+        -1px -1px 0 #39ff14,
+        1px -1px 0 #39ff14,
+        -1px 1px 0 #39ff14;
 }
 
-.wf-panel .network.excellent image { color: #33ff66; }
-.wf-panel .network.good image      { color: #66ff99; }
-.wf-panel .network.medium image    { color: #ccff33; }
-.wf-panel .network.weak image      { color: #ffaa33; }
-.wf-panel .network.none image      { color: #226622; }
-.wf-panel .network.wifi.weak image { color: #ffaa33; }
-.wf-panel .network.wifi.excellent image { color: #33ff66; }
+.wf-panel .network.excellent image { color: #39ff14; }
+.wf-panel .network.good image      { color: #00e5a8; }
+.wf-panel .network.medium image    { color: #c8e000; }
+.wf-panel .network.weak image      { color: #e08020; }
+.wf-panel .network.none image      { color: #1a3d22; }
+.wf-panel .network.wifi.weak image { color: #e08020; }
+.wf-panel .network.wifi.excellent image { color: #39ff14; }
 
 /* Full-color launchers */
 .wf-panel image.launcher,
 .wf-panel .launcher image,
 .wf-panel .launchers image {
     filter:
-        drop-shadow(0 0 0.6px #001100)
-        drop-shadow(0 0 0.6px #001100)
+        drop-shadow(0 0 0.6px #020804)
+        drop-shadow(0 0 0.6px #020804)
         drop-shadow(1px 1px 0 rgba(0, 0, 0, 0.55));
 }
 
@@ -149,27 +149,27 @@
 .wf-panel .launcher {
     margin: 0 3px;
     padding: 2px;
-    background-color: rgba(0, 40, 0, 0.45);
-    border: 1px solid #33ff66;
-    border-radius: 2px;
+    background-color: rgba(4, 14, 8, 0.75);
+    border: 1px solid #1a8f2a;
+    border-radius: 0;
 }
 
 .wf-panel .launcher-button:hover,
 .wf-panel .launcher:hover {
-    background-color: rgba(12, 28, 12, 0.95);
+    background-color: rgba(6, 16, 10, 0.96);
 }
 
 .wf-panel .battery overlay label {
-    color: #33ff66;
+    color: #39ff14;
     text-shadow:
-         1px  1px 0 #001100,
-        -1px -1px 0 #001100,
-        -1px  1px 0 #001100,
-         1px -1px 0 #001100,
-         0     1px 0 #001100,
-         0    -1px 0 #001100,
-        -1px   0   0 #001100,
-         1px   0   0 #001100;
+         1px  1px 0 #020804,
+        -1px -1px 0 #020804,
+        -1px  1px 0 #020804,
+         1px -1px 0 #020804,
+         0     1px 0 #020804,
+         0    -1px 0 #020804,
+        -1px   0   0 #020804,
+         1px   0   0 #020804;
     font-weight: bold;
 }
 
@@ -180,30 +180,30 @@ popovercontents,
 .popover > contents,
 popovermenu contents,
 popovermenu > contents {
-    background-color: rgba(6, 14, 6, 0.98);
+    background-color: rgba(3, 8, 5, 0.98);
     background-image: none;
-    border: 2px solid #33ff66;
-    border-radius: 2px;
+    border: 2px solid #1a8f2a;
+    border-radius: 0;
     padding: 10px;
-    color: #66ff99;
-    box-shadow: 0 0 8px rgba(51, 255, 102, 0.35);
+    color: #7dff7a;
+    box-shadow: 0 0 10px rgba(57, 255, 20, 0.28), inset 0 0 12px rgba(0, 40, 15, 0.45);
 }
 
 .popover label,
 popover label,
 popovermenu label {
-    color: #66ff99;
+    color: #7dff7a;
 }
 
 .popover button,
 .network-control-center button,
 window button {
     background-image: none;
-    background-color: rgba(12, 28, 12, 0.95);
-    background: rgba(12, 28, 12, 0.95);
-    border: 1px solid #33ff66;
-    border-radius: 2px;
-    color: #66ff99;
+    background-color: rgba(6, 16, 10, 0.96);
+    background: rgba(6, 16, 10, 0.96);
+    border: 1px solid #1a8f2a;
+    border-radius: 0;
+    color: #7dff7a;
     padding: 4px 10px;
     font-weight: bold;
     text-shadow: none;
@@ -214,10 +214,10 @@ window button {
 .network-control-center button:hover,
 window button:hover {
     background-image: none;
-    background-color: #33ff66;
-    background: #33ff66;
-    border-color: #33ff66;
-    color: #001100;
+    background-color: #39ff14;
+    background: #39ff14;
+    border-color: #1a8f2a;
+    color: #020804;
     text-shadow: none;
     box-shadow: none;
 }
@@ -225,28 +225,28 @@ window button:hover {
 .popover button:active,
 .network-control-center button:active,
 window button:active {
-    background-color: #001a00;
-    border: 1px solid #33ff66;
-    border-radius: 2px;
-    color: #66ff99;
+    background-color: #010805;
+    border: 1px solid #1a8f2a;
+    border-radius: 0;
+    color: #7dff7a;
 }
 
 .popover button.destructive-action,
 .network-control-center button.destructive-action {
     background-image: none;
-    background-color: rgba(40, 0, 0, 0.5);
-    background: rgba(40, 0, 0, 0.5);
-    border-color: #ff4444;
-    color: #ff6666;
+    background-color: rgba(48, 8, 8, 0.55);
+    background: rgba(48, 8, 8, 0.55);
+    border-color: #ff3333;
+    color: #ff5555;
 }
 
 .popover button.destructive-action:hover,
 .network-control-center button.destructive-action:hover {
     background-image: none;
-    background-color: #660000;
-    background: #660000;
-    border-color: #33ff66;
-    color: #ffaaaa;
+    background-color: #5a1010;
+    background: #5a1010;
+    border-color: #1a8f2a;
+    color: #ffcccc;
     text-shadow: none;
     box-shadow: none;
 }
@@ -257,48 +257,48 @@ window button:active {
     background-color: transparent;
     background: transparent;
     border: 1px solid transparent;
-    color: #66ff99;
+    color: #7dff7a;
     box-shadow: none;
 }
 
 .popover button.flat:hover,
 .network-control-center button.flat:hover {
-    color: #001100;
-    background-color: #33ff66;
-    background: #33ff66;
-    border-color: #33ff66;
+    color: #020804;
+    background-color: #39ff14;
+    background: #39ff14;
+    border-color: #1a8f2a;
     box-shadow: none;
 }
 
 .popover button image,
 .network-control-center button image,
 .popover .widget-icon {
-    color: #33ff66;
+    color: #39ff14;
     -gtk-icon-shadow:
-        0 1px 0 #001100,
-        0 -1px 0 #001100,
-        1px 0 0 #001100,
-        -1px 0 0 #001100,
-        1px 1px 0 #001100,
-        -1px -1px 0 #001100,
-        1px -1px 0 #001100,
-        -1px 1px 0 #001100,
+        0 1px 0 #020804,
+        0 -1px 0 #020804,
+        1px 0 0 #020804,
+        -1px 0 0 #020804,
+        1px 1px 0 #020804,
+        -1px -1px 0 #020804,
+        1px -1px 0 #020804,
+        -1px 1px 0 #020804,
         1px 1px 1px rgba(0,0,0,0.45);
 }
 
 .popover button:hover image,
 .network-control-center button:hover image,
 .popover button.flat:hover image {
-    color: #001100;
+    color: #020804;
     -gtk-icon-shadow:
-        0 1px 0 #33ff66,
-        0 -1px 0 #33ff66,
-        1px 0 0 #33ff66,
-        -1px 0 0 #33ff66,
-        1px 1px 0 #33ff66,
-        -1px -1px 0 #33ff66,
-        1px -1px 0 #33ff66,
-        -1px 1px 0 #33ff66;
+        0 1px 0 #39ff14,
+        0 -1px 0 #39ff14,
+        1px 0 0 #39ff14,
+        -1px 0 0 #39ff14,
+        1px 1px 0 #39ff14,
+        -1px -1px 0 #39ff14,
+        1px -1px 0 #39ff14,
+        -1px 1px 0 #39ff14;
 }
 
 /* Combos / fields — always surface_fg on field_bg */
@@ -313,11 +313,11 @@ combobox > box > button,
 dropdown,
 dropdown button {
     background-image: none;
-    background-color: #001a00;
-    background: #001a00;
-    border: 1px solid #33ff66;
-    border-radius: 2px;
-    color: #66ff99;
+    background-color: #010805;
+    background: #010805;
+    border: 1px solid #1a8f2a;
+    border-radius: 0;
+    color: #7dff7a;
     text-shadow: none;
     font-weight: bold;
     box-shadow: none;
@@ -329,10 +329,10 @@ dropdown button {
 combobox button:hover,
 dropdown button:hover {
     background-image: none;
-    background-color: rgba(12, 28, 12, 0.95);
-    background: rgba(12, 28, 12, 0.95);
-    border-color: #33ff66;
-    color: #66ff99;
+    background-color: rgba(6, 16, 10, 0.96);
+    background: rgba(6, 16, 10, 0.96);
+    border-color: #39ff14;
+    color: #7dff7a;
     box-shadow: none;
 }
 
@@ -340,7 +340,7 @@ combobox cellview,
 combobox label,
 dropdown label,
 dropdown cellview {
-    color: #66ff99;
+    color: #7dff7a;
     text-shadow: none;
 }
 
@@ -351,11 +351,11 @@ popover row,
 popovermenu modelbutton,
 popover modelbutton {
     background-color: transparent;
-    color: #66ff99;
+    color: #7dff7a;
     font-weight: bold;
     padding: 5px 10px;
     margin: 1px 0;
-    border-radius: 2px;
+    border-radius: 0;
     text-shadow: none;
 }
 
@@ -371,8 +371,8 @@ popover row:selected,
 .popover listbox row:selected,
 popovermenu modelbutton:selected,
 popover modelbutton:selected {
-    background-color: #33ff66;
-    color: #001100;
+    background-color: #39ff14;
+    color: #020804;
     text-shadow: none;
 }
 
@@ -388,8 +388,8 @@ popover list,
 /* ── Volume ────────────────────────────────────────────────────────────── */
 
 .volume-popover-root {
-    background-color: rgba(6, 14, 6, 0.98);
-    color: #66ff99;
+    background-color: rgba(3, 8, 5, 0.98);
+    color: #7dff7a;
 }
 
 /*
@@ -398,11 +398,11 @@ popover list,
  * (Win95 silver + white "Sound Settings").
  */
 .volume-popover-header {
-    background-color: #0a220a;
+    background-color: #041208;
     background-image: none;
-    color: #33ff66;
-    border: 1px solid #33ff66;
-    border-radius: 2px;
+    color: #39ff14;
+    border: 1px solid #1a8f2a;
+    border-radius: 0;
     padding: 6px 10px;
     margin: 0 0 4px 0;
     min-height: 1.6em;
@@ -411,7 +411,7 @@ popover list,
 .volume-popover-title {
     font-size: 1.15em;
     font-weight: 900;
-    color: #33ff66;
+    color: #39ff14;
     background-color: transparent;
     background-image: none;
     padding: 0;
@@ -424,13 +424,13 @@ popover list,
 .volume-popover-header label,
 .volume-popover-title,
 .volume-popover-title * {
-    color: #33ff66;
+    color: #39ff14;
 }
 
 .volume-popover-section-title {
     font-size: 0.78em;
     font-weight: 800;
-    color: #2a8833;
+    color: #2f6b38;
     text-shadow: none;
     letter-spacing: 0.12em;
     text-transform: uppercase;
@@ -438,90 +438,90 @@ popover list,
 }
 
 .volume-popover-section {
-    background-color: rgba(12, 28, 12, 0.95);
-    border: 1px solid #33ff66;
-    border-radius: 2px;
+    background-color: rgba(6, 16, 10, 0.96);
+    border: 1px solid #1a8f2a;
+    border-radius: 0;
     padding: 6px;
     margin: 4px 0;
 }
 
 .volume-popover-mute-btn {
-    border-radius: 2px;
+    border-radius: 0;
     padding: 6px;
     background-image: none;
-    background-color: rgba(12, 28, 12, 0.95);
-    background: rgba(12, 28, 12, 0.95);
-    border: 1px solid #33ff66;
-    border-radius: 2px;
-    color: #66ff99;
+    background-color: rgba(6, 16, 10, 0.96);
+    background: rgba(6, 16, 10, 0.96);
+    border: 1px solid #1a8f2a;
+    border-radius: 0;
+    color: #7dff7a;
 }
 
 .volume-popover-mute-btn image {
-    color: #33ff66;
+    color: #39ff14;
     -gtk-icon-shadow:
-        0 1px 0 #001100,
-        0 -1px 0 #001100,
-        1px 0 0 #001100,
-        -1px 0 0 #001100,
-        1px 1px 0 #001100,
-        -1px -1px 0 #001100,
-        1px -1px 0 #001100,
-        -1px 1px 0 #001100,
+        0 1px 0 #020804,
+        0 -1px 0 #020804,
+        1px 0 0 #020804,
+        -1px 0 0 #020804,
+        1px 1px 0 #020804,
+        -1px -1px 0 #020804,
+        1px -1px 0 #020804,
+        -1px 1px 0 #020804,
         1px 1px 1px rgba(0,0,0,0.45);
 }
 
 .volume-popover-mute-btn:hover {
     background-image: none;
-    background-color: #33ff66;
-    background: #33ff66;
-    border-color: #33ff66;
-    color: #001100;
+    background-color: #39ff14;
+    background: #39ff14;
+    border-color: #1a8f2a;
+    color: #020804;
     transform: none;
     box-shadow: none;
 }
 
 .volume-popover-mute-btn:hover image {
-    color: #001100;
+    color: #020804;
     -gtk-icon-shadow:
-        0 1px 0 #33ff66,
-        0 -1px 0 #33ff66,
-        1px 0 0 #33ff66,
-        -1px 0 0 #33ff66,
-        1px 1px 0 #33ff66,
-        -1px -1px 0 #33ff66,
-        1px -1px 0 #33ff66,
-        -1px 1px 0 #33ff66;
+        0 1px 0 #39ff14,
+        0 -1px 0 #39ff14,
+        1px 0 0 #39ff14,
+        -1px 0 0 #39ff14,
+        1px 1px 0 #39ff14,
+        -1px -1px 0 #39ff14,
+        1px -1px 0 #39ff14,
+        -1px 1px 0 #39ff14;
 }
 
 .volume-popover-pct {
     font-size: 0.95em;
     font-weight: bold;
-    color: #66ff99;
+    color: #7dff7a;
     text-shadow: none;
 }
 
 .volume-popover-scale trough {
-    background-color: #001a00;
+    background-color: #010805;
     min-height: 8px;
-    border-radius: 2px;
-    border: 1px solid #003300;
+    border-radius: 0;
+    border: 1px solid #000000;
 }
 
 .volume-popover-scale highlight {
-    border-radius: 2px;
-    background-color: #33ff66;
+    border-radius: 0;
+    background-color: #39ff14;
     box-shadow: none;
 }
 
 .volume-popover-section:nth-child(5) .volume-popover-scale highlight {
-    background-color: #99ff99;
+    background-color: #00e5a8;
     box-shadow: none;
 }
 
 .volume-popover-scale slider {
-    background-color: rgba(12, 28, 12, 0.95);
-    border: 1px solid #33ff66;
-    border-radius: 2px;
+    background-color: rgba(6, 16, 10, 0.96);
+    border: 1px solid #1a8f2a;
+    border-radius: 0;
     min-width: 14px;
     min-height: 14px;
     margin: -4px;
@@ -530,38 +530,38 @@ popover list,
 
 .volume-popover-scale slider:hover {
     transform: none;
-    background-color: #33ff66;
+    background-color: #39ff14;
 }
 
 .volume-popover-meter {
-    border-radius: 2px;
-    border: 1px solid #33ff66;
+    border-radius: 0;
+    border: 1px solid #1a8f2a;
     margin: 6px 0;
-    background-color: #001100;
+    background-color: #010402;
 }
 
 .volume-popover-adv-btn {
-    border-radius: 2px;
+    border-radius: 0;
     padding: 5px 14px;
-    color: #66ff99;
+    color: #7dff7a;
     text-shadow: none;
-    background-color: rgba(12, 28, 12, 0.95);
-    border: 1px solid #33ff66;
-    border-radius: 2px;
+    background-color: rgba(6, 16, 10, 0.96);
+    border: 1px solid #1a8f2a;
+    border-radius: 0;
     font-weight: bold;
     font-size: 0.85em;
 }
 
 .volume-popover-adv-btn:hover {
-    background-color: #33ff66;
-    border-color: #33ff66;
-    color: #001100;
+    background-color: #39ff14;
+    border-color: #1a8f2a;
+    color: #020804;
     box-shadow: none;
     transform: none;
 }
 
 .dim-label {
-    color: #2a8833;
+    color: #2f6b38;
     opacity: 1.0;
 }
 
@@ -569,7 +569,7 @@ popover list,
 .volume-popover-voss-title,
 .volume-popover-voss-lbl,
 .volume-popover-voss-fmt {
-    color: #66ff99;
+    color: #7dff7a;
 }
 
 /* ── Network ───────────────────────────────────────────────────────────── */
@@ -577,89 +577,89 @@ popover list,
 .network-global-toggles {
     padding: 8px 12px;
     margin-bottom: 10px;
-    background-color: rgba(12, 28, 12, 0.95);
-    border: 1px solid #33ff66;
-    border-radius: 2px;
+    background-color: rgba(6, 16, 10, 0.96);
+    border: 1px solid #1a8f2a;
+    border-radius: 0;
 }
 
 .network-toggle-button {
     margin-right: 14px;
-    color: #66ff99;
+    color: #7dff7a;
     text-shadow: none;
     font-weight: bold;
     font-size: 0.9em;
 }
 
 .network-toggle-button check {
-    border-radius: 2px;
-    border-color: #33ff66;
-    background-color: #001a00;
+    border-radius: 0;
+    border-color: #1a8f2a;
+    background-color: #010805;
 }
 
 .network-toggle-button check:checked {
-    background-color: #33ff66;
-    border-color: #33ff66;
+    background-color: #39ff14;
+    border-color: #1a8f2a;
     box-shadow: none;
 }
 
 .network-control-center .device,
 .network-control-center .freebsd-iface {
     margin-bottom: 8px;
-    background-color: rgba(12, 28, 12, 0.95);
-    border: 1px solid #33ff66;
-    border-radius: 2px;
+    background-color: rgba(6, 16, 10, 0.96);
+    border: 1px solid #1a8f2a;
+    border-radius: 0;
     padding: 8px;
 }
 
 .network-control-center .freebsd-iface:hover {
-    background-color: #001a00;
+    background-color: #010805;
 }
 
 .network-control-center .device-label {
     font-weight: bold;
-    color: #66ff99;
+    color: #7dff7a;
     text-shadow: none;
 }
 
 .network-control-center .freebsd-iface .sub,
 .network-control-center .freebsd-iface .speed {
-    color: #2a8833;
+    color: #2f6b38;
 }
 
 .network-control-center .freebsd-iface.is-up .state-dot {
-    background-color: #33ff66;
+    background-color: #39ff14;
 }
 
 .network-control-center .freebsd-iface.is-down .state-dot {
-    background-color: #ff4444;
+    background-color: #ff3333;
 }
 
 .network-control-center .access-point {
     padding: 6px 8px;
     margin: 2px 0;
-    border-radius: 2px;
+    border-radius: 0;
     background-color: transparent;
     border: 1px solid transparent;
 }
 
 .network-control-center .access-point:hover {
-    background-color: #33ff66;
-    border-color: #33ff66;
+    background-color: #39ff14;
+    border-color: #1a8f2a;
     box-shadow: none;
 }
 
 .network-control-center .access-point:hover label,
 .network-control-center .access-point:hover .band {
-    color: #001100;
+    color: #020804;
 }
 
 .network-control-center .access-point label {
-    color: #66ff99;
+    color: #7dff7a;
     font-size: 0.95em;
 }
 
 .network-control-center .access-point .band {
-    color: #2a8833;
+    color: #2f6b38;
     opacity: 1.0;
     font-size: 0.85em;
 }
@@ -667,80 +667,80 @@ popover list,
 .network-control-center .access-point.connected,
 .network-control-center .access-point.active {
     font-weight: bold;
-    background-color: #33ff66;
-    border: 1px solid #33ff66;
-    border-left: 4px solid #99ff99;
+    background-color: #39ff14;
+    border: 1px solid #1a8f2a;
+    border-left: 4px solid #00e5a8;
     padding-left: 8px;
 }
 
 .network-control-center .access-point.connected label,
 .network-control-center .access-point.connected .ap-connected-badge {
-    color: #001100;
+    color: #020804;
     text-shadow: none;
 }
 
 .network-control-center .access-point.saved .ap-saved-badge {
-    color: #001100;
-    background-color: #99ff99;
+    color: #020804;
+    background-color: #00e5a8;
     padding: 0 4px;
     font-weight: bold;
     font-size: 0.8em;
 }
 
 .network-control-center image.access-point {
-    color: #33ff66;
+    color: #39ff14;
     -gtk-icon-shadow:
-        0 1px 0 #001100,
-        0 -1px 0 #001100,
-        1px 0 0 #001100,
-        -1px 0 0 #001100,
-        1px 1px 0 #001100,
-        -1px -1px 0 #001100,
-        1px -1px 0 #001100,
-        -1px 1px 0 #001100,
+        0 1px 0 #020804,
+        0 -1px 0 #020804,
+        1px 0 0 #020804,
+        -1px 0 0 #020804,
+        1px 1px 0 #020804,
+        -1px -1px 0 #020804,
+        1px -1px 0 #020804,
+        -1px 1px 0 #020804,
         1px 1px 1px rgba(0,0,0,0.45);
 }
 
 .network-control-center .access-point:hover image.access-point,
 .network-control-center .access-point.connected image.access-point {
-    color: #001100;
+    color: #020804;
     -gtk-icon-shadow:
-        0 1px 0 #33ff66,
-        0 -1px 0 #33ff66,
-        1px 0 0 #33ff66,
-        -1px 0 0 #33ff66,
-        1px 1px 0 #33ff66,
-        -1px -1px 0 #33ff66,
-        1px -1px 0 #33ff66,
-        -1px 1px 0 #33ff66;
+        0 1px 0 #39ff14,
+        0 -1px 0 #39ff14,
+        1px 0 0 #39ff14,
+        -1px 0 0 #39ff14,
+        1px 1px 0 #39ff14,
+        -1px -1px 0 #39ff14,
+        1px -1px 0 #39ff14,
+        -1px 1px 0 #39ff14;
 }
 
 .network-control-center .vpn {
     padding: 8px 12px;
     margin: 4px 0;
-    border-radius: 2px;
-    background-color: rgba(12, 28, 12, 0.95);
-    border: 1px solid #33ff66;
+    border-radius: 0;
+    background-color: rgba(6, 16, 10, 0.96);
+    border: 1px solid #1a8f2a;
 }
 
 .network-control-center .vpn:hover {
-    background-color: #33ff66;
-    border-color: #33ff66;
+    background-color: #39ff14;
+    border-color: #1a8f2a;
 }
 
 .network-control-center .vpn:hover label {
-    color: #001100;
+    color: #020804;
 }
 
 .network-control-center .vpn.active {
     font-weight: bold;
-    background-color: #33ff66;
-    border: 1px solid #33ff66;
-    border-left: 4px solid #99ff99;
+    background-color: #39ff14;
+    border: 1px solid #1a8f2a;
+    border-left: 4px solid #00e5a8;
 }
 
 .network-control-center .vpn.active label {
-    color: #001100;
+    color: #020804;
     text-shadow: none;
 }
 
@@ -755,8 +755,8 @@ popover list,
 /* ── Windows / dialogs ─────────────────────────────────────────────────── */
 
 window {
-    background-color: rgba(6, 14, 6, 0.98);
-    color: #66ff99;
+    background-color: rgba(3, 8, 5, 0.98);
+    color: #7dff7a;
 }
 
 headerbar,
@@ -774,10 +774,10 @@ window.modal headerbar:backdrop,
 window .titlebar,
 window .titlebar:backdrop {
     background-image: none;
-    background-color: #0a220a;
-    background: #0a220a;
-    color: #33ff66;
-    border-bottom: 2px solid #33ff66;
+    background-color: #041208;
+    background: #041208;
+    color: #39ff14;
+    border-bottom: 2px solid #1a8f2a;
     box-shadow: none;
 }
 
@@ -793,88 +793,88 @@ window.dialog headerbar label,
 window.dialog headerbar .title,
 window.popup headerbar label,
 window.popup headerbar .title {
-    color: #33ff66;
+    color: #39ff14;
     font-weight: bold;
     text-shadow: none;
 }
 
 headerbar button,
 headerbar button image {
-    color: #33ff66;
+    color: #39ff14;
     -gtk-icon-shadow:
-        0 1px 0 #001100,
-        0 -1px 0 #001100,
-        1px 0 0 #001100,
-        -1px 0 0 #001100,
-        1px 1px 0 #001100,
-        -1px -1px 0 #001100,
-        1px -1px 0 #001100,
-        -1px 1px 0 #001100;
+        0 1px 0 #020804,
+        0 -1px 0 #020804,
+        1px 0 0 #020804,
+        -1px 0 0 #020804,
+        1px 1px 0 #020804,
+        -1px -1px 0 #020804,
+        1px -1px 0 #020804,
+        -1px 1px 0 #020804;
 }
 
 window .wifi-password-entry {
-    background-color: #001a00;
-    border: 1px solid #33ff66;
-    border-radius: 2px;
-    color: #66ff99;
+    background-color: #010805;
+    border: 1px solid #1a8f2a;
+    border-radius: 0;
+    color: #7dff7a;
     padding: 6px;
 }
 
 window .wifi-password-entry:focus {
-    border-color: #33ff66;
+    border-color: #39ff14;
     box-shadow: none;
 }
 
 window button.suggested-action {
     background-image: none;
-    background-color: #33ff66;
-    background: #33ff66;
-    color: #001100;
-    border: 1px solid #33ff66;
-    border-radius: 2px;
+    background-color: #39ff14;
+    background: #39ff14;
+    color: #020804;
+    border: 1px solid #1a8f2a;
+    border-radius: 0;
     font-weight: bold;
     box-shadow: none;
 }
 
 window button.suggested-action:hover {
     background-image: none;
-    background-color: #99ff99;
-    background: #99ff99;
-    color: #001100;
+    background-color: #00e5a8;
+    background: #00e5a8;
+    color: #020804;
     box-shadow: none;
 }
 
 window button:not(.suggested-action) {
     background-image: none;
-    background-color: rgba(12, 28, 12, 0.95);
-    background: rgba(12, 28, 12, 0.95);
-    color: #66ff99;
-    border: 1px solid #33ff66;
-    border-radius: 2px;
+    background-color: rgba(6, 16, 10, 0.96);
+    background: rgba(6, 16, 10, 0.96);
+    color: #7dff7a;
+    border: 1px solid #1a8f2a;
+    border-radius: 0;
 }
 
 window button:not(.suggested-action):hover {
     background-image: none;
-    background-color: #33ff66;
-    background: #33ff66;
-    color: #001100;
+    background-color: #39ff14;
+    background: #39ff14;
+    color: #020804;
     box-shadow: none;
 }
 
 window grid label {
-    color: #66ff99;
+    color: #7dff7a;
     font-size: 0.95em;
     padding: 4px 6px;
 }
 
 window grid label:first-child {
-    color: #66ff99;
+    color: #7dff7a;
     font-weight: bold;
     text-shadow: none;
 }
 
 window grid label:nth-child(even) {
-    color: #66ff99;
+    color: #7dff7a;
     text-shadow: none;
 }
 
@@ -882,10 +882,10 @@ entry,
 entry text,
 passwordentry,
 passwordentry text {
-    background-color: #001a00;
-    border: 1px solid #33ff66;
-    border-radius: 2px;
-    color: #66ff99;
+    background-color: #010805;
+    border: 1px solid #1a8f2a;
+    border-radius: 0;
+    color: #7dff7a;
     padding: 6px;
 }
 
@@ -893,49 +893,442 @@ entry:focus,
 entry:focus text,
 passwordentry:focus,
 passwordentry:focus text {
-    border-color: #33ff66;
+    border-color: #39ff14;
     box-shadow: none;
-    color: #66ff99;
+    color: #7dff7a;
 }
 
 .popover .app-button,
 .menu-popover .app-button {
-    color: #66ff99;
+    color: #7dff7a;
     background-color: transparent;
 }
 
 .popover .app-button:hover,
 .menu-popover .app-button:hover {
-    background-color: #33ff66;
-    color: #001100;
+    background-color: #39ff14;
+    color: #020804;
 }
 
 .popover .app-button image {
     -gtk-icon-shadow:
-        0 1px 0 #001100,
-        0 -1px 0 #001100,
-        1px 0 0 #001100,
-        -1px 0 0 #001100,
-        1px 1px 0 #001100,
-        -1px -1px 0 #001100,
-        1px -1px 0 #001100,
-        -1px 1px 0 #001100,
+        0 1px 0 #020804,
+        0 -1px 0 #020804,
+        1px 0 0 #020804,
+        -1px 0 0 #020804,
+        1px 1px 0 #020804,
+        -1px -1px 0 #020804,
+        1px -1px 0 #020804,
+        -1px 1px 0 #020804,
         1px 1px 1px rgba(0,0,0,0.45);
 }
 
 .popover .app-button:hover image {
     -gtk-icon-shadow:
-        0 1px 0 #33ff66,
-        0 -1px 0 #33ff66,
-        1px 0 0 #33ff66,
-        -1px 0 0 #33ff66,
-        1px 1px 0 #33ff66,
-        -1px -1px 0 #33ff66,
-        1px -1px 0 #33ff66,
-        -1px 1px 0 #33ff66;
+        0 1px 0 #39ff14,
+        0 -1px 0 #39ff14,
+        1px 0 0 #39ff14,
+        -1px 0 0 #39ff14,
+        1px 1px 0 #39ff14,
+        -1px -1px 0 #39ff14,
+        1px -1px 0 #39ff14,
+        -1px 1px 0 #39ff14;
 }
 
 .popover combobox label,
 .popover .dim-label {
-    color: #66ff99;
+    color: #7dff7a;
 }
+/* ==========================================================================
+ * CRT Phosphor — Borg collective terminal flourishes
+ * Void chassis · conduit edges · phosphor bloom · angular nodes
+ * ========================================================================== */
+
+/* Panel: deeper void, double conduit rail */
+.wf-panel {
+    background-color: rgba(2, 6, 4, 0.97);
+    background-image:
+        linear-gradient(180deg,
+            rgba(57, 255, 20, 0.06) 0px,
+            transparent 2px,
+            transparent calc(100% - 3px),
+            rgba(0, 229, 168, 0.08) 100%);
+    border-top: 1px solid #1a8f2a;
+    border-bottom: 2px solid #39ff14;
+    box-shadow:
+        0 0 14px rgba(57, 255, 20, 0.22),
+        inset 0 1px 0 rgba(57, 255, 20, 0.15),
+        inset 0 -2px 8px rgba(0, 0, 0, 0.65);
+}
+
+/* Phosphor bloom on bar text (scanline terminal feel) */
+.wf-panel .clock,
+.wf-panel .battery,
+.wf-panel .network,
+.wf-panel .volume,
+.wf-panel .menu,
+.wf-panel .app-button,
+.wf-panel .window-list button,
+.wf-panel label {
+    color: #39ff14;
+    font-family: monospace;
+    letter-spacing: 0.04em;
+    text-shadow:
+        0 0 4px rgba(57, 255, 20, 0.55),
+        0 0 10px rgba(57, 255, 20, 0.25);
+}
+
+.wf-panel .clock:hover,
+.wf-panel .battery:hover,
+.wf-panel .network:hover,
+.wf-panel .volume:hover,
+.wf-panel .menu:hover,
+.wf-panel .app-button:hover,
+.wf-panel .window-list button:hover,
+.wf-panel .volume.selected,
+.wf-panel .network.selected,
+.wf-panel .menu.selected,
+.wf-panel .window-list button.active,
+.wf-panel .window-button.activated {
+    color: #020804;
+    background-color: #39ff14;
+    border: 1px solid #00e5a8;
+    text-shadow: none;
+    box-shadow:
+        0 0 12px rgba(57, 255, 20, 0.55),
+        inset 0 0 6px rgba(0, 229, 168, 0.35);
+}
+
+/* Node wells — hexagonal-ish hard frames (angular) */
+.wf-panel .volume,
+.wf-panel .network,
+.wf-panel .battery,
+.wf-panel .menu,
+.wf-panel .tray-button {
+    background-color: rgba(2, 10, 6, 0.9);
+    border: 1px solid #1a8f2a;
+    border-left: 2px solid #39ff14;
+    border-radius: 0;
+    box-shadow:
+        inset 0 0 8px rgba(0, 40, 15, 0.7),
+        0 0 6px rgba(57, 255, 20, 0.12);
+}
+
+.wf-panel .volume:hover,
+.wf-panel .network:hover,
+.wf-panel .battery:hover,
+.wf-panel .menu:hover,
+.wf-panel .tray-button:hover {
+    background-color: #39ff14;
+    border-color: #00e5a8;
+    box-shadow: 0 0 14px rgba(57, 255, 20, 0.5);
+}
+
+/* Icons: brighter phosphor core + black cutout for readability on void */
+.wf-panel .widget-icon,
+.wf-panel .volume image,
+.wf-panel .network image,
+.wf-panel .battery image,
+.wf-panel .menu image,
+.wf-panel .tray-button image,
+.wf-panel image.widget-icon {
+    color: #39ff14;
+    -gtk-icon-shadow:
+        0 0 4px rgba(57, 255, 20, 0.8),
+        0 1px 0 #020804,
+        0 -1px 0 #020804,
+        1px 0 0 #020804,
+        -1px 0 0 #020804,
+        1px 1px 0 #020804,
+        -1px -1px 0 #020804;
+}
+
+.wf-panel .volume:hover image,
+.wf-panel .network:hover image,
+.wf-panel .menu:hover image,
+.wf-panel .battery:hover image,
+.wf-panel .volume.selected image,
+.wf-panel .network.selected image,
+.wf-panel .menu.selected image {
+    color: #020804;
+    -gtk-icon-shadow:
+        0 0 2px #39ff14,
+        1px 1px 0 #00e5a8,
+        -1px -1px 0 #00e5a8;
+}
+
+/* Launchers: green halo around app glyphs (drones / modules) */
+.wf-panel image.launcher,
+.wf-panel .launcher image,
+.wf-panel .launchers image {
+    filter:
+        drop-shadow(0 0 1px #39ff14)
+        drop-shadow(0 0 3px rgba(57, 255, 20, 0.55))
+        drop-shadow(1px 1px 0 #020804);
+}
+
+.wf-panel .launcher-button,
+.wf-panel .launcher {
+    background-color: rgba(2, 10, 6, 0.85);
+    border: 1px solid #1a8f2a;
+    border-radius: 0;
+    box-shadow: inset 0 0 6px rgba(0, 30, 12, 0.8);
+}
+
+.wf-panel .launcher-button:hover,
+.wf-panel .launcher:hover {
+    background-color: rgba(8, 28, 14, 0.95);
+    border-color: #39ff14;
+    box-shadow: 0 0 10px rgba(57, 255, 20, 0.35);
+}
+
+/* Popovers: collective console chassis */
+popover > contents,
+popovercontents,
+.popover > contents,
+popovermenu contents,
+popovermenu > contents {
+    background-color: rgba(2, 7, 4, 0.98);
+    background-image:
+        linear-gradient(180deg, rgba(57, 255, 20, 0.05) 0px, transparent 3px);
+    border: 1px solid #1a8f2a;
+    border-top: 2px solid #39ff14;
+    border-left: 2px solid #00e5a8;
+    border-radius: 0;
+    color: #7dff7a;
+    box-shadow:
+        0 0 18px rgba(57, 255, 20, 0.2),
+        4px 4px 0 rgba(0, 0, 0, 0.75),
+        inset 0 0 24px rgba(0, 20, 8, 0.55);
+}
+
+/* Sound Settings title — assimilation header strip */
+.volume-popover-header {
+    background-color: #020804;
+    background-image:
+        linear-gradient(90deg,
+            rgba(57, 255, 20, 0.2) 0%,
+            transparent 40%,
+            rgba(0, 229, 168, 0.12) 100%);
+    border: 1px solid #1a8f2a;
+    border-left: 3px solid #39ff14;
+    border-radius: 0;
+    box-shadow: inset 0 0 12px rgba(57, 255, 20, 0.12);
+}
+
+.volume-popover-header label,
+.volume-popover-title,
+.volume-popover-title * {
+    color: #39ff14;
+    font-family: monospace;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    text-shadow:
+        0 0 6px rgba(57, 255, 20, 0.65),
+        0 0 14px rgba(57, 255, 20, 0.3);
+}
+
+.volume-popover-section {
+    background-color: rgba(4, 12, 8, 0.95);
+    border: 1px solid #1a3d22;
+    border-left: 2px solid #00e5a8;
+    border-radius: 0;
+    box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
+}
+
+.volume-popover-section-title {
+    color: #00e5a8;
+    font-family: monospace;
+    letter-spacing: 0.18em;
+    text-shadow: 0 0 4px rgba(0, 229, 168, 0.4);
+}
+
+.volume-popover-pct,
+.volume-popover-voss-title,
+.volume-popover-voss-lbl,
+.volume-popover-voss-fmt,
+.dim-label {
+    font-family: monospace;
+    color: #7dff7a;
+    text-shadow: 0 0 3px rgba(57, 255, 20, 0.25);
+}
+
+.volume-popover-meter {
+    background-color: #010402;
+    border: 1px solid #1a8f2a;
+    border-radius: 0;
+    box-shadow:
+        inset 0 0 10px rgba(0, 0, 0, 0.85),
+        0 0 6px rgba(57, 255, 20, 0.12);
+}
+
+.volume-popover-scale trough {
+    background-color: #010805;
+    border: 1px solid #1a3d22;
+    border-radius: 0;
+}
+
+.volume-popover-scale highlight {
+    background-color: #39ff14;
+    box-shadow: 0 0 8px rgba(57, 255, 20, 0.55);
+    border-radius: 0;
+}
+
+.volume-popover-section:nth-child(5) .volume-popover-scale highlight {
+    background-color: #00e5a8;
+    box-shadow: 0 0 8px rgba(0, 229, 168, 0.5);
+}
+
+.volume-popover-scale slider {
+    background-color: #041208;
+    border: 1px solid #39ff14;
+    border-radius: 0;
+    min-width: 12px;
+    min-height: 12px;
+    box-shadow: 0 0 6px rgba(57, 255, 20, 0.45);
+}
+
+/* Network: conduit list / active drone highlight */
+.network-control-center .device,
+.network-control-center .freebsd-iface {
+    background-color: rgba(4, 12, 8, 0.95);
+    border: 1px solid #1a3d22;
+    border-left: 2px solid #1a8f2a;
+    border-radius: 0;
+    box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.45);
+}
+
+.network-control-center .freebsd-iface.is-up {
+    border-left-color: #39ff14;
+    box-shadow:
+        inset 0 0 8px rgba(0, 0, 0, 0.45),
+        0 0 8px rgba(57, 255, 20, 0.12);
+}
+
+.network-control-center .access-point:hover,
+.network-control-center .access-point.connected,
+.network-control-center .access-point.active {
+    background-color: rgba(8, 28, 14, 0.95);
+    border: 1px solid #39ff14;
+    border-left: 3px solid #00e5a8;
+    color: #39ff14;
+    box-shadow: 0 0 10px rgba(57, 255, 20, 0.2);
+}
+
+.network-control-center .access-point:hover label,
+.network-control-center .access-point.connected label {
+    color: #39ff14;
+    text-shadow: 0 0 4px rgba(57, 255, 20, 0.4);
+    font-family: monospace;
+}
+
+.network-control-center .access-point.saved .ap-saved-badge {
+    background-color: #00e5a8;
+    color: #020804;
+    border-radius: 0;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+/* Buttons: hard nodes */
+.popover button,
+.network-control-center button,
+window button {
+    background-color: rgba(4, 12, 8, 0.95);
+    border: 1px solid #1a8f2a;
+    border-radius: 0;
+    color: #7dff7a;
+    font-family: monospace;
+    letter-spacing: 0.06em;
+    text-shadow: 0 0 3px rgba(57, 255, 20, 0.3);
+    box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.5);
+}
+
+.popover button:hover,
+.network-control-center button:hover,
+window button:hover {
+    background-color: #39ff14;
+    border-color: #00e5a8;
+    color: #020804;
+    text-shadow: none;
+    box-shadow: 0 0 12px rgba(57, 255, 20, 0.45);
+}
+
+/* Fields: dark wells with cyan-green caret line feel */
+entry,
+entry text,
+passwordentry,
+passwordentry text,
+.volume-popover-combo,
+.volume-popover-device-combo,
+combobox,
+combobox button {
+    background-color: #010805;
+    border: 1px solid #1a3d22;
+    border-bottom: 2px solid #00e5a8;
+    border-radius: 0;
+    color: #7dff7a;
+    font-family: monospace;
+    caret-color: #39ff14;
+}
+
+entry:focus,
+entry:focus text,
+passwordentry:focus,
+passwordentry:focus text {
+    border-color: #39ff14;
+    box-shadow: 0 0 8px rgba(57, 255, 20, 0.25);
+    color: #39ff14;
+}
+
+/* Window chrome: cube header */
+headerbar,
+window headerbar,
+.titlebar {
+    background-color: #020804;
+    background-image:
+        linear-gradient(90deg, rgba(57, 255, 20, 0.18), transparent 50%);
+    color: #39ff14;
+    border-bottom: 2px solid #39ff14;
+}
+
+headerbar label,
+headerbar .title,
+window headerbar label,
+window headerbar .title {
+    color: #39ff14;
+    font-family: monospace;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    text-shadow: 0 0 6px rgba(57, 255, 20, 0.5);
+}
+
+/* Separators as energy conduits */
+.popover separator,
+.volume-popover-root separator,
+separator {
+    background-color: #1a8f2a;
+    min-height: 1px;
+    margin: 4px 0;
+    box-shadow: 0 0 4px rgba(57, 255, 20, 0.25);
+}
+
+/* Menu / list selection = “assimilated” row */
+popover listbox row:hover,
+popover listbox row:selected,
+popover listview row:hover,
+popover listview row:selected,
+popovermenu modelbutton:hover,
+popovermenu modelbutton:selected {
+    background-color: rgba(12, 40, 20, 0.95);
+    color: #39ff14;
+    border-left: 3px solid #00e5a8;
+    box-shadow: inset 0 0 10px rgba(57, 255, 20, 0.1);
+}
+
+/* Network quality: collective signal tiers */
+.wf-panel .network.excellent image { color: #39ff14; }
+.wf-panel .network.good image      { color: #00e5a8; }
+.wf-panel .network.medium image    { color: #c8e000; }
+.wf-panel .network.weak image      { color: #e08020; }
+.wf-panel .network.none image      { color: #1a3d22; }
