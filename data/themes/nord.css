@@ -21,9 +21,7 @@
 .wf-panel .volume,
 .wf-panel .menu,
 .wf-panel .app-button,
-.wf-panel .window-list button,
-.wf-panel .tray,
-.wf-panel label {
+.wf-panel .tray {
     color: #eceff4;
     font-weight: bold;
     text-shadow: none;
@@ -33,13 +31,19 @@
     margin: 1px;
 }
 
+/* Default labels on the bar (clock text, etc.) — NOT window-list titles */
+.wf-panel .clock label,
+.wf-panel .battery label {
+    color: #eceff4;
+    font-weight: bold;
+}
+
 .wf-panel .clock:hover,
 .wf-panel .battery:hover,
 .wf-panel .network:hover,
 .wf-panel .volume:hover,
 .wf-panel .menu:hover,
-.wf-panel .app-button:hover,
-.wf-panel .window-list button:hover {
+.wf-panel .app-button:hover {
     color: #2e3440;
     background-color: #88c0d0;
     border-color: #88c0d0;
@@ -49,7 +53,87 @@
 
 .wf-panel .volume.selected,
 .wf-panel .network.selected,
-.wf-panel .menu.selected,
+.wf-panel .menu.selected {
+    color: #2e3440;
+    background-color: #88c0d0;
+    border-color: #88c0d0;
+    text-shadow: none;
+    box-shadow: none;
+}
+
+/*
+ * Window list (running apps on the panel).
+ * Child labels/images have their own rules (e.g. .wf-panel label) that used to
+ * keep panel_fg while the button background became accent — same hue on same
+ * hue = unreadable. Always paint button + label + icon together.
+ */
+.wf-panel .window-list button,
+.wf-panel .window-button {
+    color: #eceff4;
+    background-color: transparent;
+    font-weight: bold;
+    text-shadow: none;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 2px 6px;
+    margin: 1px;
+}
+
+.wf-panel .window-list button label,
+.wf-panel .window-button label {
+    color: #eceff4;
+    background-color: transparent;
+    text-shadow: none;
+    opacity: 1.0;
+}
+
+.wf-panel .window-list button image,
+.wf-panel .window-button image {
+    color: #d8dee9;
+    -gtk-icon-shadow:
+        0 1px 0 #2e3440,
+        0 -1px 0 #2e3440,
+        1px 0 0 #2e3440,
+        -1px 0 0 #2e3440,
+        1px 1px 0 #2e3440,
+        -1px -1px 0 #2e3440,
+        1px -1px 0 #2e3440,
+        -1px 1px 0 #2e3440,
+        1px 1px 1px rgba(0,0,0,0.45);
+}
+
+/* Hover: accent plate + contrast foreground on button AND children */
+.wf-panel .window-list button:hover,
+.wf-panel .window-button:hover {
+    color: #2e3440;
+    background-color: #88c0d0;
+    border-color: #88c0d0;
+    text-shadow: none;
+    box-shadow: none;
+}
+
+.wf-panel .window-list button:hover label,
+.wf-panel .window-button:hover label {
+    color: #2e3440;
+    background-color: transparent;
+    text-shadow: none;
+}
+
+.wf-panel .window-list button:hover image,
+.wf-panel .window-button:hover image {
+    color: #2e3440;
+    -gtk-icon-shadow:
+        0 1px 0 #88c0d0,
+        0 -1px 0 #88c0d0,
+        1px 0 0 #88c0d0,
+        -1px 0 0 #88c0d0,
+        1px 1px 0 #88c0d0,
+        -1px -1px 0 #88c0d0,
+        1px -1px 0 #88c0d0,
+        -1px 1px 0 #88c0d0;
+}
+
+/* Active / focused window — same inverted contrast as hover */
 .wf-panel .window-list button.active,
 .wf-panel .window-button.activated {
     color: #2e3440;
@@ -59,9 +143,37 @@
     box-shadow: none;
 }
 
-.wf-panel .window-button:hover {
-    background-color: rgba(67, 76, 94, 0.95);
-    color: #eceff4;
+.wf-panel .window-list button.active label,
+.wf-panel .window-button.activated label,
+.wf-panel .window-list button.activated label {
+    color: #2e3440;
+    background-color: transparent;
+    text-shadow: none;
+    opacity: 1.0;
+}
+
+.wf-panel .window-list button.active image,
+.wf-panel .window-button.activated image,
+.wf-panel .window-list button.activated image {
+    color: #2e3440;
+    -gtk-icon-shadow:
+        0 1px 0 #88c0d0,
+        0 -1px 0 #88c0d0,
+        1px 0 0 #88c0d0,
+        -1px 0 0 #88c0d0,
+        1px 1px 0 #88c0d0,
+        -1px -1px 0 #88c0d0,
+        1px -1px 0 #88c0d0,
+        -1px 1px 0 #88c0d0;
+}
+
+/* Minimized: still readable, slightly dimmer */
+.wf-panel .window-button.minimized label {
+    color: #a0a8b8;
+    opacity: 1.0;
+}
+.wf-panel .window-button.minimized.activated label {
+    color: #2e3440;
 }
 
 /* Icon wells — inspectable bounds for tray gadgets */

@@ -565,9 +565,7 @@ def render(theme_id: str, p: dict) -> str:
 .wf-panel .volume,
 .wf-panel .menu,
 .wf-panel .app-button,
-.wf-panel .window-list button,
-.wf-panel .tray,
-.wf-panel label {{
+.wf-panel .tray {{
     color: {p['panel_fg']};
     font-weight: bold;
     text-shadow: none;
@@ -577,13 +575,19 @@ def render(theme_id: str, p: dict) -> str:
     margin: 1px;
 }}
 
+/* Default labels on the bar (clock text, etc.) — NOT window-list titles */
+.wf-panel .clock label,
+.wf-panel .battery label {{
+    color: {p['panel_fg']};
+    font-weight: bold;
+}}
+
 .wf-panel .clock:hover,
 .wf-panel .battery:hover,
 .wf-panel .network:hover,
 .wf-panel .volume:hover,
 .wf-panel .menu:hover,
-.wf-panel .app-button:hover,
-.wf-panel .window-list button:hover {{
+.wf-panel .app-button:hover {{
     color: {p['accent_fg']};
     background-color: {p['accent']};
     border-color: {p['panel_border']};
@@ -593,7 +597,72 @@ def render(theme_id: str, p: dict) -> str:
 
 .wf-panel .volume.selected,
 .wf-panel .network.selected,
-.wf-panel .menu.selected,
+.wf-panel .menu.selected {{
+    color: {p['accent_fg']};
+    background-color: {p['accent']};
+    border-color: {p['panel_border']};
+    text-shadow: none;
+    box-shadow: none;
+}}
+
+/*
+ * Window list (running apps on the panel).
+ * Child labels/images have their own rules (e.g. .wf-panel label) that used to
+ * keep panel_fg while the button background became accent — same hue on same
+ * hue = unreadable. Always paint button + label + icon together.
+ */
+.wf-panel .window-list button,
+.wf-panel .window-button {{
+    color: {p['panel_fg']};
+    background-color: transparent;
+    font-weight: bold;
+    text-shadow: none;
+    border: 1px solid transparent;
+    border-radius: {soft_radius};
+    padding: 2px 6px;
+    margin: 1px;
+}}
+
+.wf-panel .window-list button label,
+.wf-panel .window-button label {{
+    color: {p['panel_fg']};
+    background-color: transparent;
+    text-shadow: none;
+    opacity: 1.0;
+}}
+
+.wf-panel .window-list button image,
+.wf-panel .window-button image {{
+    color: {p['icon']};
+    -gtk-icon-shadow:
+        {icon_sh};
+}}
+
+/* Hover: accent plate + contrast foreground on button AND children */
+.wf-panel .window-list button:hover,
+.wf-panel .window-button:hover {{
+    color: {p['accent_fg']};
+    background-color: {p['accent']};
+    border-color: {p['panel_border']};
+    text-shadow: none;
+    box-shadow: none;
+}}
+
+.wf-panel .window-list button:hover label,
+.wf-panel .window-button:hover label {{
+    color: {p['accent_fg']};
+    background-color: transparent;
+    text-shadow: none;
+}}
+
+.wf-panel .window-list button:hover image,
+.wf-panel .window-button:hover image {{
+    color: {p['icon_on_accent']};
+    -gtk-icon-shadow:
+        {icon_sh_acc};
+}}
+
+/* Active / focused window — same inverted contrast as hover */
 .wf-panel .window-list button.active,
 .wf-panel .window-button.activated {{
     color: {p['accent_fg']};
@@ -603,9 +672,30 @@ def render(theme_id: str, p: dict) -> str:
     box-shadow: none;
 }}
 
-.wf-panel .window-button:hover {{
-    background-color: {p['surface_alt']};
-    color: {p['surface_fg']};
+.wf-panel .window-list button.active label,
+.wf-panel .window-button.activated label,
+.wf-panel .window-list button.activated label {{
+    color: {p['accent_fg']};
+    background-color: transparent;
+    text-shadow: none;
+    opacity: 1.0;
+}}
+
+.wf-panel .window-list button.active image,
+.wf-panel .window-button.activated image,
+.wf-panel .window-list button.activated image {{
+    color: {p['icon_on_accent']};
+    -gtk-icon-shadow:
+        {icon_sh_acc};
+}}
+
+/* Minimized: still readable, slightly dimmer */
+.wf-panel .window-button.minimized label {{
+    color: {p['dim']};
+    opacity: 1.0;
+}}
+.wf-panel .window-button.minimized.activated label {{
+    color: {p['accent_fg']};
 }}
 
 /* Icon wells — inspectable bounds for tray gadgets */
@@ -1413,15 +1503,15 @@ EXTRAS: dict[str, str] = {
         inset 0 -2px 8px rgba(0, 0, 0, 0.65);
 }
 
-/* Phosphor bloom on bar text (scanline terminal feel) */
+/* Phosphor bloom on bar text (scanline terminal feel) — not window titles */
 .wf-panel .clock,
 .wf-panel .battery,
 .wf-panel .network,
 .wf-panel .volume,
 .wf-panel .menu,
 .wf-panel .app-button,
-.wf-panel .window-list button,
-.wf-panel label {
+.wf-panel .clock label,
+.wf-panel .battery label {
     color: #39ff14;
     font-family: monospace;
     letter-spacing: 0.04em;
@@ -1436,10 +1526,35 @@ EXTRAS: dict[str, str] = {
 .wf-panel .volume:hover,
 .wf-panel .menu:hover,
 .wf-panel .app-button:hover,
-.wf-panel .window-list button:hover,
 .wf-panel .volume.selected,
 .wf-panel .network.selected,
-.wf-panel .menu.selected,
+.wf-panel .menu.selected {
+    color: #020804;
+    background-color: #39ff14;
+    border: 1px solid #00e5a8;
+    text-shadow: none;
+    box-shadow:
+        0 0 12px rgba(57, 255, 20, 0.55),
+        inset 0 0 6px rgba(0, 229, 168, 0.35);
+}
+
+/*
+ * Window list: never keep green text on green plate.
+ * Idle titles stay phosphor; hover/activated invert to void-on-phosphor.
+ */
+.wf-panel .window-list button,
+.wf-panel .window-button,
+.wf-panel .window-list button label,
+.wf-panel .window-button label {
+    color: #39ff14;
+    font-family: monospace;
+    letter-spacing: 0.03em;
+    text-shadow: 0 0 3px rgba(57, 255, 20, 0.35);
+    background-color: transparent;
+}
+
+.wf-panel .window-list button:hover,
+.wf-panel .window-button:hover,
 .wf-panel .window-list button.active,
 .wf-panel .window-button.activated {
     color: #020804;
@@ -1449,6 +1564,28 @@ EXTRAS: dict[str, str] = {
     box-shadow:
         0 0 12px rgba(57, 255, 20, 0.55),
         inset 0 0 6px rgba(0, 229, 168, 0.35);
+}
+
+.wf-panel .window-list button:hover label,
+.wf-panel .window-button:hover label,
+.wf-panel .window-list button.active label,
+.wf-panel .window-button.activated label,
+.wf-panel .window-list button.activated label {
+    color: #020804;
+    background-color: transparent;
+    text-shadow: none;
+    opacity: 1.0;
+}
+
+.wf-panel .window-list button:hover image,
+.wf-panel .window-button:hover image,
+.wf-panel .window-list button.active image,
+.wf-panel .window-button.activated image {
+    color: #020804;
+    -gtk-icon-shadow:
+        0 0 2px #39ff14,
+        1px 1px 0 #00e5a8,
+        -1px -1px 0 #00e5a8;
 }
 
 /* Node wells — hexagonal-ish hard frames (angular) */

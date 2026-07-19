@@ -22,12 +22,25 @@
     padding-left: 5px;
 }
 
+/*
+ * Window-list contrast fallback (themes override colors).
+ * Always pair inverted label/image with activated/hover plates so titles
+ * never share the plate hue (common theme bug: green-on-green, etc.).
+ */
 .wf-panel .window-button.activated {
     background-color: #8883;
 }
 
 .wf-panel .window-button:hover {
     background-color: #8882;
+}
+
+.wf-panel .window-button.activated label,
+.wf-panel .window-button.activated image,
+.wf-panel .window-list button.activated label,
+.wf-panel .window-list button.activated image {
+    /* inherit button color from theme; never force a fixed hue here */
+    opacity: 1.0;
 }
 
 .wf-panel .battery overlay label {
