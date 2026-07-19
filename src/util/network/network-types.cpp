@@ -266,7 +266,11 @@ std::string merge_ifconfig_wlan_rc_value(const std::string& existing)
     std::string e = trim_rc_val(existing);
     if (e.empty())
     {
-        return "WPA DHCP";
+        /*
+         * SYNCDHCP: FreeBSD waits for a lease during multiuser boot.
+         * Plain DHCP races wpa association and often leaves wlan without IPv4.
+         */
+        return "WPA SYNCDHCP";
     }
     const bool has_wpa  = rc_token_present(e, "WPA");
     const bool has_dhcp = rc_token_present(e, "DHCP") ||
@@ -276,10 +280,10 @@ std::string merge_ifconfig_wlan_rc_value(const std::string& existing)
     {
         e = "WPA " + e;
     }
-    /* Only add DHCP when there is no addressing method yet. */
+    /* Only add DHCP when there is no addressing method yet. Prefer sync. */
     if (!has_dhcp && !has_inet)
     {
-        e += " DHCP";
+        e += " SYNCDHCP";
     }
     return e;
 }

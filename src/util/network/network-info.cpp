@@ -642,6 +642,28 @@ static std::string resolve_parent_for_wlan(const std::string& wlan)
     return parents.empty() ? std::string{} : parents.front();
 }
 
+/**
+ * Kill any stale dhclient for this iface and start a fresh one.
+ * Required after wlan destroy/recreate — old pid files block DHCP.
+ */
+static void wifi_restart_dhclient(const std::string& wlan)
+{
+    if (!is_wlan_clone_name(wlan))
+    {
+        return;
+    }
+    /* FreeBSD pidfile: /var/run/dhclient.<if>.pid */
+    (void)run_elevated_nopass(
+        "sh -c 'pidf=/var/run/dhclient." + wlan + ".pid; "
+        "if [ -f \"$pidf\" ]; then kill \"$(cat \"$pidf\")\" 2>/dev/null; fi; "
+        "pkill -f \"dhclient.*" + wlan + "\" 2>/dev/null; "
+        "rm -f \"$pidf\"; "
+        "dhclient " + wlan + "'");
+    net_event_info("wifi.dhclient.restart", {
+        field_str("wlan", wlan),
+    }, wlan);
+}
+
 bool wifi_persist_boot_config(const std::string& wlan,
     const std::string& parent_radio)
 {
@@ -785,16 +807,16 @@ WifiPowerResult wifi_turn_on(const std::string& iface_or_parent)
         (void)wpa_cli_ok(wlan, "scan");
     }
 
-    /* 3. DHCP — fire-and-forget only (never wait for a lease here). */
+    /* 3. DHCP — restart so a prior destroy/recreate cannot leave a stale pid. */
     InterfaceInfo cur;
     cur.name = wlan;
     parse_ifconfig_detail(run_cmd("ifconfig " + wlan + " 2>/dev/null"), cur);
     if (cur.ipv4.empty())
     {
-        (void)run_elevated_nopass("dhclient -b " + wlan);
+        wifi_restart_dhclient(wlan);
     }
 
-    /* Permanent boot: wlans_PARENT + ifconfig_wlan WPA DHCP (rc.conf). */
+    /* Permanent boot: wlans_PARENT + ifconfig_wlan WPA SYNCDHCP (rc.conf). */
     const bool boot = wifi_persist_boot_config(wlan, resolve_parent_for_wlan(wlan));
 
     r.ok = true;
@@ -1245,9 +1267,7 @@ WifiPowerResult wifi_join(const std::string& wlan, const std::string& ssid,
     parse_ifconfig_detail(run_cmd("ifconfig " + wlan + " 2>/dev/null"), cur);
     if (cur.ipv4.empty())
     {
-        /* Non-blocking DHCP: FreeBSD dhclient detaches; don't wait for lease. */
-        (void)run_elevated_nopass("dhclient -b " + wlan);
-        (void)run_elevated_nopass("dhclient " + wlan + " &");
+        wifi_restart_dhclient(wlan);
     }
 
     /* Credentials already save_config'd; also ensure rc.conf boot bring-up. */

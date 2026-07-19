@@ -343,7 +343,7 @@ struct ProbeOptions
 /**
  * Permanent boot bring-up for a wlan clone (not session-only):
  *   wlans_<parent>="<wlan>"
- *   ifconfig_<wlan>="WPA DHCP"
+ *   ifconfig_<wlan>="WPA SYNCDHCP"
  *   ifconfig_<wlan>_ipv6="inet6 accept_rtadv"
  */
 struct WifiRcBootPlan

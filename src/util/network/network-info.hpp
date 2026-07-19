@@ -59,7 +59,7 @@ std::string create_wlan_for_parent(const std::string& parent_name,
  *   4. start wpa_supplicant -B if control socket missing
  *   5. wpa_cli reassociate / enable saved networks when possible
  *   6. dhclient wlanN for DHCP (best-effort)
- *   7. **persist boot config** via sysrc (wlans_* + ifconfig_wlan* WPA DHCP)
+ *   7. **persist boot config** via sysrc (wlans_* + ifconfig_wlan* WPA SYNCDHCP)
  *      so Wi‑Fi comes up on next reboot without the panel
  */
 struct WifiPowerResult
