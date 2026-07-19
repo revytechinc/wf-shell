@@ -898,15 +898,39 @@ popover list,
     color: {p['surface_fg']};
 }}
 
+/*
+ * Title bar on the HEADER box (not the Label). GtkLabel often ignores
+ * background-color, so white title_fg on a light surface was unreadable
+ * (Win95 silver + white "Sound Settings").
+ */
+.volume-popover-header {{
+    background-color: {p['title_bg']};
+    background-image: none;
+    color: {p['title_fg']};
+    border: 1px solid {p['panel_border']};
+    border-radius: {soft_radius};
+    padding: 6px 10px;
+    margin: 0 0 4px 0;
+    min-height: 1.6em;
+}}
+
 .volume-popover-title {{
     font-size: 1.15em;
     font-weight: 900;
     color: {p['title_fg']};
-    background-color: {p['title_bg']};
-    padding: 4px 8px;
-    border: 1px solid {p['panel_border']};
-    border-radius: {soft_radius};
+    background-color: transparent;
+    background-image: none;
+    padding: 0;
+    border: none;
     text-shadow: none;
+    /* Markup <b> must inherit the title bar foreground */
+    opacity: 1.0;
+}}
+
+.volume-popover-header label,
+.volume-popover-title,
+.volume-popover-title * {{
+    color: {p['title_fg']};
 }}
 
 .volume-popover-section-title {{
@@ -916,6 +940,7 @@ popover list,
     text-shadow: none;
     letter-spacing: 0.12em;
     text-transform: uppercase;
+    opacity: 1.0; /* override default.css dim opacity */
 }}
 
 .volume-popover-section {{
