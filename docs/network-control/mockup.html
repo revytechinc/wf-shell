@@ -830,11 +830,15 @@
   }
 
   /**
-   * Per-iface traffic series: mock netstat-style counters + rates.
-   * Live path: poll netstat -I IF -b / getifmib / sysctl.
+   * Per-iface traffic series — last 5 minutes only (1 Hz ring).
+   * Collection runs on a background interval (non-blocking for UI paint).
+   * Live C++ path: wf_net::TrafficCollector worker thread + snapshot().
    */
-  const trafficStore = {}; /* name → { rx:[], tx:[], rxTotal, txTotal, ... } */
-  const HIST_N = 48;
+  const trafficStore = {}; /* name → series */
+  const HIST_SEC = 300;       /* 5 minutes */
+  const SAMPLE_MS = 1000;     /* 1 Hz */
+  const HIST_N = HIST_SEC;    /* capacity */
+  let trafficCollectorId = null;
 
   function ensureTraffic(name, iface) {
     if (trafficStore[name]) return trafficStore[name];
@@ -850,16 +854,7 @@
       lastRx: 0,
       lastTx: 0,
     };
-    /* Seed histogram with plausible load */
-    const load = iface && iface.up ? 1 : 0.05;
-    for (let i = 0; i < HIST_N; i++) {
-      const r = load * (20000 + Math.random() * 180000) * (name === "aq0" ? 8 : 1);
-      const x = load * (8000 + Math.random() * 60000) * (name === "aq0" ? 3 : 1);
-      t.rx.push(r);
-      t.tx.push(x);
-      t.lastRx = r;
-      t.lastTx = x;
-    }
+    /* Do not pre-seed 5 min of fake data — fill as samples arrive */
     trafficStore[name] = t;
     return t;
   }
@@ -869,9 +864,12 @@
     if (!iface || !iface.up) {
       t.rx.push(0);
       t.tx.push(0);
+      t.lastRx = 0;
+      t.lastTx = 0;
     } else {
       const spike = Math.random() < 0.08 ? 4 : 1;
-      const r = spike * (15000 + Math.random() * 220000) * (name === "aq0" ? 10 : name.indexOf("wlan") === 0 ? 3 : 1);
+      const r = spike * (15000 + Math.random() * 220000) *
+        (name === "aq0" ? 10 : name.indexOf("wlan") === 0 ? 3 : 1);
       const x = spike * (5000 + Math.random() * 90000) * (name === "aq0" ? 4 : 1);
       t.rx.push(r);
       t.tx.push(x);
@@ -882,9 +880,31 @@
       t.lastRx = r;
       t.lastTx = x;
     }
+    /* Ring: keep only last HIST_N samples (5 min @ 1 Hz) */
     while (t.rx.length > HIST_N) t.rx.shift();
     while (t.tx.length > HIST_N) t.tx.shift();
     return t;
+  }
+
+  /** Background collector — not tied to Details modal open. */
+  function startTrafficCollector() {
+    if (trafficCollectorId != null) return;
+    trafficCollectorId = setInterval(() => {
+      try {
+        const ifaces = buildIfaces(state);
+        ifaces.forEach((i) => tickTraffic(i.name, i));
+        /* UI only redraws if details is open — never blocks sampling */
+        if (state.detailsOpen && state.detailsName) {
+          fillDetails(state.detailsName);
+        }
+      } catch (e) { /* fail-soft */ }
+    }, SAMPLE_MS);
+  }
+  function stopTrafficCollector() {
+    if (trafficCollectorId != null) {
+      clearInterval(trafficCollectorId);
+      trafficCollectorId = null;
+    }
   }
 
   function drawTrafficHist(canvas, series) {
@@ -1059,7 +1079,6 @@
     wifiLastScan: null,
     detailsOpen: false,
     detailsName: null,
-    detailsTimer: null,
     ctxName: null,
     extraIfaces: [], /* dynamically created in mock */
     ifaceOverrides: {}, /* up/down/delete from context menu */
@@ -1400,24 +1419,14 @@
     state.wifiJoinOpen = false;
     hideCtx();
     const iface = ifaceByName(name);
-    ensureTraffic(name, iface);
-    if (state.detailsTimer) clearInterval(state.detailsTimer);
-    state.detailsTimer = setInterval(() => {
-      if (!state.detailsOpen) return;
-      const i = ifaceByName(state.detailsName);
-      tickTraffic(state.detailsName, i);
-      fillDetails(state.detailsName);
-    }, 1000);
+    ensureTraffic(name, iface); /* history already filling in background */
     render();
   }
 
   function closeDetails() {
     state.detailsOpen = false;
     state.detailsName = null;
-    if (state.detailsTimer) {
-      clearInterval(state.detailsTimer);
-      state.detailsTimer = null;
-    }
+    /* Collector keeps running — only stop with page unload */
     render();
   }
 
@@ -1460,12 +1469,14 @@
       `<div class="k">${k}</div><div class="v${cls ? " " + cls : ""}">${String(v).replace(/</g, "&lt;")}</div>`
     ).join("");
 
+    const histMin = Math.min(t.rx.length, HIST_N);
     $("detailsTrafficMeta").innerHTML =
       "RX " + formatBitRateFromBytes(t.lastRx) + " (" + formatByteRate(t.lastRx) + ")" +
       " · TX " + formatBitRateFromBytes(t.lastTx) + " (" + formatByteRate(t.lastTx) + ")" +
       "<br/>Total RX " + formatByteCount(t.rxTotal) +
       " · TX " + formatByteCount(t.txTotal) +
-      " · " + t.rxPkts.toLocaleString() + " / " + t.txPkts.toLocaleString() + " packets";
+      " · " + t.rxPkts.toLocaleString() + " / " + t.txPkts.toLocaleString() + " packets" +
+      "<br/>History " + histMin + "s / " + HIST_SEC + "s (1 Hz · background collector)";
 
     drawTrafficHist($("detailsHist"), t);
   }
@@ -2035,6 +2046,7 @@
   }
 
   bind();
+  startTrafficCollector(); /* 5 min ring, off the paint path */
   render();
 })();
   </script>

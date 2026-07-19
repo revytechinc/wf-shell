@@ -3,6 +3,7 @@
 #include "network/network-backend.hpp"
 #include "network/network-info.hpp"
 #include "network/network-types.hpp"
+#include "network/traffic-history.hpp"
 #include "network/freebsd-network.hpp"
 #include "platform.hpp"
 
@@ -49,6 +50,57 @@ TEST(NetworkTypes, ClassifyIfaceNames)
     EXPECT_STREQ(kind_label(InterfaceKind::Virtual), "Virtual");
     EXPECT_STREQ(kind_label(InterfaceKind::Loopback), "Loopback");
     EXPECT_STREQ(kind_label(InterfaceKind::Other), "Network");
+}
+
+TEST(TrafficHistory, RingAndRateAndNetstatParse)
+{
+    EXPECT_EQ(k_traffic_history_sec, 300);
+    EXPECT_EQ(k_traffic_history_cap, 300u);
+
+    EXPECT_EQ(traffic_rate_Bps(2000, 1000, 1000), 1000u); /* 1000 B/s */
+    EXPECT_EQ(traffic_rate_Bps(1000, 2000, 1000), 0u);    /* reset */
+    EXPECT_EQ(traffic_rate_Bps(1000, 1000, 0), 0u);
+
+    std::vector<TrafficSample> ring;
+    for (int i = 0; i < 350; ++i)
+    {
+        TrafficSample s;
+        s.mono_ms = i * 1000;
+        s.rx_Bps = static_cast<uint64_t>(i);
+        traffic_ring_push(ring, k_traffic_history_cap, s);
+    }
+    EXPECT_EQ(ring.size(), k_traffic_history_cap);
+    EXPECT_EQ(ring.front().rx_Bps, 50u);  /* 350-300=50 dropped first 50 */
+    EXPECT_EQ(ring.back().rx_Bps, 349u);
+
+    const char *netstat =
+        "Name    Mtu Network       Address        Ipkts Ierrs Idrop     Ibytes    Opkts Oerrs    Obytes Coll\n"
+        "aq0    1500 <Link#1>      2c:f0:5d:8b:0e:3c  100 0 0  5000000  50 0  2000000  0\n"
+        "aq0       - 10.0.0.0/24   10.0.0.1         90 - -  4000000  40 -  1000000  -\n";
+    uint64_t rx = 0, tx = 0, rxp = 0, txp = 0;
+    ASSERT_TRUE(parse_netstat_if_bytes(netstat, &rx, &tx, &rxp, &txp));
+    EXPECT_EQ(rx, 5000000u);
+    EXPECT_EQ(tx, 2000000u);
+    EXPECT_EQ(rxp, 100u);
+    EXPECT_EQ(txp, 50u);
+
+    TrafficCollector col;
+    col.watch("aq0");
+    col.inject_for_test("aq0", 1000, 500, 1000);
+    col.inject_for_test("aq0", 3000, 1500, 2000); /* +2000 B / 1s */
+    auto snap = col.snapshot("aq0");
+    EXPECT_EQ(snap.samples.size(), 2u);
+    EXPECT_EQ(snap.last_rx_Bps, 2000u);
+    EXPECT_EQ(snap.rx_total, 3000u);
+    /* Cap: inject > 300 samples */
+    for (int i = 0; i < 320; ++i)
+    {
+        col.inject_for_test("aq0", 3000ull + static_cast<uint64_t>(i) * 100,
+            1500, 2000 + i * 1000);
+    }
+    snap = col.snapshot("aq0");
+    EXPECT_LE(snap.samples.size(), k_traffic_history_cap);
+    EXPECT_EQ(snap.samples.size(), k_traffic_history_cap);
 }
 
 TEST(NetworkTypes, TrafficFormatUnits)

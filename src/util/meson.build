@@ -23,6 +23,7 @@ util = static_library(
         'network/network-backend-factory.cpp',
         'network/freebsd-network.cpp',
         'network/freebsd-backend.cpp',
+        'network/traffic-history.cpp',
         'background-gl.cpp',
         'platform.cpp',
         'power-controller.cpp',

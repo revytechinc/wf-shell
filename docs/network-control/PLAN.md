@@ -294,8 +294,20 @@ flowchart TB
 
 **Details…** shows everything known about the interface (addresses, media, speed,  
 gateways, state) and a live **RX/TX histogram** with auto-scaled units  
-(Mbps/Gbps and B/s…GB/s). Counters from `netstat -I` / ifmib; rates from  
-deltas. Information-only mode still gets Details (no mutations).
+(Mbps/Gbps and B/s…GB/s). Information-only mode still gets Details (no mutations).
+
+**Traffic history (5 minutes, non-blocking):**
+
+| Rule | Detail |
+|------|--------|
+| Window | **Last 300 s only** (ring buffer @ 1 Hz) |
+| Sample | `netstat -I IF -b -n` Link row → Ibytes/Obytes; rate from delta |
+| Thread | `wf_net::TrafficCollector` worker thread — I/O **never** on GTK main loop |
+| UI | `snapshot(ifname)` under mutex (copy only); paint histogram from copy |
+| Start | `watch()` when iface list known; collector runs continuously |
+
+Pure helpers: `traffic_ring_push`, `traffic_rate_Bps`, `parse_netstat_if_bytes`,  
+`format_byte_count` / `format_byte_rate` / `format_bit_rate_from_bytes`.
 
 Label comes from **live probe flags**, not a stale toggle. Status is **colour**, not text:  
 **green = up** · **red + greyed row = down**. Never “admin down” wording.
