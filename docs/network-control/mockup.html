@@ -846,8 +846,8 @@
       const sel = i.name === state.selected ? " selected" : "";
       const badges = [];
       if (i.isDefault) badges.push('<span class="badge def">default</span>');
-      if (!i.up) badges.push('<span class="badge down">admin down</span>');
-      else if (!i.running) badges.push('<span class="badge down">no carrier</span>');
+      if (!i.up) badges.push('<span class="badge down">Down</span>');
+      else if (!i.running) badges.push('<span class="badge down">No link</span>');
       else badges.push(`<span class="badge">${i.kind}</span>`);
       const addrs = addrLines(i);
       const media = i.media || "";

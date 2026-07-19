@@ -10,7 +10,7 @@
           <div style="margin:0 10px 8px;padding:8px;border-radius:8px;border:1px solid #89b4fa;background:#1a2030;">
             <strong style="font-size:12px;">tap0</strong>
             <span style="font-size:9px;margin-left:4px;padding:1px 5px;border-radius:4px;background:#313244;color:#89b4fa;">VIRTUAL</span>
-            <div style="font-size:10px;color:#a6adc8;margin-top:2px;">admin up · running</div>
+            <div style="font-size:10px;color:#a6adc8;margin-top:2px;">Running</div>
           </div>
           <div style="margin:0 10px;min-width:160px;background:#181825;border:1px solid #45475a;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.45);padding:4px;font-size:12px;">
             <div style="padding:8px 10px;border-radius:6px;background:#313244;">Turn off</div>
@@ -24,7 +24,7 @@
           <div style="padding:0 10px 6px;font-size:9px;color:#6c7086;text-transform:uppercase;">igb0 · permanent · down</div>
           <div style="margin:0 10px 8px;padding:8px;border-radius:8px;border:1px solid #45475a;background:#1a1a24;">
             <strong style="font-size:12px;">igb0</strong>
-            <span style="font-size:9px;margin-left:4px;padding:1px 5px;border-radius:4px;background:#3a2a30;color:#f38ba8;">admin down</span>
+            <span style="font-size:9px;margin-left:4px;padding:1px 5px;border-radius:4px;background:#3a2a30;color:#f38ba8;">Down</span>
             <div style="font-size:10px;color:#a6adc8;margin-top:2px;">1000baseT</div>
           </div>
           <div style="margin:0 10px;min-width:160px;background:#181825;border:1px solid #45475a;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.45);padding:4px;font-size:12px;">
@@ -36,7 +36,7 @@
         </div>
       </div>
       <div style="margin-top:14px;font-size:10px;color:#6c7086;line-height:1.55;">
-        <div><span style="color:#cdd6f4;">Turn on / Turn off</span> — label from live admin state</div>
+        <div><span style="color:#cdd6f4;">Turn on / Turn off</span> — label from live interface state</div>
         <div><span style="color:#cdd6f4;">Delete</span> — only for destroyable clones; permanent NICs stay disabled</div>
         <div><span style="color:#cdd6f4;">Create…</span> — only lists types that pass preflight (no command banners)</div>
         <div><span style="color:#cdd6f4;">information-only</span> — mutations disabled if no admin</div>

@@ -246,7 +246,7 @@ flowchart TB
 | **Configure…** | always (when FreeBSD + admin) | editor → sysrc | `config_editor` |
 | **Delete interface…** | `is_destroyable_iface(name)` | `ifconfig IF destroy` | `can_admin` + destroyable |
 
-Label comes from **live probe flags**, not a stale toggle. After apply (later), fingerprint refresh repaints the row (`admin down` badge when `!up`).
+Label comes from **live probe flags**, not a stale toggle. After apply (later), fingerprint refresh repaints the row (**Down** badge when `!up` — never “admin down” jargon).
 
 ### Destroyable vs permanent
 
