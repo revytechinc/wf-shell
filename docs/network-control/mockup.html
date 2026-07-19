@@ -860,12 +860,10 @@
     /* popover — title only; no status strip (iface rows already carry detail) */
     $("popover").classList.toggle("visible", state.open);
 
-    /* interface list — status by colour (green up / red down+greyed / amber no-link) */
+    /* interface list — green = up, red + greyed = down (no status text) */
     $("ifaceList").innerHTML = ifaces.map((i) => {
       const sel = i.name === state.selected ? " selected" : "";
-      let st = "is-down";
-      if (i.up && i.running) st = "is-up";
-      else if (i.up) st = "is-nolink";
+      const st = i.up ? "is-up" : "is-down";
       const badges = [];
       if (i.isDefault) badges.push('<span class="badge def">default</span>');
       if (i.kind) badges.push(`<span class="badge">${i.kind}</span>`);
@@ -873,7 +871,7 @@
       const media = i.media || "";
       const sub = addrs.join("\n") + (media && addrs.length ? "\n" : "") + media;
       return `<div class="iface ${st}${sel}" data-name="${i.name}">
-        <span class="state-dot" aria-hidden="true"></span>
+        <span class="state-dot" title="${i.up ? "Up" : "Down"}" aria-label="${i.up ? "Up" : "Down"}"></span>
         <div class="ico">${svgIcon(iconFor(i))}</div>
         <div class="body">
           <div class="title"><strong>${i.name}</strong>${badges.join("")}</div>
