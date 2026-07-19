@@ -758,6 +758,42 @@ static std::string wpa_cli_run(const std::string& wlan, const std::string& args)
     return run_cmd("wpa_cli -i " + wlan + " " + args + " 2>/dev/null");
 }
 
+/**
+ * Enrich scan rows with beacon IEs from `wpa_cli bss <bssid>`.
+ * FreeBSD ifconfig list scan omits EHT; raw ie= is how we label Wi‑Fi 7.
+ * Background-thread only (many wpa_cli calls).
+ */
+static void enrich_scan_with_bss_ies(const std::string& wlan,
+    std::vector<WifiScanEntry>& aps)
+{
+    size_t eht_n = 0, he_n = 0;
+    for (auto& e : aps)
+    {
+        if (e.bssid.empty())
+        {
+            continue;
+        }
+        /* wpa_cli accepts bssid with colons */
+        auto detail = parse_wpa_bss_detail(wpa_cli_run(wlan, "bss " + e.bssid));
+        apply_wpa_bss_detail(e, detail);
+        if (e.phy.eht || e.phy.mlo)
+        {
+            ++eht_n;
+        } else if (e.phy.he)
+        {
+            ++he_n;
+        }
+    }
+    if (!aps.empty())
+    {
+        net_event_info("wifi.scan.phy", {
+            field_int("aps", static_cast<long long>(aps.size())),
+            field_int("wifi7", static_cast<long long>(eht_n)),
+            field_int("wifi6", static_cast<long long>(he_n)),
+        }, wlan);
+    }
+}
+
 std::vector<WifiScanEntry> wifi_scan(const std::string& wlan, int wait_ms)
 {
     std::vector<WifiScanEntry> empty;
@@ -791,6 +827,7 @@ std::vector<WifiScanEntry> wifi_scan(const std::string& wlan, int wait_ms)
      * never the GTK main loop (each sleep would freeze the panel).
      */
     int left = wait_ms;
+    std::vector<WifiScanEntry> final;
     while (left > 0)
     {
         int chunk = left > 400 ? 400 : left;
@@ -800,18 +837,23 @@ std::vector<WifiScanEntry> wifi_scan(const std::string& wlan, int wait_ms)
         /* Return as soon as we have APs after ~1.2s minimum settle */
         if (!partial.empty() && left < wait_ms - 1200)
         {
+            final = std::move(partial);
+            enrich_scan_with_bss_ies(wlan, final);
             net_event_info("wifi.scan.done", {
-                field_int("count", static_cast<long long>(partial.size())),
-                field_str("first_ssid", partial.empty() ? "" : partial.front().ssid),
+                field_int("count", static_cast<long long>(final.size())),
+                field_str("first_ssid", final.empty() ? "" : final.front().ssid),
+                field_str("first_gen", final.empty() ? "" : final.front().generation),
                 field_bool("early", true),
             }, wlan);
-            return partial;
+            return final;
         }
     }
-    auto final = parse_wpa_scan_results(wpa_cli_run(wlan, "scan_results"));
+    final = parse_wpa_scan_results(wpa_cli_run(wlan, "scan_results"));
+    enrich_scan_with_bss_ies(wlan, final);
     net_event_info("wifi.scan.done", {
         field_int("count", static_cast<long long>(final.size())),
         field_str("first_ssid", final.empty() ? "" : final.front().ssid),
+        field_str("first_gen", final.empty() ? "" : final.front().generation),
         field_bool("early", false),
     }, wlan);
     return final;

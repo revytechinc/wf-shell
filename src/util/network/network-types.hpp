@@ -525,6 +525,20 @@ ValidationResult validate_admin_password(const std::string& password);
 
 /* ─── Wi‑Fi credentials (wpa_supplicant) ──────────────────────────────── */
 
+/**
+ * PHY capabilities from beacon/probe IEs (802.11).
+ * FreeBSD ifconfig list scan often omits EHT; wpa_supplicant ie= hex is authoritative.
+ */
+struct WifiPhyCaps
+{
+    bool ht = false;   /**< 802.11n  → Wi‑Fi 4 */
+    bool vht = false;  /**< 802.11ac → Wi‑Fi 5 */
+    bool he = false;   /**< 802.11ax → Wi‑Fi 6 / 6E */
+    bool eht = false;  /**< 802.11be → Wi‑Fi 7 */
+    bool mlo = false;  /**< Multi-Link (EHT / Wi‑Fi 7) */
+    bool he_6ghz = false;
+};
+
 /** One row from `wpa_cli scan_results` (pure domain type). */
 struct WifiScanEntry
 {
@@ -535,6 +549,11 @@ struct WifiScanEntry
     std::string ssid;
     /** Derived: "open" | "wpa" | "wep" | "sae" */
     std::string security = "open";
+    /** From beacon IEs when enriched (e.g. "Wi-Fi 7"); empty if unknown. */
+    std::string generation;
+    WifiPhyCaps phy{};
+    /** wpa_cli bss est_throughput (Mbps); 0 if unknown. */
+    unsigned est_throughput_mbps = 0;
 };
 
 /**
@@ -542,6 +561,39 @@ struct WifiScanEntry
  * Skips empty SSIDs and P2P-only rows. Best signal wins per SSID.
  */
 std::vector<WifiScanEntry> parse_wpa_scan_results(const std::string& text);
+
+/**
+ * Parse 802.11 Information Elements from a hex dump (`wpa_cli bss` ie= field). Pure.
+ * Detects HT / VHT / HE / EHT / Multi-Link.
+ */
+WifiPhyCaps parse_wifi_ie_hex(const std::string& ie_hex);
+
+/**
+ * Marketing generation from IE-derived PHY caps + band.
+ * EHT/MLO → Wi-Fi 7; HE on 6 GHz → 6E; HE → 6; VHT → 5; HT → 4.
+ * Empty if no known PHY bits.
+ */
+std::string wifi_generation_from_phy(const WifiPhyCaps& caps, unsigned freq_mhz = 0);
+
+/**
+ * Parse `wpa_cli bss <bssid>` key=value body. Pure.
+ * Fills any non-null out pointers when keys are present.
+ */
+struct WpaBssDetail
+{
+    std::string bssid;
+    std::string ssid;
+    std::string flags;
+    std::string ie_hex;
+    unsigned freq_mhz = 0;
+    int signal_dbm = 0;
+    unsigned est_throughput_mbps = 0;
+    bool ok = false;
+};
+WpaBssDetail parse_wpa_bss_detail(const std::string& text);
+
+/** Apply IE/throughput detail onto a scan entry (pure merge). */
+void apply_wpa_bss_detail(WifiScanEntry& entry, const WpaBssDetail& d);
 
 /** Map wpa flags string → security token (pure). */
 std::string wifi_security_from_flags(const std::string& flags);
@@ -650,13 +702,18 @@ std::string format_wifi_frequency_mhz(unsigned freq_mhz);
 std::string format_wifi_band(unsigned freq_mhz);
 /**
  * Marketing generation: "Wi-Fi 4" … "Wi-Fi 7", "Wi-Fi 6E".
- * Inferred from band + optional MaxBitrate (not perfect without HE/EHT IE).
+ * Inferred from band + optional MaxBitrate when IEs are unavailable.
+ * Prefer wifi_generation_from_phy() when beacon IEs were parsed.
  */
 std::string format_wifi_generation(unsigned freq_mhz, unsigned max_bitrate_kbps = 0);
 /**
  * Compact list/tray radio line, e.g. "5 GHz · Wi-Fi 6".
  * Only includes parts that are known — no "???" placeholders.
+ * @param generation_override  If non-empty (from IEs), used instead of bitrate heuristic.
  */
-std::string format_wifi_radio_label(unsigned freq_mhz, unsigned max_bitrate_kbps = 0);
+std::string format_wifi_radio_label(unsigned freq_mhz, unsigned max_bitrate_kbps = 0,
+    const std::string& generation_override = {});
+/** Label from a scan entry (IE generation preferred). */
+std::string format_wifi_radio_label(const WifiScanEntry& entry);
 
 } // namespace wf_net

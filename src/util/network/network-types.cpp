@@ -953,10 +953,12 @@ std::string format_wifi_generation(unsigned freq_mhz, unsigned max_bitrate_kbps)
     return {};
 }
 
-std::string format_wifi_radio_label(unsigned freq_mhz, unsigned max_bitrate_kbps)
+std::string format_wifi_radio_label(unsigned freq_mhz, unsigned max_bitrate_kbps,
+    const std::string& generation_override)
 {
     std::string band = format_wifi_band(freq_mhz);
-    std::string gen  = format_wifi_generation(freq_mhz, max_bitrate_kbps);
+    std::string gen  = !generation_override.empty() ?
+        generation_override : format_wifi_generation(freq_mhz, max_bitrate_kbps);
 
     if (!band.empty() && !gen.empty())
     {
@@ -971,6 +973,16 @@ std::string format_wifi_radio_label(unsigned freq_mhz, unsigned max_bitrate_kbps
         return gen;
     }
     return format_wifi_frequency_mhz(freq_mhz);
+}
+
+std::string format_wifi_radio_label(const WifiScanEntry& entry)
+{
+    unsigned kbps = 0;
+    if (entry.est_throughput_mbps > 0)
+    {
+        kbps = entry.est_throughput_mbps * 1000u;
+    }
+    return format_wifi_radio_label(entry.freq_mhz, kbps, entry.generation);
 }
 
 /* ─── Clone / destroy / create preflight ─────────────────────────────────── */
@@ -1651,6 +1663,217 @@ bool parse_wpa_signal_level(const std::string& text, int *dbm_out)
         }
     }
     return false;
+}
+
+WifiPhyCaps parse_wifi_ie_hex(const std::string& ie_hex)
+{
+    WifiPhyCaps caps;
+    if (ie_hex.empty() || (ie_hex.size() % 2) != 0)
+    {
+        return caps;
+    }
+    std::vector<unsigned char> bytes;
+    bytes.reserve(ie_hex.size() / 2);
+    for (size_t i = 0; i + 1 < ie_hex.size(); i += 2)
+    {
+        auto nibble = [] (char c) -> int {
+            if (c >= '0' && c <= '9')
+            {
+                return c - '0';
+            }
+            if (c >= 'a' && c <= 'f')
+            {
+                return c - 'a' + 10;
+            }
+            if (c >= 'A' && c <= 'F')
+            {
+                return c - 'A' + 10;
+            }
+            return -1;
+        };
+        const int hi = nibble(ie_hex[i]);
+        const int lo = nibble(ie_hex[i + 1]);
+        if (hi < 0 || lo < 0)
+        {
+            return WifiPhyCaps{}; /* corrupt hex */
+        }
+        bytes.push_back(static_cast<unsigned char>((hi << 4) | lo));
+    }
+
+    /*
+     * Element IDs (IEEE 802.11):
+     *   45  HT Capabilities
+     *  191  VHT Capabilities
+     *  255  Extension — first payload byte is Extension ID:
+     *        35 HE Capabilities, 36 HE Operation
+     *        45 HE 6 GHz Band Capabilities
+     *       106 EHT Operation, 107 Multi-Link, 108 EHT Capabilities
+     */
+    size_t i = 0;
+    while (i + 1 < bytes.size())
+    {
+        const unsigned id  = bytes[i];
+        const unsigned len = bytes[i + 1];
+        if (i + 2 + len > bytes.size())
+        {
+            break; /* truncated */
+        }
+        const unsigned char *payload = bytes.data() + i + 2;
+        if (id == 45) /* HT Capabilities */
+        {
+            caps.ht = true;
+        } else if (id == 191) /* VHT Capabilities */
+        {
+            caps.vht = true;
+        } else if (id == 255 && len >= 1) /* Extension */
+        {
+            const unsigned eid = payload[0];
+            if (eid == 35) /* HE Capabilities */
+            {
+                caps.he = true;
+            } else if (eid == 36) /* HE Operation */
+            {
+                caps.he = true;
+            } else if (eid == 45) /* HE 6 GHz Cap */
+            {
+                caps.he = true;
+                caps.he_6ghz = true;
+            } else if (eid == 108) /* EHT Capabilities */
+            {
+                caps.eht = true;
+            } else if (eid == 106) /* EHT Operation */
+            {
+                caps.eht = true;
+            } else if (eid == 107) /* Multi-Link */
+            {
+                caps.mlo = true;
+                caps.eht = true; /* MLO implies EHT / Wi‑Fi 7 class */
+            }
+        }
+        i += 2 + len;
+    }
+    return caps;
+}
+
+std::string wifi_generation_from_phy(const WifiPhyCaps& caps, unsigned freq_mhz)
+{
+    const bool band_6g = (freq_mhz >= 6000 && freq_mhz < 7000);
+    if (caps.eht || caps.mlo)
+    {
+        return "Wi-Fi 7";
+    }
+    if (caps.he || caps.he_6ghz)
+    {
+        return (band_6g || caps.he_6ghz) ? "Wi-Fi 6E" : "Wi-Fi 6";
+    }
+    if (caps.vht)
+    {
+        return "Wi-Fi 5";
+    }
+    if (caps.ht)
+    {
+        return "Wi-Fi 4";
+    }
+    return {};
+}
+
+WpaBssDetail parse_wpa_bss_detail(const std::string& text)
+{
+    WpaBssDetail d;
+    if (text.empty() || text.find("FAIL") == 0)
+    {
+        return d;
+    }
+    std::istringstream iss(text);
+    std::string line;
+    while (std::getline(iss, line))
+    {
+        if (!line.empty() && line.back() == '\r')
+        {
+            line.pop_back();
+        }
+        const auto eq = line.find('=');
+        if (eq == std::string::npos || eq == 0)
+        {
+            continue;
+        }
+        const std::string key = line.substr(0, eq);
+        const std::string val = line.substr(eq + 1);
+        if (key == "bssid")
+        {
+            d.bssid = val;
+        } else if (key == "ssid")
+        {
+            d.ssid = val;
+        } else if (key == "flags")
+        {
+            d.flags = val;
+        } else if (key == "ie")
+        {
+            d.ie_hex = val;
+        } else if (key == "freq")
+        {
+            try
+            {
+                d.freq_mhz = static_cast<unsigned>(std::stoul(val));
+            } catch (...)
+            {
+            }
+        } else if (key == "level")
+        {
+            try
+            {
+                d.signal_dbm = std::stoi(val);
+            } catch (...)
+            {
+            }
+        } else if (key == "est_throughput")
+        {
+            try
+            {
+                d.est_throughput_mbps = static_cast<unsigned>(std::stoul(val));
+            } catch (...)
+            {
+            }
+        }
+    }
+    d.ok = !d.bssid.empty() || !d.ie_hex.empty() || !d.ssid.empty();
+    return d;
+}
+
+void apply_wpa_bss_detail(WifiScanEntry& entry, const WpaBssDetail& d)
+{
+    if (!d.ok)
+    {
+        return;
+    }
+    if (entry.bssid.empty() && !d.bssid.empty())
+    {
+        entry.bssid = d.bssid;
+    }
+    if (entry.freq_mhz == 0 && d.freq_mhz > 0)
+    {
+        entry.freq_mhz = d.freq_mhz;
+    }
+    if (d.signal_dbm < 0)
+    {
+        entry.signal_dbm = d.signal_dbm;
+    }
+    if (!d.flags.empty())
+    {
+        entry.flags = d.flags;
+        entry.security = wifi_security_from_flags(d.flags);
+    }
+    if (d.est_throughput_mbps > 0)
+    {
+        entry.est_throughput_mbps = d.est_throughput_mbps;
+    }
+    if (!d.ie_hex.empty())
+    {
+        entry.phy = parse_wifi_ie_hex(d.ie_hex);
+        entry.generation = wifi_generation_from_phy(entry.phy,
+            entry.freq_mhz ? entry.freq_mhz : d.freq_mhz);
+    }
 }
 
 std::vector<WifiScanEntry> parse_wpa_scan_results(const std::string& text)

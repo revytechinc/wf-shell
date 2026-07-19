@@ -899,6 +899,68 @@ TEST(NetworkTypes, WifiFrequencyLabels)
     EXPECT_EQ(format_wifi_radio_label(915, 0), "900 MHz");
     EXPECT_EQ(format_wifi_radio_label(0, 800000), "Wi-Fi 6"); /* gen only */
     EXPECT_EQ(format_wifi_radio_label(1234, 0), "1234 MHz"); /* freq fallback */
+    /* IE override beats bitrate/band heuristic (REVYNET-class AP). */
+    EXPECT_EQ(format_wifi_radio_label(5200, 0, "Wi-Fi 7"), "5 GHz · Wi-Fi 7");
+    EXPECT_EQ(format_wifi_radio_label(5200, 100000, "Wi-Fi 7"), "5 GHz · Wi-Fi 7");
+}
+
+TEST(NetworkTypes, WifiIePhyGeneration)
+{
+    /* Minimal synthetic IEs: HT + VHT + HE Cap + EHT Cap (as on REVYNET). */
+    /* HT Cap id=45 len=2: 2d 02 0000 */
+    /* VHT Cap id=191 len=2: bf 02 0000 */
+    /* HE Cap ext 35: ff 02 23 00 */
+    /* EHT Cap ext 108: ff 02 6c 00 */
+    const std::string ie_eht = "2d020000bf020000ff022300ff026c00";
+    auto phy = parse_wifi_ie_hex(ie_eht);
+    EXPECT_TRUE(phy.ht);
+    EXPECT_TRUE(phy.vht);
+    EXPECT_TRUE(phy.he);
+    EXPECT_TRUE(phy.eht);
+    EXPECT_EQ(wifi_generation_from_phy(phy, 5200), "Wi-Fi 7");
+    EXPECT_EQ(wifi_generation_from_phy(phy, 6115), "Wi-Fi 7");
+
+    /* HE only → Wi-Fi 6 / 6E */
+    const std::string ie_he = "2d020000bf020000ff022300";
+    auto he = parse_wifi_ie_hex(ie_he);
+    EXPECT_TRUE(he.he);
+    EXPECT_FALSE(he.eht);
+    EXPECT_EQ(wifi_generation_from_phy(he, 5200), "Wi-Fi 6");
+    EXPECT_EQ(wifi_generation_from_phy(he, 6115), "Wi-Fi 6E");
+
+    /* Multi-Link ext 107 ⇒ Wi-Fi 7 */
+    auto mlo = parse_wifi_ie_hex("ff026b00");
+    EXPECT_TRUE(mlo.mlo);
+    EXPECT_TRUE(mlo.eht);
+    EXPECT_EQ(wifi_generation_from_phy(mlo, 5200), "Wi-Fi 7");
+
+    EXPECT_EQ(wifi_generation_from_phy(WifiPhyCaps{}, 5200), "");
+    EXPECT_EQ(parse_wifi_ie_hex("zz").ht, false); /* corrupt */
+
+    /* wpa bss detail + apply */
+    const char *bss =
+        "id=1\n"
+        "bssid=8e:78:48:fe:fd:16\n"
+        "freq=5200\n"
+        "level=-36\n"
+        "ie=2d020000bf020000ff022300ff026c00\n"
+        "flags=[WPA2-PSK+SAE-CCMP][ESS]\n"
+        "ssid=REVYNET\n"
+        "est_throughput=1000\n";
+    auto d = parse_wpa_bss_detail(bss);
+    EXPECT_TRUE(d.ok);
+    EXPECT_EQ(d.ssid, "REVYNET");
+    EXPECT_EQ(d.freq_mhz, 5200u);
+    EXPECT_EQ(d.est_throughput_mbps, 1000u);
+    WifiScanEntry e;
+    e.ssid = "REVYNET";
+    e.bssid = "8e:78:48:fe:fd:16";
+    e.freq_mhz = 5200;
+    e.signal_dbm = -36;
+    apply_wpa_bss_detail(e, d);
+    EXPECT_EQ(e.generation, "Wi-Fi 7");
+    EXPECT_TRUE(e.phy.eht);
+    EXPECT_EQ(format_wifi_radio_label(e), "5 GHz · Wi-Fi 7");
 }
 
 /* ─── pure parsers ──────────────────────────────────────────────────────── */

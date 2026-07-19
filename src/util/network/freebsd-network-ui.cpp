@@ -112,7 +112,8 @@ FreeBSDApRow::FreeBSDApRow(std::string wlan, wf_net::WifiScanEntry entry,
     ssid_.set_text(entry_.ssid);
     ssid_.set_halign(Gtk::Align::START);
     ssid_.set_hexpand(true);
-    auto band = wf_net::format_wifi_radio_label(entry_.freq_mhz, 0);
+    /* Prefer beacon-IE generation (Wi‑Fi 7 from EHT) over band-only heuristic. */
+    auto band = wf_net::format_wifi_radio_label(entry_);
     if (band.empty())
     {
         band = wf_net::format_wifi_band(entry_.freq_mhz);
@@ -120,6 +121,13 @@ FreeBSDApRow::FreeBSDApRow(std::string wlan, wf_net::WifiScanEntry entry,
     band_.set_text(band);
     band_.add_css_class("band");
     band_.set_halign(Gtk::Align::END);
+    if (!entry_.generation.empty())
+    {
+        band_.set_tooltip_text(entry_.generation +
+            (entry_.phy.eht ? " (802.11be EHT)" :
+             entry_.phy.he  ? " (802.11ax HE)" :
+             entry_.phy.vht ? " (802.11ac VHT)" : ""));
+    }
 
     if (connected_)
     {
