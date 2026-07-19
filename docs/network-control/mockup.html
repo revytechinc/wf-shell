@@ -1152,7 +1152,11 @@
     $("wifiSsid").value = ssid || "";
     $("wifiSsid").readOnly = !!ssid;
     $("wifiSec").value = security || (saved && saved.security) || "wpa";
-    $("wifiKey").value = "";
+    /*
+     * Always prefill the network key when we already have one in
+     * wpa_supplicant (user edits if it changed — do not force retype).
+     */
+    $("wifiKey").value = (saved && saved.storedKey) ? saved.storedKey : "";
     $("wifiKeyShow").checked = false;
     $("wifiKey").type = "password";
     setFieldErr("wifiSsid", "errWifiSsid", "");
@@ -1162,10 +1166,10 @@
     err.textContent = "";
     if (opts.reason === "bad_key" || (saved && saved.auth === "bad_key")) {
       err.style.display = "";
-      err.textContent = "The saved password is no longer valid. Enter the new network key.";
+      err.textContent = "The saved password is no longer valid. Edit the network key and connect again.";
       $("wifiJoinTitle").textContent = ssid ? ("Update password for “" + ssid + "”") : "Join Wi‑Fi network";
       $("wifiJoinNote").textContent =
-        "Authentication failed (wrong or changed key). Enter the new key and connect again.";
+        "Authentication failed (wrong or changed key). Edit the key and connect again.";
     } else {
       $("wifiJoinTitle").textContent = ssid ? ("Join “" + ssid + "”") : "Join Wi‑Fi network";
       $("wifiJoinNote").textContent =

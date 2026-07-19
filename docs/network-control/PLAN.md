@@ -240,7 +240,7 @@ works. Fail-soft on scan/join errors.
 
 | Issue | Detection (FreeBSD) | User action |
 |-------|---------------------|-------------|
-| **Password changed / wrong PSK** | `CTRL-EVENT-SSID-TEMP-DISABLED` / auth failures; network not ASSOCIATED | Re-open join: “password no longer valid”; update `psk` / `wep_key0`; **Forget network** |
+| **Password changed / wrong PSK** | `CTRL-EVENT-SSID-TEMP-DISABLED` / auth failures; network not ASSOCIATED | Re-open join with **key prefilled** from wpa_supplicant; user edits; update `psk` / `wep_key0`; **Forget network** |
 | **Saved network won’t reconnect** | `list_networks` has SSID but not CURRENT after enable | Offer **Update password** or **Forget** |
 | **Open network** | scan flags lack privacy | Connect without key dialog |
 | **Out of range** | missing from `scan_results` | Keep saved; show “not in range” if user tries join |
