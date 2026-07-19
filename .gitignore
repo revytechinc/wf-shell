@@ -1,3 +1,6 @@
 subprojects/.wraplock
 build
 .cache
+
+__pycache__/
+*.pyc
