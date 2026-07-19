@@ -2,6 +2,7 @@ background_dir = join_paths(get_option('prefix'), 'share', 'wf-shell', 'backgrou
 
 subdir('css')
 subdir('themes')
+subdir('icons/menu')
 
 
 install_data(join_paths('backgrounds','calm-blue.png'), install_dir: background_dir)

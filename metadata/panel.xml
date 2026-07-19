@@ -263,6 +263,7 @@ If full_span is off, both sides of the panel will take the same amount of space,
 	</option>
 	<option name="menu_icon" type="string">
 		<_short>Menu Icon</_short>
+		<_long>Panel app-menu button glyph. Empty or "auto" follows the active theme pack (Win95 start, CRT node, Amiga, …). Pack ids: start-grid, win95-start, amiga-wb, crt-node, system7-apple, neon-orb, synth-grid, nord-circle, dracula-bat, rose-bloom, tokyo-pulse, catppuccin-latte. Also accepts freedesktop icon names or absolute paths. Extra SVGs in ~/.config/wf-shell/menu-icons/ are discovered automatically.</_long>
 		<hint>file</hint>
 		<default></default>
 	</option>
