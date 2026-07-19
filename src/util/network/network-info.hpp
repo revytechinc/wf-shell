@@ -28,6 +28,69 @@ void reset_info_hooks();
 /** Probe all interesting interfaces on this host (FreeBSD path). */
 std::vector<InterfaceInfo> probe_interfaces(const ProbeOptions& opts = {});
 
+/**
+ * Parent radio names from `sysctl -n net.wlan.devices` (FreeBSD).
+ * Empty off FreeBSD / on error. Fail-soft.
+ */
+std::vector<std::string> list_wlan_parent_devices();
+
+/**
+ * Ensure each parent radio has at least one wlan(4) clone.
+ * Uses passwordless elevators only (root / doas -n / sudo -n). Fail-soft.
+ * @return number of clones created (0 if none needed or no privilege).
+ */
+int ensure_wlan_clones(const ProbeOptions& opts = {});
+
+/**
+ * Create one wlan clone for a parent radio (elevated ifconfig).
+ * @return new wlan name on success, empty on failure.
+ */
+std::string create_wlan_for_parent(const std::string& parent_name,
+    const std::vector<std::string>& existing_wlans = {});
+
+/**
+ * One-shot Wi‑Fi enable for FreeBSD (the “Turn on” product).
+ * Accepts a parent radio (iwlwifi0) or wlan clone (wlan0).
+ *
+ * Does, fail-soft, in order:
+ *   1. ensure wlan(4) clone exists
+ *   2. ifconfig wlanN up
+ *   3. ensure /etc/wpa_supplicant.conf (minimal + update_config=1)
+ *   4. start wpa_supplicant -B if control socket missing
+ *   5. wpa_cli reassociate / enable saved networks when possible
+ *   6. dhclient wlanN for DHCP (best-effort)
+ */
+struct WifiPowerResult
+{
+    bool ok = false;
+    std::string wlan;   /**< usable wlanN name after enable */
+    std::string detail; /**< short human status / error */
+};
+
+WifiPowerResult wifi_turn_on(const std::string& iface_or_parent);
+WifiPowerResult wifi_turn_off(const std::string& iface_or_parent);
+
+/** Minimal conf body for a fresh FreeBSD install (pure). */
+std::string default_wpa_supplicant_conf();
+
+/**
+ * Ensure wpa_supplicant is running for wlan, request scan, return APs.
+ * Fail-soft: empty vector on error (never throws).
+ */
+std::vector<WifiScanEntry> wifi_scan(const std::string& wlan,
+    int wait_ms = 2500);
+
+/**
+ * Join SSID on wlan via wpa_cli (add_network / set / enable / save_config).
+ * security: open | wpa | wep | sae. key ignored for open.
+ * Starts dhclient on success when no IPv4 yet.
+ */
+WifiPowerResult wifi_join(const std::string& wlan, const std::string& ssid,
+    const std::string& security, const std::string& key);
+
+/** True if wpa_cli can talk to the iface control socket. */
+bool wifi_wpa_ready(const std::string& wlan);
+
 /** Name of the interface used by the default IPv4 route (empty if none). */
 std::string default_route_interface_v4();
 

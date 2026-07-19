@@ -65,12 +65,15 @@ text-shadow: 1px  1px 0 var(--bcol),
     font-size: 20px;
 }
 
-/* Network tray icon activity (classes from backend: excellent/good/medium/none) */
+/* Network tray icon activity (classes from backend: excellent/good/medium/weak/none) */
 .wf-panel .network.excellent image { color: #a6e3a1; }
 .wf-panel .network.good image      { color: #89b4fa; }
 .wf-panel .network.medium image    { color: #f9e2af; }
+.wf-panel .network.weak image      { color: #fab387; }
 .wf-panel .network.none image      { color: #6c7086; }
-.wf-panel .network.wifi.weak image { color: #f9e2af; }
+.wf-panel .network.wifi.weak image { color: #fab387; }
+.wf-panel .network.wifi.excellent image { color: #a6e3a1; }
+.wf-panel .network.default image { /* default-route primary */ }
 
 .wf-panel .command-output.icon-left label {
     padding-left: 5px;
@@ -257,6 +260,82 @@ text-shadow: 1px  1px 0 var(--bcol),
 .network-control-center .access-point .band {
     font-size: 1em;
     font-weight: bolder;
+}
+
+/* Connected AP on this wlan interface */
+.network-control-center .access-point.connected,
+.network-control-center .access-point.active {
+    font-weight: bold;
+    background: rgba(166, 227, 161, 0.22);
+    border-radius: 6px;
+    border-left: 3px solid #a6e3a1;
+    padding-left: 6px;
+}
+.network-control-center .access-point.connected .ap-connected-badge {
+    font-size: 0.8em;
+    color: #a6e3a1;
+    margin-right: 6px;
+}
+
+/* Wi‑Fi join password field — room for full glyphs when shown */
+.wifi-password-entry {
+    min-height: 2.5em;
+    padding-top: 10px;
+    padding-bottom: 10px;
+    padding-left: 10px;
+    padding-right: 10px;
+}
+entry.wifi-password-entry,
+.wifi-password-entry text {
+    min-height: 1.4em;
+    padding-top: 6px;
+    padding-bottom: 6px;
+}
+
+/* Expand/collapse chevron for Wi‑Fi AP lists (per interface) */
+.network-control-center .iface-expand {
+    min-width: 28px;
+    min-height: 28px;
+    padding: 2px;
+}
+.network-control-center .iface-expand image {
+    color: #a6adc8;
+}
+
+/* FreeBSD native interface list: green = up, red = down */
+.network-control-center .freebsd-iface {
+    border-radius: 6px;
+    padding: 4px 6px;
+}
+.network-control-center .freebsd-iface:hover {
+    background-color: rgba(128, 128, 160, 0.15);
+}
+.network-control-center .freebsd-iface .state-dot {
+    min-width: 10px;
+    min-height: 10px;
+    border-radius: 50%;
+    background-color: #6c7086;
+}
+.network-control-center .freebsd-iface.is-up .state-dot {
+    background-color: #a6e3a1;
+}
+.network-control-center .freebsd-iface.is-down {
+    opacity: 0.72;
+}
+.network-control-center .freebsd-iface.is-down .state-dot {
+    background-color: #f38ba8;
+}
+.network-control-center .freebsd-iface.is-down image {
+    color: #6c7086;
+}
+.network-control-center .freebsd-iface .speed {
+    font-size: 0.85em;
+    color: #a6adc8;
+    margin-left: 8px;
+}
+.network-control-center .freebsd-iface .sub {
+    font-size: 0.8em;
+    color: #7f849c;
 }
 
 .wf-locker .password{

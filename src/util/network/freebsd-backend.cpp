@@ -7,6 +7,7 @@
 #include "network-backend.hpp"
 #include "freebsd-network.hpp"
 #include "network-info.hpp"
+#include "network-log.hpp"
 #include "null.hpp"
 
 #include <memory>
@@ -84,6 +85,12 @@ class FreeBSDNetworkBackend final : public NetworkBackend
             auto it = all_devices_.find(info.path);
             if (it == all_devices_.end())
             {
+                if (info.kind == wf_net::InterfaceKind::Wireless ||
+                    info.wifi_role != wf_net::WifiRole::None)
+                {
+                    wf_net::net_event_info("iface.added",
+                        wf_net::wifi_state_fields(info), info.name);
+                }
                 auto net = std::make_shared<FreeBSDNetwork>(std::move(info));
                 all_devices_.emplace(net->get_path(), net);
                 signal_device_added.emit(net);
@@ -92,7 +99,23 @@ class FreeBSDNetworkBackend final : public NetworkBackend
                 auto fbsd = std::dynamic_pointer_cast<FreeBSDNetwork>(it->second);
                 if (fbsd)
                 {
-                    fbsd->update_info(std::move(info));
+                    const auto before = fbsd->info();
+                    const bool changed = fbsd->update_info(std::move(info));
+                    if (changed &&
+                        (before.kind == wf_net::InterfaceKind::Wireless ||
+                         fbsd->info().kind == wf_net::InterfaceKind::Wireless ||
+                         before.wifi_role != wf_net::WifiRole::None ||
+                         fbsd->info().wifi_role != wf_net::WifiRole::None))
+                    {
+                        auto fields = wf_net::wifi_state_fields(fbsd->info());
+                        fields.push_back(wf_net::field_str("prev_conn_state",
+                            wf_net::format_wifi_connection_state(before)));
+                        fields.push_back(wf_net::field_str("prev_ssid", before.wifi_ssid));
+                        fields.push_back(wf_net::field_str("prev_wpa_state",
+                            before.wifi_wpa_state));
+                        wf_net::net_event_info("wifi.state.changed", fields,
+                            fbsd->info().name);
+                    }
                 }
             }
         }
@@ -138,8 +161,27 @@ class FreeBSDNetworkBackend final : public NetworkBackend
 
         if (want != primary_path_)
         {
+            auto prev = primary_path_;
             primary_path_ = want;
-            signal_primary_changed.emit(primary_device());
+            auto prim = primary_device();
+            wf_net::net_event_info("route.primary.changed", {
+                wf_net::field_str("prev_path", prev),
+                wf_net::field_str("path", primary_path_),
+                wf_net::field_str("iface",
+                    prim ? prim->get_interface() : std::string{}),
+                wf_net::field_str("icon",
+                    prim ? prim->get_icon_symbolic() : std::string{}),
+            }, prim ? prim->get_interface() : std::string{});
+            signal_primary_changed.emit(prim);
+        } else if (!primary_path_.empty())
+        {
+            /* Same primary path — still refresh tray if signal/icon changed */
+            auto prim = primary_device();
+            if (prim)
+            {
+                /* network_altered already fired from update_info when fingerprint changes */
+                (void)prim;
+            }
         }
     }
 

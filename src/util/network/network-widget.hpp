@@ -10,8 +10,11 @@
 
 #include "gtkmm/overlay.h"
 #include "manager.hpp"
+#include "traffic-history.hpp"
 #include "vpn.hpp"
 #include "wifi-ap.hpp"
+
+class FreeBSDIfaceRow;
 
 class AccessPointWidget : public Gtk::Box
 {
@@ -79,13 +82,16 @@ class NetworkControlWidget : public Gtk::Box
 
     Gtk::Box wire_box, wifi_box, mobile_box, vpn_box, bt_box;
     std::map<std::string, std::shared_ptr<DeviceControlWidget>> widgets;
+    std::map<std::string, std::shared_ptr<FreeBSDIfaceRow>> freebsd_rows;
     std::map<std::string, std::shared_ptr<VPNControlWidget>> vpn_widgets;
     std::vector<sigc::connection> signals;
     bool freebsd_mode = false;
+    std::unique_ptr<wf_net::TrafficCollector> traffic_;
 
     void setup_freebsd_ui();
     void setup_linux_ui();
     void seed_devices();
+    void freebsd_sync_collector();
 
   public:
     NetworkControlWidget();
@@ -100,4 +106,7 @@ class NetworkControlWidget : public Gtk::Box
     void nm_stop();
     void mm_start();
     void mm_stop();
+    /** FreeBSD: scan Wi‑Fi only while the tray popover is open. */
+    void on_popover_open();
+    void on_popover_close();
 };

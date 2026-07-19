@@ -25,12 +25,13 @@ TEST(NetworkTypes, ClassifyIfaceNames)
 {
     EXPECT_EQ(classify_iface_name(""), InterfaceKind::Other);
     EXPECT_EQ(classify_iface_name("wlan0"), InterfaceKind::Wireless);
-    EXPECT_EQ(classify_iface_name("aq0"), InterfaceKind::Ethernet);
-    EXPECT_EQ(classify_iface_name("igb0"), InterfaceKind::Ethernet);
-    EXPECT_EQ(classify_iface_name("em0"), InterfaceKind::Ethernet);
-    EXPECT_EQ(classify_iface_name("re0"), InterfaceKind::Ethernet);
-    EXPECT_EQ(classify_iface_name("ue0"), InterfaceKind::Ethernet);
-    EXPECT_EQ(classify_iface_name("vtnet0"), InterfaceKind::Ethernet);
+    /* Ethernet drivers are NOT hardcoded — name-only → Other until live media/stems. */
+    EXPECT_EQ(classify_iface_name("aq0"), InterfaceKind::Other);
+    EXPECT_EQ(classify_iface_name("igb0"), InterfaceKind::Other);
+    EXPECT_EQ(classify_iface_name("em0"), InterfaceKind::Other);
+    EXPECT_EQ(classify_iface_name("re0"), InterfaceKind::Other);
+    EXPECT_EQ(classify_iface_name("ue0"), InterfaceKind::Other);
+    EXPECT_EQ(classify_iface_name("vtnet0"), InterfaceKind::Other);
     EXPECT_EQ(classify_iface_name("lo0"), InterfaceKind::Loopback);
     EXPECT_EQ(classify_iface_name("lo1"), InterfaceKind::Loopback);
     EXPECT_EQ(classify_iface_name("lo"), InterfaceKind::Loopback);
@@ -47,6 +48,13 @@ TEST(NetworkTypes, ClassifyIfaceNames)
     EXPECT_EQ(classify_iface_name("wg0"), InterfaceKind::Virtual);
     EXPECT_EQ(classify_iface_name("vnet0"), InterfaceKind::Virtual);
     EXPECT_EQ(classify_iface_name("weirdname"), InterfaceKind::Other);
+    /* FreeBSD wifi parent radios by name */
+    EXPECT_EQ(classify_iface_name("iwlwifi0"), InterfaceKind::Wireless);
+    EXPECT_EQ(classify_iface_name("iwm0"), InterfaceKind::Wireless);
+    EXPECT_EQ(classify_iface_name("ath0"), InterfaceKind::Wireless);
+    EXPECT_TRUE(is_wifi_parent_name("iwlwifi0"));
+    EXPECT_TRUE(is_wlan_clone_name("wlan0"));
+    EXPECT_FALSE(is_wifi_parent_name("wlan0"));
 
     EXPECT_STREQ(kind_label(InterfaceKind::Ethernet), "Ethernet");
     EXPECT_STREQ(kind_label(InterfaceKind::Wireless), "Wireless");
@@ -54,6 +62,148 @@ TEST(NetworkTypes, ClassifyIfaceNames)
     EXPECT_STREQ(kind_label(InterfaceKind::Virtual), "Virtual");
     EXPECT_STREQ(kind_label(InterfaceKind::Loopback), "Loopback");
     EXPECT_STREQ(kind_label(InterfaceKind::Other), "Network");
+}
+
+TEST(NetworkTypes, WifiConnectionStateAndAddresses)
+{
+    InterfaceInfo w;
+    w.name = "wlan0";
+    w.kind = InterfaceKind::Wireless;
+    w.wifi_role = WifiRole::WlanClone;
+    w.up = true;
+    w.running = true;
+    w.status = "associated";
+    w.wifi_ssid = "CLOUDBSD";
+    w.wifi_wpa_state = "COMPLETED";
+    w.ipv4 = {"192.168.1.153"};
+    w.ipv6 = {"2600:1700::55", "fe80::1"};
+    EXPECT_EQ(format_wifi_connection_state(w), "Connected");
+    auto addrs = format_address_summary(w, 4);
+    EXPECT_NE(addrs.find("192.168.1.153"), std::string::npos);
+    EXPECT_NE(addrs.find("2600:1700::55"), std::string::npos);
+    EXPECT_NE(addrs.find("fe80::1"), std::string::npos);
+    auto disp = format_display_name(w);
+    EXPECT_NE(disp.find("CLOUDBSD"), std::string::npos);
+    EXPECT_NE(disp.find("Connected"), std::string::npos);
+
+    w.ipv4.clear();
+    w.ipv6.clear();
+    w.wifi_wpa_state = "ASSOCIATED";
+    EXPECT_EQ(format_wifi_connection_state(w), "Associated");
+
+    /* SCANNING must not look Connected even with leftover SSID + lease */
+    w.wifi_wpa_state = "SCANNING";
+    w.wifi_ssid = "REVYNET";
+    w.ipv4 = {"192.168.1.153"};
+    w.status = "no carrier";
+    EXPECT_EQ(format_wifi_connection_state(w), "Scanning");
+
+    w.up = false;
+    w.wifi_wpa_state.clear();
+    EXPECT_EQ(format_wifi_connection_state(w), "Off");
+
+    /* Signal → icon tiers (-30≈100, -35≈91 → excellent) */
+    EXPECT_GE(wifi_signal_to_percent(-35), 80);
+    EXPECT_EQ(wifi_signal_to_percent(-30), 100);
+    EXPECT_TRUE(wifi_signal_icon_base(90).find("excellent") != std::string::npos);
+    double rssi = 0;
+    EXPECT_TRUE(parse_ifconfig_list_sta_rssi(
+        "ADDR AID CHAN RATE RSSI IDLE\n"
+        "92:78:48:fe:fd:16 3 40 40M 63.0 0 10 16 EP\n", &rssi));
+    EXPECT_NEAR(rssi, 63.0, 0.1);
+    int dbm = 0;
+    EXPECT_TRUE(parse_wpa_signal_level("level=-42\nnoise=-96\n", &dbm));
+    EXPECT_EQ(dbm, -42);
+
+    InterfaceInfo strong = w;
+    strong.up = true;
+    strong.running = true;
+    strong.status = "associated";
+    strong.wifi_wpa_state = "COMPLETED";
+    strong.wifi_ssid = "CLOUDBSD";
+    strong.wifi_signal_dbm = -35;
+    strong.wifi_signal_pct = wifi_signal_to_percent(-35);
+    strong.kind = InterfaceKind::Wireless;
+    EXPECT_EQ(icon_for_interface(strong), "network-wireless-signal-excellent");
+    strong.wifi_signal_pct = 40;
+    strong.wifi_signal_dbm = 0;
+    EXPECT_EQ(icon_for_interface(strong), "network-wireless-signal-ok");
+}
+
+TEST(NetworkTypes, WpaScanResultsParse)
+{
+    const char *sample =
+        "bssid / frequency / signal level / flags / ssid\n"
+        "aa:bb:cc:dd:ee:01\t2412\t-45\t[WPA2-PSK-CCMP][ESS]\tHomeNet\n"
+        "aa:bb:cc:dd:ee:02\t5180\t-60\t[WPA2-PSK-CCMP][ESS]\tHomeNet\n"
+        "aa:bb:cc:dd:ee:03\t2412\t-70\t[ESS]\tCafeOpen\n"
+        "aa:bb:cc:dd:ee:04\t2412\t-50\t[WPA2-PSK-CCMP][P2P]\t\n"
+        "aa:bb:cc:dd:ee:05\t2412\t-55\t[WPA2-PSK+SAE-CCMP][ESS]\tModern\n";
+    auto aps = parse_wpa_scan_results(sample);
+    /* HomeNet best signal -45; CafeOpen; Modern — empty SSID skipped */
+    ASSERT_EQ(aps.size(), 3u);
+    EXPECT_EQ(aps[0].ssid, "HomeNet");
+    EXPECT_EQ(aps[0].signal_dbm, -45);
+    EXPECT_EQ(aps[0].freq_mhz, 2412u);
+    EXPECT_EQ(aps[0].security, "wpa");
+    EXPECT_EQ(aps[1].ssid, "Modern");
+    EXPECT_EQ(aps[2].ssid, "CafeOpen");
+    EXPECT_EQ(aps[2].security, "open");
+    EXPECT_EQ(wifi_security_from_flags("[WEP][ESS]"), "wep");
+    EXPECT_EQ(wifi_security_from_flags("[SAE][ESS]"), "sae");
+    EXPECT_GE(wifi_signal_to_percent(-40), 80);
+    EXPECT_EQ(wifi_signal_icon_base(90), "network-wireless-signal-excellent");
+}
+
+TEST(NetworkTypes, LiveClassifyMediaGroupsStems)
+{
+    EXPECT_EQ(classify_from_media("Ethernet autoselect (1000baseT <full-duplex>)"),
+        InterfaceKind::Ethernet);
+    EXPECT_EQ(classify_from_media("IEEE 802.11 Wireless Ethernet OFDM mode 11g"),
+        InterfaceKind::Wireless);
+    EXPECT_EQ(classify_from_media(""), InterfaceKind::Other);
+
+    EXPECT_EQ(classify_from_groups({"lo"}), InterfaceKind::Loopback);
+    EXPECT_EQ(classify_from_groups({"wlan"}), InterfaceKind::Wireless);
+    EXPECT_EQ(classify_from_groups({"bridge", "vm-switch"}), InterfaceKind::Bridge);
+    EXPECT_EQ(classify_from_groups({"tap", "vm-port"}), InterfaceKind::Virtual);
+    EXPECT_EQ(classify_from_groups({"ether"}), InterfaceKind::Ethernet);
+    EXPECT_EQ(classify_from_groups({}), InterfaceKind::Other);
+
+    /* tap has media Ethernet but group tap → Virtual wins */
+    EXPECT_EQ(classify_iface("tap0", "Ethernet 1000baseT <full-duplex>",
+        {"tap", "vm-port"}), InterfaceKind::Virtual);
+    /* aq0 live: media Ethernet, no groups → Ethernet */
+    EXPECT_EQ(classify_iface("aq0",
+        "Ethernet autoselect <full-duplex> (10Gbase-T <full-duplex>)",
+        {}), InterfaceKind::Ethernet);
+    /* Dynamic stems: name-only aq1 becomes Ethernet once stem discovered */
+    std::vector<std::string> stems = {"aq", "igb"};
+    EXPECT_EQ(classify_iface("aq1", "", {}, false, stems), InterfaceKind::Ethernet);
+    EXPECT_EQ(classify_iface("igb0", "", {}, false, stems), InterfaceKind::Ethernet);
+    EXPECT_EQ(classify_iface("em0", "", {}, false, stems), InterfaceKind::Other);
+
+    EXPECT_EQ(iface_driver_stem("aq0"), "aq");
+    EXPECT_EQ(iface_driver_stem("igb12"), "igb");
+    EXPECT_EQ(iface_driver_stem("epair0a"), "epair");
+    EXPECT_EQ(iface_driver_stem("iwlwifi0"), "iwlwifi");
+    EXPECT_EQ(iface_driver_stem("vm-public"), "vm");
+
+    auto g = parse_ifconfig_groups_field(" bridge vm-switch viid-4c918@ ");
+    ASSERT_EQ(g.size(), 2u);
+    EXPECT_EQ(g[0], "bridge");
+    EXPECT_EQ(g[1], "vm-switch");
+
+    auto parents = parse_wlan_devices_sysctl("iwlwifi0 ath0\n");
+    ASSERT_EQ(parents.size(), 2u);
+    EXPECT_EQ(parents[0], "iwlwifi0");
+    EXPECT_EQ(next_wlan_clone_name({}), "wlan0");
+    EXPECT_EQ(next_wlan_clone_name({"wlan0", "wlan2"}), "wlan3");
+    EXPECT_EQ(build_wlan_create_command("wlan0", "iwlwifi0"),
+        "ifconfig wlan0 create wlandev iwlwifi0");
+    auto need = parents_needing_wlan_clone({"iwlwifi0", "ath0"}, {"iwlwifi0"});
+    ASSERT_EQ(need.size(), 1u);
+    EXPECT_EQ(need[0], "ath0");
 }
 
 /* ─── Traffic history: pure + collector (red/green + integration) ───────── */

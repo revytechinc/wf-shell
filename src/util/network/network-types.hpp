@@ -23,6 +23,19 @@ enum class InterfaceKind
     Other,
 };
 
+/**
+ * FreeBSD 802.11 roles:
+ * - ParentRadio: permanent driver device (iwlwifi0, iwm0, …) from net.wlan.devices.
+ *   Not a usable IP stack iface until a wlan(4) clone is created.
+ * - WlanClone: ifconfig wlanN create wlandev PARENT — the real 802.11 interface.
+ */
+enum class WifiRole
+{
+    None,
+    ParentRadio,
+    WlanClone,
+};
+
 /** One live interface snapshot from a FreeBSD (or mock) probe. */
 struct InterfaceInfo
 {
@@ -34,7 +47,12 @@ struct InterfaceInfo
     std::string mac;
     std::vector<std::string> ipv4;
     std::vector<std::string> ipv6; /**< global/ULA first; link-local last if kept */
-    std::string media;     /**< e.g. "10Gbase-T <full-duplex>" */
+    std::string media;     /**< e.g. "Ethernet autoselect …" / "IEEE 802.11 …" */
+    /**
+     * FreeBSD ifconfig groups (lo, wlan, bridge, tap, ether, …).
+     * Populated by live probe; used for classification without name tables.
+     */
+    std::vector<std::string> groups;
     /**
      * Optional link bitrate in Kb/s (Wi‑Fi MaxBitrate / driver).
      * 0 = unknown; prefer format_iface_speed() which uses this then media.
@@ -48,6 +66,35 @@ struct InterfaceInfo
     std::string gateway_v6;
     /** Stable path key for maps (not a real D-Bus path on FreeBSD). */
     std::string path;
+
+    /* ─── FreeBSD Wi‑Fi granularity ─────────────────────────────────────── */
+    WifiRole wifi_role = WifiRole::None;
+    /** For WlanClone: parent radio name (iwlwifi0). For ParentRadio: self. */
+    std::string wifi_parent;
+    /** Associated SSID when connected / configured (empty if none). */
+    std::string wifi_ssid;
+    /** Channel number from ifconfig (0 if unknown). */
+    unsigned wifi_channel = 0;
+    /**
+     * Parent radio that still has no wlan(4) clone — UI may offer Create.
+     * False for clones and for parents that already have at least one wlan.
+     */
+    bool wifi_needs_clone = false;
+    /**
+     * wpa_supplicant state when known: COMPLETED, ASSOCIATED, SCANNING,
+     * DISCONNECTED, INACTIVE, … Empty if wpa not running / not queried.
+     */
+    std::string wifi_wpa_state;
+    /** BSSID when associated (from ifconfig / wpa_cli). */
+    std::string wifi_bssid;
+    /**
+     * Signal when associated: dBm if known (negative, e.g. -45), else 0.
+     * FreeBSD ifconfig list sta RSSI is also stored as percent-ish in
+     * wifi_signal_pct when dBm unavailable.
+     */
+    int wifi_signal_dbm = 0;
+    /** 0 = unknown; 1–100 = relative strength for icons. */
+    unsigned char wifi_signal_pct = 0;
 };
 
 /** Fingerprint for anti-flicker / skip-rebuild. */
@@ -81,8 +128,38 @@ inline std::string interface_fingerprint(const InterfaceInfo& i)
     fp += i.media;
     fp += '\x1f';
     fp += i.status;
+    fp += '\x1f';
+    fp += static_cast<char>('0' + static_cast<int>(i.wifi_role));
+    fp += '\x1f';
+    fp += i.wifi_parent;
+    fp += '\x1f';
+    fp += i.wifi_ssid;
+    fp += '\x1f';
+    fp += std::to_string(i.wifi_channel);
+    fp += '\x1f';
+    fp += i.wifi_needs_clone ? '1' : '0';
+    fp += '\x1f';
+    fp += i.wifi_wpa_state;
+    fp += '\x1f';
+    fp += i.wifi_bssid;
+    fp += '\x1f';
+    fp += std::to_string(i.wifi_signal_dbm);
+    fp += '\x1f';
+    fp += std::to_string(static_cast<unsigned>(i.wifi_signal_pct));
     return fp;
 }
+
+/**
+ * Human Wi‑Fi connection state for list rows (pure).
+ * e.g. "Connected", "Associated", "Disconnected", "Off", "No wlan".
+ */
+std::string format_wifi_connection_state(const InterfaceInfo& info);
+
+/**
+ * Address block for list: IPv4 then IPv6 (global first), one per line.
+ * Shows up to max_addrs total. Empty if none. Pure.
+ */
+std::string format_address_summary(const InterfaceInfo& info, size_t max_addrs = 4);
 
 inline const char *kind_label(InterfaceKind k)
 {
@@ -97,8 +174,93 @@ inline const char *kind_label(InterfaceKind k)
     }
 }
 
-/** Classify FreeBSD interface name / groups-ish heuristics (pure). */
+/**
+ * Name-only structural classify (pure) — **no ethernet driver prefix table**.
+ * Recognizes loopback / wlan / wifi parents / bridge / common clones by shape.
+ * Unknown hardware NIC names (aq0, igb0, …) return Other; live probe upgrades
+ * them via media/groups and dynamically discovered ethernet stems.
+ */
 InterfaceKind classify_iface_name(const std::string& name);
+
+/**
+ * Driver stem of a FreeBSD unit name (pure):
+ *   aq0 → aq, igb12 → igb, epair0a → epair, vm-public → vm, wlan0 → wlan.
+ * Empty if name has no stem.
+ */
+std::string iface_driver_stem(const std::string& name);
+
+/**
+ * Classify from ifconfig `media:` value (pure).
+ * "Ethernet …" → Ethernet, "IEEE 802.11 …" → Wireless, else Other.
+ */
+InterfaceKind classify_from_media(const std::string& media);
+
+/**
+ * Classify from FreeBSD interface groups (pure).
+ * Priority among groups: lo → Loopback, wlan → Wireless, bridge → Bridge,
+ * tap/tun/epair/gif/gre/lagg/vlan/wg/vxlan → Virtual, ether → Ethernet.
+ * Empty / unknown → Other.
+ */
+InterfaceKind classify_from_groups(const std::vector<std::string>& groups);
+
+/**
+ * Parse tokens from an ifconfig `groups: a b c` line body (after "groups:").
+ * Pure.
+ */
+std::vector<std::string> parse_ifconfig_groups_field(const std::string& field);
+
+/**
+ * Full live classification (pure): groups + media + loopback flag + name + optional
+ * dynamically discovered ethernet driver stems (from prior media:Ethernet ifaces).
+ *
+ * Priority: loopback flag/groups → wireless → bridge → virtual groups →
+ * media Ethernet → name structural → ethernet_stems match → Other.
+ */
+InterfaceKind classify_iface(const std::string& name,
+    const std::string& media,
+    const std::vector<std::string>& groups,
+    bool ifa_loopback = false,
+    const std::vector<std::string>& ethernet_stems = {});
+
+/**
+ * True if name is a FreeBSD wlan(4) clone: wlan0, wlan1, … (pure).
+ * These are the usable 802.11 stack interfaces.
+ */
+bool is_wlan_clone_name(const std::string& name);
+
+/**
+ * True if name matches a known FreeBSD 802.11 parent driver unit
+ * (iwlwifi0, iwm0, ath0, rtw88_0-style, …) — pure. Not wlanN.
+ */
+bool is_wifi_parent_name(const std::string& name);
+
+/**
+ * Parse `sysctl -n net.wlan.devices` output into parent radio names.
+ * Whitespace/comma separated. Pure. Empty/garbage → empty vector.
+ */
+std::vector<std::string> parse_wlan_devices_sysctl(const std::string& text);
+
+/**
+ * Next free wlanN name given already-seen wlan clones (pure).
+ * existing may be unsorted; ignores non-wlan names.
+ */
+std::string next_wlan_clone_name(const std::vector<std::string>& existing_wlans);
+
+/**
+ * Build ifconfig create argv-style command line (no elevation prefix).
+ * Pure. Empty if parent/wlan names are unsafe.
+ * Example: ifconfig wlan0 create wlandev iwlwifi0
+ */
+std::string build_wlan_create_command(const std::string& wlan_name,
+    const std::string& parent_name);
+
+/**
+ * Parents that still need a wlan clone (pure).
+ * parents = net.wlan.devices; clone_parents = wifi_parent of each existing wlan.
+ */
+std::vector<std::string> parents_needing_wlan_clone(
+    const std::vector<std::string>& parents,
+    const std::vector<std::string>& clone_parents);
 
 /**
  * Compact multi-line label for tray / list (pure).
@@ -142,12 +304,6 @@ std::string format_byte_rate(uint64_t bytes_per_sec);
  */
 std::string format_bit_rate_from_bytes(uint64_t bytes_per_sec);
 
-/**
- * Address lines only: IPv4 then IPv6, newline-separated, omit missing.
- * Empty string if neither is present.
- */
-std::string format_address_summary(const InterfaceInfo& info);
-
 /** Icon base name without -symbolic (pure). */
 std::string icon_for_interface(const InterfaceInfo& info);
 
@@ -167,6 +323,18 @@ struct ProbeOptions
     bool include_virtual  = true;  /**< tap/tun/epair */
     bool include_bridge   = true;
     bool include_down     = true;  /**< list interfaces that are down */
+    /**
+     * Include FreeBSD parent radios from net.wlan.devices even when they are
+     * not yet real ifconfig interfaces (no wlan clone). Default true so Wi‑Fi
+     * hardware is never invisible.
+     */
+    bool include_wifi_parents = true;
+    /**
+     * When true, probe_interfaces may create missing wlan clones (blocking).
+     * Default **false** so the panel poll path never freezes; wifi_turn_on()
+     * creates clones on a background thread instead.
+     */
+    bool auto_create_wlan = false;
     int  poll_interval_ms = 3000;
 };
 
@@ -234,6 +402,28 @@ bool is_destroyable_iface(const std::string& name);
 inline const char *toggle_action_label(bool iface_up)
 {
     return iface_up ? "Turn off" : "Turn on";
+}
+
+/**
+ * Resolve which name to act on for Wi‑Fi power (pure).
+ * Parent radio → still that name (apply path creates clone).
+ * wlan clone → itself. Empty/unknown → empty.
+ */
+inline std::string wifi_power_target_name(const InterfaceInfo& info)
+{
+    if (info.wifi_role == WifiRole::WlanClone || is_wlan_clone_name(info.name))
+    {
+        return info.name;
+    }
+    if (info.wifi_role == WifiRole::ParentRadio || is_wifi_parent_name(info.name))
+    {
+        return info.name;
+    }
+    if (info.kind == InterfaceKind::Wireless)
+    {
+        return info.name;
+    }
+    return {};
 }
 
 /** One FreeBSD cloned-interface type offered in Create… (static catalog). */
@@ -334,6 +524,51 @@ ValidationResult validate_prefix_length(const std::string& text, int max_bits,
 ValidationResult validate_admin_password(const std::string& password);
 
 /* ─── Wi‑Fi credentials (wpa_supplicant) ──────────────────────────────── */
+
+/** One row from `wpa_cli scan_results` (pure domain type). */
+struct WifiScanEntry
+{
+    std::string bssid;
+    unsigned freq_mhz = 0;
+    int signal_dbm = 0;       /**< typically negative dBm */
+    std::string flags;        /**< e.g. [WPA2-PSK-CCMP][ESS] */
+    std::string ssid;
+    /** Derived: "open" | "wpa" | "wep" | "sae" */
+    std::string security = "open";
+};
+
+/**
+ * Parse `wpa_cli scan_results` body (with or without header line). Pure.
+ * Skips empty SSIDs and P2P-only rows. Best signal wins per SSID.
+ */
+std::vector<WifiScanEntry> parse_wpa_scan_results(const std::string& text);
+
+/** Map wpa flags string → security token (pure). */
+std::string wifi_security_from_flags(const std::string& flags);
+
+/** dBm → 0…100 strength (pure; clamps). 0 dBm treated as unknown → 0. */
+unsigned char wifi_signal_to_percent(int signal_dbm);
+
+/**
+ * FreeBSD `ifconfig wlan list sta` RSSI (often 0–100 relative) → percent.
+ * Pure. Values already in 1–100 pass through; 0 unknown.
+ */
+unsigned char wifi_rssi_to_percent(double rssi);
+
+/** Adwaita base icon name from percent (no -symbolic). Pure. */
+std::string wifi_signal_icon_base(unsigned char percent);
+
+/**
+ * Parse `ifconfig wlanN list sta` body; first station RSSI into *rssi_out.
+ * Pure. false if no station row.
+ */
+bool parse_ifconfig_list_sta_rssi(const std::string& text, double *rssi_out);
+
+/**
+ * Parse `wpa_cli bss …` / signal_poll body for level= (dBm).
+ * Pure. false if missing.
+ */
+bool parse_wpa_signal_level(const std::string& text, int *dbm_out);
 
 /** SSID: 1…32 octets (FreeBSD/IEEE 802.11). */
 ValidationResult validate_wifi_ssid(const std::string& ssid);

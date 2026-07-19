@@ -5,86 +5,528 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <sstream>
 
 namespace wf_net
 {
 
+namespace
+{
+
+/** True if name is PREFIX + unit number (digits), optional single trailing letter (epair0a). */
+bool is_prefix_unit_local(const std::string& name, const char *prefix)
+{
+    if (!prefix || !*prefix)
+    {
+        return false;
+    }
+    const size_t n = std::char_traits<char>::length(prefix);
+    if (name.size() <= n || name.rfind(prefix, 0) != 0)
+    {
+        return false;
+    }
+    size_t i = n;
+    if (!std::isdigit(static_cast<unsigned char>(name[i])))
+    {
+        return false;
+    }
+    while (i < name.size() && std::isdigit(static_cast<unsigned char>(name[i])))
+    {
+        ++i;
+    }
+    /* Allow optional single trailing letter (rare); reject junk. */
+    if (i < name.size())
+    {
+        if (i + 1 != name.size() ||
+            !std::isalpha(static_cast<unsigned char>(name[i])))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+/** Known FreeBSD 802.11 parent driver units (not wlan clones). Longest first. */
+const char *const k_wifi_parent_prefixes[] = {
+    "iwlwifi", /* LinuxKPI Intel */
+    "rtw88", "rtw89",
+    "urtwn", "upgt", "uath", "otus",
+    "bwn", "bwi", "mwl", "malo", "rsu", "ral", "run", "rum",
+    "ath", "iwn", "iwm", "iwx", "iwi",
+    "rtw", "mtw", "zyd", "uwp",
+    nullptr
+};
+
+bool name_is_safe_ifunit(const std::string& name)
+{
+    if (name.empty() || name.size() > 32)
+    {
+        return false;
+    }
+    for (unsigned char c : name)
+    {
+        if (!(std::isalnum(c) || c == '_' || c == '-' || c == '.'))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+} // namespace
+
+bool is_wlan_clone_name(const std::string& name)
+{
+    return is_prefix_unit_local(name, "wlan");
+}
+
+bool is_wifi_parent_name(const std::string& name)
+{
+    if (name.empty() || is_wlan_clone_name(name))
+    {
+        return false;
+    }
+    for (int i = 0; k_wifi_parent_prefixes[i]; ++i)
+    {
+        if (is_prefix_unit_local(name, k_wifi_parent_prefixes[i]))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+std::vector<std::string> parse_wlan_devices_sysctl(const std::string& text)
+{
+    std::vector<std::string> out;
+    std::string cur;
+    auto flush = [&] () {
+        if (cur.empty())
+        {
+            return;
+        }
+        /* Accept only plausible iface units */
+        if (name_is_safe_ifunit(cur) &&
+            (is_wifi_parent_name(cur) || is_wlan_clone_name(cur) ||
+             /* allow unknown parent-style units from sysctl */
+             (std::isalnum(static_cast<unsigned char>(cur.back())) &&
+              cur.find_first_of(" \t\n\r") == std::string::npos)))
+        {
+            bool dup = false;
+            for (const auto& e : out)
+            {
+                if (e == cur)
+                {
+                    dup = true;
+                    break;
+                }
+            }
+            if (!dup)
+            {
+                out.push_back(cur);
+            }
+        }
+        cur.clear();
+    };
+    for (char ch : text)
+    {
+        if (ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' || ch == ',' ||
+            ch == ';')
+        {
+            flush();
+        } else
+        {
+            cur.push_back(ch);
+        }
+    }
+    flush();
+    return out;
+}
+
+std::string next_wlan_clone_name(const std::vector<std::string>& existing_wlans)
+{
+    int used_max = -1;
+    for (const auto& n : existing_wlans)
+    {
+        if (!is_wlan_clone_name(n) || n.size() < 5)
+        {
+            continue;
+        }
+        int num = 0;
+        bool ok = true;
+        for (size_t i = 4; i < n.size(); ++i)
+        {
+            if (!std::isdigit(static_cast<unsigned char>(n[i])))
+            {
+                ok = false;
+                break;
+            }
+            num = num * 10 + (n[i] - '0');
+        }
+        if (ok && num > used_max)
+        {
+            used_max = num;
+        }
+    }
+    return "wlan" + std::to_string(used_max + 1);
+}
+
+std::string build_wlan_create_command(const std::string& wlan_name,
+    const std::string& parent_name)
+{
+    if (!is_wlan_clone_name(wlan_name) || !name_is_safe_ifunit(parent_name) ||
+        parent_name.empty() || !name_is_safe_ifunit(wlan_name))
+    {
+        return {};
+    }
+    /* Prefer explicit unit so we know the name; FreeBSD accepts this form. */
+    return "ifconfig " + wlan_name + " create wlandev " + parent_name;
+}
+
+std::vector<std::string> parents_needing_wlan_clone(
+    const std::vector<std::string>& parents,
+    const std::vector<std::string>& clone_parents)
+{
+    std::vector<std::string> need;
+    for (const auto& p : parents)
+    {
+        if (p.empty())
+        {
+            continue;
+        }
+        bool has = false;
+        for (const auto& c : clone_parents)
+        {
+            if (c == p)
+            {
+                has = true;
+                break;
+            }
+        }
+        if (!has)
+        {
+            need.push_back(p);
+        }
+    }
+    return need;
+}
+
+std::string iface_driver_stem(const std::string& name)
+{
+    if (name.empty())
+    {
+        return {};
+    }
+    /* vm-public / vm-port* → stem "vm" (custom naming, not unit digits). */
+    if (name.rfind("vm-", 0) == 0)
+    {
+        return "vm";
+    }
+    /* Strip trailing unit: letters/underscores, then digits, optional letter. */
+    size_t i = 0;
+    while (i < name.size() &&
+        (std::isalpha(static_cast<unsigned char>(name[i])) || name[i] == '_'))
+    {
+        ++i;
+    }
+    if (i == 0 || i >= name.size())
+    {
+        /* No digit unit — whole name if alphanumeric-ish */
+        return name_is_safe_ifunit(name) ? name : std::string{};
+    }
+    size_t stem_end = i;
+    if (!std::isdigit(static_cast<unsigned char>(name[i])))
+    {
+        return {};
+    }
+    while (i < name.size() && std::isdigit(static_cast<unsigned char>(name[i])))
+    {
+        ++i;
+    }
+    if (i < name.size())
+    {
+        /* epair0a: allow one trailing alpha */
+        if (i + 1 == name.size() &&
+            std::isalpha(static_cast<unsigned char>(name[i])))
+        {
+            /* ok */
+        } else
+        {
+            return {};
+        }
+    }
+    return name.substr(0, stem_end);
+}
+
+std::vector<std::string> parse_ifconfig_groups_field(const std::string& field)
+{
+    std::vector<std::string> out;
+    std::string cur;
+    auto flush = [&] () {
+        if (!cur.empty())
+        {
+            /* Drop FreeBSD viid-* annotations */
+            if (cur.rfind("viid-", 0) != 0)
+            {
+                out.push_back(cur);
+            }
+            cur.clear();
+        }
+    };
+    for (char ch : field)
+    {
+        if (ch == ' ' || ch == '\t' || ch == ',' || ch == '\n' || ch == '\r')
+        {
+            flush();
+        } else if (ch == '@')
+        {
+            /* viid-4c918@ → stop token */
+            flush();
+        } else
+        {
+            cur.push_back(ch);
+        }
+    }
+    flush();
+    return out;
+}
+
+InterfaceKind classify_from_media(const std::string& media)
+{
+    std::string m = media;
+    while (!m.empty() && (m[0] == ' ' || m[0] == '\t'))
+    {
+        m.erase(m.begin());
+    }
+    if (m.rfind("IEEE 802.11", 0) == 0 || m.rfind("IEEE802.11", 0) == 0 ||
+        m.find("802.11") != std::string::npos)
+    {
+        return InterfaceKind::Wireless;
+    }
+    if (m.rfind("Ethernet", 0) == 0 || m.rfind("ethernet", 0) == 0)
+    {
+        return InterfaceKind::Ethernet;
+    }
+    return InterfaceKind::Other;
+}
+
+InterfaceKind classify_from_groups(const std::vector<std::string>& groups)
+{
+    auto has = [&] (const char *g) {
+        for (const auto& x : groups)
+        {
+            if (x == g)
+            {
+                return true;
+            }
+        }
+        return false;
+    };
+    if (has("lo"))
+    {
+        return InterfaceKind::Loopback;
+    }
+    if (has("wlan"))
+    {
+        return InterfaceKind::Wireless;
+    }
+    if (has("bridge"))
+    {
+        return InterfaceKind::Bridge;
+    }
+    static const char *virt[] = {
+        "tap", "tun", "epair", "gif", "gre", "lagg", "vlan", "wg", "vxlan",
+        "stf", "disc", "pfsync", "pflog", nullptr
+    };
+    for (int i = 0; virt[i]; ++i)
+    {
+        if (has(virt[i]))
+        {
+            return InterfaceKind::Virtual;
+        }
+    }
+    if (has("ether"))
+    {
+        return InterfaceKind::Ethernet;
+    }
+    return InterfaceKind::Other;
+}
+
 InterfaceKind classify_iface_name(const std::string& name)
+{
+    /* Name-only structural — no ethernet driver prefix table. */
+    return classify_iface(name, {}, {}, false, {});
+}
+
+InterfaceKind classify_iface(const std::string& name,
+    const std::string& media,
+    const std::vector<std::string>& groups,
+    bool ifa_loopback,
+    const std::vector<std::string>& ethernet_stems)
 {
     if (name.empty())
     {
         return InterfaceKind::Other;
     }
-    /* Loopback */
+
+    if (ifa_loopback)
+    {
+        return InterfaceKind::Loopback;
+    }
+
+    /* Groups first (FreeBSD authoritative for family). */
+    auto gk = classify_from_groups(groups);
+    if (gk != InterfaceKind::Other)
+    {
+        return gk;
+    }
+
+    /* Structural wireless before media (parent radios often have no media). */
+    if (is_wlan_clone_name(name) || is_wifi_parent_name(name))
+    {
+        return InterfaceKind::Wireless;
+    }
+
+    /* Media: Ethernet / 802.11 — after virtual groups so tap stays Virtual. */
+    auto mk = classify_from_media(media);
+    if (mk != InterfaceKind::Other)
+    {
+        return mk;
+    }
+
+    /* Name structural (non-ethernet). */
     if (name == "lo0" || (name.size() >= 2 && name[0] == 'l' && name[1] == 'o' &&
             (name.size() == 2 || std::isdigit(static_cast<unsigned char>(name[2])))))
     {
         return InterfaceKind::Loopback;
     }
-    /* FreeBSD wlan(4) */
-    if (name.rfind("wlan", 0) == 0)
-    {
-        return InterfaceKind::Wireless;
-    }
-    /* Bridges / switches */
-    if (name.rfind("bridge", 0) == 0 || name.find("vm-public") != std::string::npos ||
-        name.rfind("vm-", 0) == 0)
-    {
-        /* vm-public is bridge group; vm-port is tap — check tap first below */
-        if (name.rfind("bridge", 0) == 0 || name == "vm-public")
-        {
-            return InterfaceKind::Bridge;
-        }
-    }
-    /* Virtual NICs */
-    if (name.rfind("tap", 0) == 0 || name.rfind("tun", 0) == 0 ||
-        name.rfind("epair", 0) == 0 || name.rfind("vnet", 0) == 0 ||
-        name.rfind("wg", 0) == 0 || name.rfind("gif", 0) == 0 ||
-        name.rfind("gre", 0) == 0 || name.rfind("lagg", 0) == 0)
-    {
-        return InterfaceKind::Virtual;
-    }
-    /* Common Ethernet drivers + generic */
-    static const char *eth_prefixes[] = {
-        "em", "igb", "ix", "ixl", "aq", "re", "rl", "bge", "bnx", "bnxt",
-        "cxgbe", "oce", "qlxgb", "alc", "ale", "age", "msk", "nfe", "stge",
-        "vge", "vr", "xl", "fxp", "dc", "le", "ue", "axe", "cdce", "ure",
-        "if_bridge", "ether", "eth", "en", "vtnet", "xn", "virtio",
-        nullptr
-    };
-    for (int i = 0; eth_prefixes[i]; i++)
-    {
-        const char *p = eth_prefixes[i];
-        size_t n = std::char_traits<char>::length(p);
-        if (name.rfind(p, 0) == 0 && name.size() > n &&
-            std::isdigit(static_cast<unsigned char>(name[n])))
-        {
-            return InterfaceKind::Ethernet;
-        }
-    }
-    /* bastille0 etc. loopback-like jails */
     if (name.rfind("bastille", 0) == 0)
     {
         return InterfaceKind::Loopback;
     }
+    if (name.rfind("bridge", 0) == 0 || name == "vm-public")
+    {
+        return InterfaceKind::Bridge;
+    }
+    if (name.rfind("tap", 0) == 0 || name.rfind("tun", 0) == 0 ||
+        name.rfind("epair", 0) == 0 || name.rfind("vnet", 0) == 0 ||
+        name.rfind("wg", 0) == 0 || name.rfind("gif", 0) == 0 ||
+        name.rfind("gre", 0) == 0 || name.rfind("lagg", 0) == 0 ||
+        name.rfind("vlan", 0) == 0 || name.rfind("vxlan", 0) == 0)
+    {
+        return InterfaceKind::Virtual;
+    }
+
+    /* Dynamically discovered ethernet driver stems (from earlier media probes). */
+    if (!ethernet_stems.empty())
+    {
+        const std::string stem = iface_driver_stem(name);
+        if (!stem.empty())
+        {
+            for (const auto& s : ethernet_stems)
+            {
+                if (s == stem)
+                {
+                    return InterfaceKind::Ethernet;
+                }
+            }
+        }
+    }
+
     return InterfaceKind::Other;
 }
 
-std::string format_address_summary(const InterfaceInfo& info)
+std::string format_wifi_connection_state(const InterfaceInfo& info)
 {
-    /* Separate lines, only when present — no trailing/leading blanks. */
-    std::string s;
-    if (!info.ipv4.empty())
+    if (info.wifi_role == WifiRole::ParentRadio)
     {
-        s = info.ipv4.front();
+        return info.wifi_needs_clone ? "No wlan interface" : "Radio";
     }
-    if (!info.ipv6.empty())
+    if (info.kind != InterfaceKind::Wireless &&
+        info.wifi_role != WifiRole::WlanClone)
     {
+        return {};
+    }
+    if (!info.up)
+    {
+        return "Off";
+    }
+
+    /*
+     * Priority: live wpa_state / ifconfig status first.
+     * Do NOT treat a leftover SSID or DHCP lease as Connected while
+     * wpa is SCANNING / DISCONNECTED (common after roam or rescan).
+     */
+    const std::string& st = info.wifi_wpa_state;
+    const bool no_link = (info.status == "no carrier" || info.status == "down");
+
+    if (st == "AUTHENTICATING" || st == "ASSOCIATING" || st == "4WAY_HANDSHAKE" ||
+        st == "GROUP_HANDSHAKE")
+    {
+        return "Connecting";
+    }
+    if (st == "SCANNING")
+    {
+        return "Scanning";
+    }
+    if (st == "COMPLETED")
+    {
+        /* Fully authenticated; may still be waiting on DHCP */
+        if (!info.wifi_ssid.empty() || !info.ipv4.empty() || !info.ipv6.empty())
+        {
+            return "Connected";
+        }
+        return "Associated";
+    }
+    if (st == "ASSOCIATED" || info.status == "associated")
+    {
+        if (!info.ipv4.empty() || !info.ipv6.empty())
+        {
+            return "Connected";
+        }
+        return "Associated";
+    }
+    if (st == "DISCONNECTED" || st == "INACTIVE" || st == "INTERFACE_DISABLED" ||
+        no_link)
+    {
+        return "Disconnected";
+    }
+    /* No useful wpa state: fall back to ifconfig only */
+    if (info.status == "associated" && !info.wifi_ssid.empty())
+    {
+        return (!info.ipv4.empty() || !info.ipv6.empty()) ? "Connected" : "Associated";
+    }
+    if (info.up)
+    {
+        return "On";
+    }
+    return "Off";
+}
+
+std::string format_address_summary(const InterfaceInfo& info, size_t max_addrs)
+{
+    /* IPv4 first, then IPv6 (caller already prefers global before link-local). */
+    std::string s;
+    size_t n = 0;
+    auto add = [&] (const std::string& a) {
+        if (a.empty() || n >= max_addrs)
+        {
+            return;
+        }
         if (!s.empty())
         {
             s += '\n';
         }
-        s += info.ipv6.front();
+        s += a;
+        ++n;
+    };
+    for (const auto& a : info.ipv4)
+    {
+        add(a);
+    }
+    for (const auto& a : info.ipv6)
+    {
+        add(a);
     }
     return s;
 }
@@ -95,9 +537,34 @@ std::string format_display_name(const InterfaceInfo& info)
      *   aq0 · default
      *   99.48.162.238
      *   2600:1700:…
+     * Wi‑Fi:
+     *   wlan0 · CLOUDBSD · Connected
      */
     std::string base = info.name;
-    if (info.is_default_route)
+    if (info.wifi_role == WifiRole::ParentRadio)
+    {
+        if (info.wifi_needs_clone)
+        {
+            base += " · no wlan";
+        } else
+        {
+            base += " · radio";
+        }
+    } else if (info.kind == InterfaceKind::Wireless ||
+        info.wifi_role == WifiRole::WlanClone)
+    {
+        auto st = format_wifi_connection_state(info);
+        if (!info.wifi_ssid.empty())
+        {
+            base += " · ";
+            base += info.wifi_ssid;
+        }
+        if (!st.empty())
+        {
+            base += " · ";
+            base += st;
+        }
+    } else if (info.is_default_route)
     {
         base += " · default";
     } else if (!info.running && info.ipv4.empty() && info.ipv6.empty())
@@ -299,14 +766,30 @@ std::string icon_for_interface(const InterfaceInfo& info)
     switch (info.kind)
     {
         case InterfaceKind::Wireless:
-            /* Theme: network-wireless-signal-{excellent,good,ok,weak,none}-symbolic
-             * and network-wireless-offline-symbolic. No "disconnected" name. */
-            return active ? "network-wireless-signal-excellent" : "network-wireless-offline";
+        {
+            /*
+             * Adwaita: network-wireless-signal-{excellent,good,ok,weak,none}
+             * + network-wireless-offline. Strength from live RSSI when known.
+             */
+            if (!active || info.status == "no carrier")
+            {
+                return "network-wireless-offline";
+            }
+            unsigned char pct = info.wifi_signal_pct;
+            if (pct == 0 && info.wifi_signal_dbm != 0)
+            {
+                pct = wifi_signal_to_percent(info.wifi_signal_dbm);
+            }
+            if (pct == 0)
+            {
+                /* Associated but no sample yet — assume mid-good */
+                return "network-wireless-signal-good";
+            }
+            return wifi_signal_icon_base(pct);
+        }
         case InterfaceKind::Bridge:
-            /* network-workgroup is places-only on some themes and often blank in tray */
             return active ? "network-server" : "network-offline";
         case InterfaceKind::Virtual:
-            /* tap/tun/epair — transmit-receive is widely available as status/legacy */
             return active ? "network-transmit-receive" : "network-offline";
         case InterfaceKind::Ethernet:
         case InterfaceKind::Other:
@@ -326,7 +809,34 @@ std::vector<std::string> css_for_interface(const InterfaceInfo& info)
         case InterfaceKind::Virtual:  c.push_back("ethernet"); break;
         default: c.push_back("none"); break;
     }
-    if (info.up && info.running)
+    if (info.kind == InterfaceKind::Wireless && info.up && info.running)
+    {
+        unsigned char pct = info.wifi_signal_pct;
+        if (pct == 0 && info.wifi_signal_dbm != 0)
+        {
+            pct = wifi_signal_to_percent(info.wifi_signal_dbm);
+        }
+        if (pct >= 80)
+        {
+            c.push_back("excellent");
+        } else if (pct >= 55)
+        {
+            c.push_back("good");
+        } else if (pct >= 30)
+        {
+            c.push_back("medium");
+        } else if (pct >= 5)
+        {
+            c.push_back("weak");
+        } else
+        {
+            c.push_back(info.status == "associated" ? "good" : "none");
+        }
+        if (info.is_default_route)
+        {
+            c.push_back("default");
+        }
+    } else if (info.up && info.running)
     {
         c.push_back(info.is_default_route ? "excellent" : "good");
     } else if (info.up)
@@ -486,30 +996,21 @@ bool is_prefix_unit(const std::string& name, const char *prefix)
     return true;
 }
 
-/** Permanent hardware / system NICs — never ifconfig destroy from the panel. */
+/**
+ * Names that must never be offered as destroy targets.
+ * No ethernet driver table — physical NICs are simply non-clone families
+ * (is_destroyable returns false by default for unknown stems).
+ */
 bool is_permanent_hardware_name(const std::string& name)
 {
     if (name == "lo0")
     {
         return true;
     }
-    static const char *eth_prefixes[] = {
-        "em", "igb", "ix", "ixl", "aq", "re", "rl", "bge", "bnx", "bnxt",
-        "cxgbe", "oce", "qlxgb", "alc", "ale", "age", "msk", "nfe", "stge",
-        "vge", "vr", "xl", "fxp", "dc", "le", "ue", "axe", "cdce", "ure",
-        "eth", "en", "vtnet", "xn", "bce", "bfe", "cas", "cc", "cxgb",
-        "ena", "enic", "et", "ice", "igc", "ixv", "jme", "lge", "liquidio",
-        "mlx", "mlxen", "mthca", "mxge", "myri", "nfe", "nge", "nxe",
-        "oce", "qlnxe", "qlxge", "ral", "rdma", "sge", "siba", "sge",
-        "sk", "ste", "stge", "ti", "txp", "vte", "xl", "atlantic",
-        nullptr
-    };
-    for (int i = 0; eth_prefixes[i]; ++i)
+    /* Parent 802.11 radios are permanent (destroy the wlan clone, not the driver). */
+    if (is_wifi_parent_name(name))
     {
-        if (is_prefix_unit(name, eth_prefixes[i]))
-        {
-            return true;
-        }
+        return true;
     }
     return false;
 }
@@ -978,6 +1479,291 @@ ValidationResult validate_admin_password(const std::string& password)
     return validation_ok();
 }
 
+std::string wifi_security_from_flags(const std::string& flags)
+{
+    const std::string f = flags;
+    /* WEP before open check */
+    if (f.find("WEP") != std::string::npos)
+    {
+        return "wep";
+    }
+    /* SAE-only (WPA3) */
+    if (f.find("SAE") != std::string::npos && f.find("PSK") == std::string::npos)
+    {
+        return "sae";
+    }
+    if (f.find("WPA") != std::string::npos || f.find("PSK") != std::string::npos ||
+        f.find("SAE") != std::string::npos)
+    {
+        return "wpa";
+    }
+    return "open";
+}
+
+unsigned char wifi_signal_to_percent(int signal_dbm)
+{
+    if (signal_dbm == 0)
+    {
+        return 0; /* unknown */
+    }
+    /* Rough map: -30 dBm ~ 100%, -90 dBm ~ 0% */
+    if (signal_dbm >= -30)
+    {
+        return 100;
+    }
+    if (signal_dbm <= -90)
+    {
+        return 0;
+    }
+    int p = (signal_dbm + 90) * 100 / 60;
+    if (p < 0)
+    {
+        p = 0;
+    }
+    if (p > 100)
+    {
+        p = 100;
+    }
+    return static_cast<unsigned char>(p);
+}
+
+unsigned char wifi_rssi_to_percent(double rssi)
+{
+    if (rssi <= 0.0)
+    {
+        return 0;
+    }
+    if (rssi >= 100.0)
+    {
+        return 100;
+    }
+    return static_cast<unsigned char>(rssi + 0.5);
+}
+
+std::string wifi_signal_icon_base(unsigned char percent)
+{
+    if (percent >= 80)
+    {
+        return "network-wireless-signal-excellent";
+    }
+    if (percent >= 55)
+    {
+        return "network-wireless-signal-good";
+    }
+    if (percent >= 30)
+    {
+        return "network-wireless-signal-ok";
+    }
+    if (percent >= 5)
+    {
+        return "network-wireless-signal-weak";
+    }
+    return "network-wireless-signal-none";
+}
+
+bool parse_ifconfig_list_sta_rssi(const std::string& text, double *rssi_out)
+{
+    if (!rssi_out)
+    {
+        return false;
+    }
+    std::istringstream iss(text);
+    std::string line;
+    bool header = true;
+    while (std::getline(iss, line))
+    {
+        if (line.empty())
+        {
+            continue;
+        }
+        if (header)
+        {
+            /* First non-empty line is usually the column header (ADDR AID …) */
+            if (line.find("ADDR") != std::string::npos ||
+                line.find("RSSI") != std::string::npos)
+            {
+                header = false;
+                continue;
+            }
+            header = false;
+        }
+        /* Station row: bssid … RATE RSSI IDLE …  e.g. "40M 63.0    0" */
+        std::istringstream ls(line);
+        std::string tok;
+        std::vector<std::string> cols;
+        while (ls >> tok)
+        {
+            cols.push_back(tok);
+        }
+        if (cols.size() < 5)
+        {
+            continue;
+        }
+        /* RSSI is typically column index 4 (0=ADDR 1=AID 2=CHAN 3=RATE 4=RSSI) */
+        try
+        {
+            size_t idx = 4;
+            if (cols[3].find('M') != std::string::npos ||
+                cols[3].find('m') != std::string::npos)
+            {
+                idx = 4;
+            }
+            double v = std::stod(cols[idx]);
+            if (v > 0.0 && v <= 127.0)
+            {
+                *rssi_out = v;
+                return true;
+            }
+        } catch (...)
+        {
+            continue;
+        }
+    }
+    return false;
+}
+
+bool parse_wpa_signal_level(const std::string& text, int *dbm_out)
+{
+    if (!dbm_out)
+    {
+        return false;
+    }
+    std::istringstream iss(text);
+    std::string line;
+    while (std::getline(iss, line))
+    {
+        if (line.rfind("level=", 0) == 0 || line.rfind("RSSI=", 0) == 0)
+        {
+            try
+            {
+                auto eq = line.find('=');
+                int v = std::stoi(line.substr(eq + 1));
+                /* dBm is negative; reject nonsense */
+                if (v < 0 && v > -120)
+                {
+                    *dbm_out = v;
+                    return true;
+                }
+            } catch (...)
+            {
+                return false;
+            }
+        }
+    }
+    return false;
+}
+
+std::vector<WifiScanEntry> parse_wpa_scan_results(const std::string& text)
+{
+    std::vector<WifiScanEntry> out;
+    std::istringstream iss(text);
+    std::string line;
+    while (std::getline(iss, line))
+    {
+        if (line.empty())
+        {
+            continue;
+        }
+        /* Skip header */
+        if (line.rfind("bssid", 0) == 0 || line.rfind("Selected interface", 0) == 0)
+        {
+            continue;
+        }
+        /* Fields are tab-separated; fall back to whitespace if needed. */
+        std::vector<std::string> cols;
+        if (line.find('\t') != std::string::npos)
+        {
+            std::string cur;
+            for (char c : line)
+            {
+                if (c == '\t')
+                {
+                    cols.push_back(cur);
+                    cur.clear();
+                } else if (c != '\r')
+                {
+                    cur.push_back(c);
+                }
+            }
+            cols.push_back(cur);
+        } else
+        {
+            /* Rare: spaces — bssid, freq, signal, flags, ssid... */
+            std::istringstream ls(line);
+            std::string bssid, freq, sig, flags;
+            if (!(ls >> bssid >> freq >> sig >> flags))
+            {
+                continue;
+            }
+            std::string ssid;
+            std::getline(ls, ssid);
+            while (!ssid.empty() && (ssid[0] == ' ' || ssid[0] == '\t'))
+            {
+                ssid.erase(ssid.begin());
+            }
+            cols = {bssid, freq, sig, flags, ssid};
+        }
+        if (cols.size() < 5)
+        {
+            continue;
+        }
+        WifiScanEntry e;
+        e.bssid = cols[0];
+        try
+        {
+            e.freq_mhz = static_cast<unsigned>(std::stoul(cols[1]));
+            e.signal_dbm = std::stoi(cols[2]);
+        } catch (...)
+        {
+            continue;
+        }
+        e.flags = cols[3];
+        e.ssid.clear();
+        for (size_t i = 4; i < cols.size(); ++i)
+        {
+            if (i > 4)
+            {
+                e.ssid.push_back('\t');
+            }
+            e.ssid += cols[i];
+        }
+        if (e.ssid.empty())
+        {
+            continue; /* hidden / empty SSID */
+        }
+        if (e.flags.find("[P2P]") != std::string::npos &&
+            e.flags.find("[ESS]") == std::string::npos)
+        {
+            continue;
+        }
+        e.security = wifi_security_from_flags(e.flags);
+
+        /* Best signal per SSID */
+        bool replaced = false;
+        for (auto& existing : out)
+        {
+            if (existing.ssid == e.ssid)
+            {
+                if (e.signal_dbm > existing.signal_dbm)
+                {
+                    existing = e;
+                }
+                replaced = true;
+                break;
+            }
+        }
+        if (!replaced)
+        {
+            out.push_back(std::move(e));
+        }
+    }
+    std::sort(out.begin(), out.end(),
+        [] (const WifiScanEntry& a, const WifiScanEntry& b) {
+            return a.signal_dbm > b.signal_dbm;
+        });
+    return out;
+}
+
 ValidationResult validate_wifi_ssid(const std::string& ssid)
 {
     if (ssid.empty())
@@ -1052,7 +1838,7 @@ ValidationResult validate_wifi_credentials(const std::string& security,
         return validation_ok();
     }
     if (security == "wpa" || security == "wpa2" || security == "wpa3" ||
-        security == "wpa-psk")
+        security == "wpa-psk" || security == "sae")
     {
         return validate_wifi_wpa_psk(key);
     }

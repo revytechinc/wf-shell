@@ -5,6 +5,7 @@
 
 #include "bluetooth.hpp"
 #include "freebsd-network.hpp"
+#include "freebsd-network-ui.hpp"
 #include "gtk/gtk.h"
 #include "gtkmm/enums.h"
 #include "manager.hpp"
@@ -398,13 +399,66 @@ void NetworkControlWidget::seed_devices()
     }
 }
 
+void NetworkControlWidget::freebsd_sync_collector()
+{
+    if (!traffic_)
+    {
+        return;
+    }
+    std::vector<std::string> names;
+    names.reserve(freebsd_rows.size());
+    for (const auto& it : freebsd_rows)
+    {
+        if (it.second && it.second->network())
+        {
+            names.push_back(it.second->network()->get_interface());
+        }
+    }
+    traffic_->sync_ifaces(names);
+}
+
+void NetworkControlWidget::on_popover_open()
+{
+    if (!freebsd_mode)
+    {
+        return;
+    }
+    for (auto& it : freebsd_rows)
+    {
+        if (it.second)
+        {
+            it.second->on_popover_open();
+        }
+    }
+}
+
+void NetworkControlWidget::on_popover_close()
+{
+    if (!freebsd_mode)
+    {
+        return;
+    }
+    for (auto& it : freebsd_rows)
+    {
+        if (it.second)
+        {
+            it.second->on_popover_close();
+        }
+    }
+}
+
 void NetworkControlWidget::setup_freebsd_ui()
 {
-    /* FreeBSD: no NetworkManager — interface list only. */
+    /* FreeBSD: native iface rows + traffic collector (no NetworkManager chrome). */
     wire_box.set_orientation(Gtk::Orientation::VERTICAL);
     wifi_box.set_orientation(Gtk::Orientation::VERTICAL);
+    wire_box.set_spacing(2);
+    wifi_box.set_spacing(2);
     append(wire_box);
     append(wifi_box);
+
+    traffic_ = std::make_unique<wf_net::TrafficCollector>();
+    traffic_->start();
 
     signals.push_back(network_manager->signal_device_added().connect(
         sigc::mem_fun(*this, &NetworkControlWidget::add_device)));
@@ -413,6 +467,7 @@ void NetworkControlWidget::setup_freebsd_ui()
 
     /* Manager/backend already running; nm_start may have fired before we connected. */
     seed_devices();
+    freebsd_sync_collector();
 }
 
 void NetworkControlWidget::setup_linux_ui()
@@ -593,6 +648,42 @@ void NetworkControlWidget::add_device(std::shared_ptr<Network> network)
         return;
     }
 
+    if (freebsd_mode)
+    {
+        auto fbsd = std::dynamic_pointer_cast<FreeBSDNetwork>(network);
+        if (!fbsd)
+        {
+            return;
+        }
+        const std::string path = network->get_path();
+        if (freebsd_rows.count(path) > 0)
+        {
+            return;
+        }
+        auto row = std::make_shared<FreeBSDIfaceRow>(fbsd, traffic_.get());
+        freebsd_rows.emplace(path, row);
+
+        /* Wi-Fi kind → wifi_box; everything else (incl. loopback) → wire_box. */
+        bool is_wifi = false;
+        for (const auto& c : fbsd->get_css_classes())
+        {
+            if (c == "wifi")
+            {
+                is_wifi = true;
+                break;
+            }
+        }
+        if (is_wifi)
+        {
+            wifi_box.append(*row);
+        } else
+        {
+            wire_box.append(*row);
+        }
+        freebsd_sync_collector();
+        return;
+    }
+
     auto new_controller = std::make_shared<DeviceControlWidget>(network);
     widgets.emplace(network->get_path(), new_controller);
     auto widget = widgets[network->get_path()];
@@ -616,6 +707,31 @@ void NetworkControlWidget::add_device(std::shared_ptr<Network> network)
 
 void NetworkControlWidget::remove_device(std::shared_ptr<Network> network)
 {
+    if (freebsd_mode)
+    {
+        const std::string path = network->get_path();
+        auto it = freebsd_rows.find(path);
+        if (it == freebsd_rows.end() || !it->second)
+        {
+            return;
+        }
+        auto row = it->second;
+        if (row->get_parent() == &wifi_box)
+        {
+            wifi_box.remove(*row);
+        } else
+        {
+            wire_box.remove(*row);
+        }
+        if (traffic_ && row->network())
+        {
+            traffic_->unwatch(row->network()->get_interface());
+        }
+        freebsd_rows.erase(it);
+        freebsd_sync_collector();
+        return;
+    }
+
     auto widget = widgets[network->get_path()];
     if (!widget)
     {
@@ -705,5 +821,27 @@ NetworkControlWidget::~NetworkControlWidget()
     for (auto& signal : signals)
     {
         signal.disconnect();
+    }
+    /* Detach GTK children before destroying row widgets (avoid double-free). */
+    for (auto& it : freebsd_rows)
+    {
+        if (!it.second)
+        {
+            continue;
+        }
+        auto& row = *it.second;
+        if (row.get_parent() == &wifi_box)
+        {
+            wifi_box.remove(row);
+        } else if (row.get_parent() == &wire_box)
+        {
+            wire_box.remove(row);
+        }
+    }
+    freebsd_rows.clear();
+    if (traffic_)
+    {
+        traffic_->stop();
+        traffic_.reset();
     }
 }

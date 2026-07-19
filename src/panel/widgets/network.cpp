@@ -27,6 +27,12 @@ void WayfireNetworkInfo::init(Gtk::Box *container)
     button->set_popup_child(control);
     button->open_on(1);
 
+    /* FreeBSD Wi‑Fi scan runs only while the popover is open. */
+    signals.push_back(button->signal_popup().connect(
+        [this] () { control.on_popover_open(); }));
+    signals.push_back(button->signal_popdown().connect(
+        [this] () { control.on_popover_close(); }));
+
     icon.set_valign(Gtk::Align::CENTER);
     icon.add_css_class("widget-icon");
 
