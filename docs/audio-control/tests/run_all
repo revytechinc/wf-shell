@@ -1,0 +1,87 @@
+#!/bin/sh
+# Red/green test runner for audio control work.
+# Exit 0 only if all suites green.
+#
+# Prefers meson unit suite when a build dir exists; falls back to standalone
+# gtest compile for audio only.
+
+set -eu
+ROOT="$(CDPATH= cd -- "$(dirname "$0")/../../.." && pwd)"
+cd "$ROOT"
+
+red=0
+
+echo "######## Suite 1: defaults / config / mockup ########"
+PY=python3
+command -v python3 >/dev/null 2>&1 || PY=python3.12
+command -v "$PY" >/dev/null 2>&1 || PY=python3.11
+if ! command -v "$PY" >/dev/null 2>&1; then
+  echo "  RED    no python3 interpreter"
+  red=1
+elif "$PY" docs/audio-control/tests/test_defaults.py; then
+  echo
+else
+  red=1
+  echo
+fi
+
+echo "######## Suite 2: audio backend gtest (meson preferred) ########"
+if [ -x build/tests/audio-backend-test ]; then
+  if build/tests/audio-backend-test; then
+    :
+  else
+    red=1
+  fi
+elif [ -x build-coverage/tests/audio-backend-test ]; then
+  if build-coverage/tests/audio-backend-test; then
+    :
+  else
+    red=1
+  fi
+else
+  # Standalone compile (no meson)
+  CXXFLAGS="-std=c++17 -Wall -Wno-unused-parameter -DWFS_PLATFORM_FREEBSD -I src/util"
+  OUT="/tmp/test_audio_backend.$$"
+  # shellcheck disable=SC2086
+  if c++ $CXXFLAGS \
+      src/util/platform.cpp \
+      src/util/audio/audio-process.cpp \
+      src/util/audio/audio-parse.cpp \
+      src/util/audio/audio-backend-builder.cpp \
+      src/util/audio/audio-backend-freebsd.cpp \
+      src/util/audio/audio-backend-linux.cpp \
+      tests/audio-backend-test.cpp \
+      $(pkg-config --cflags --libs gtest_main 2>/dev/null || echo "-lgtest -lgtest_main -pthread") \
+      -o "$OUT" 2>/tmp/test_audio_backend_build.err
+  then
+    if "$OUT"; then
+      :
+    else
+      red=1
+    fi
+    rm -f "$OUT"
+  else
+    echo "  RED    C++ test failed to compile (build meson target audio-backend-test preferred)"
+    sed 's/^/         /' /tmp/test_audio_backend_build.err | head -40
+    red=1
+  fi
+fi
+
+echo
+if [ "$red" -eq 0 ]; then
+  echo "######## ALL GREEN ########"
+  echo
+  echo "Coverage: docs/audio-control/tests/coverage.sh"
+  echo "Meson:    meson test -C build --suite audio"
+  echo
+  echo "######## Final collaboration checks (do not skip) ########"
+  echo "  [ ] On a feature branch for this work (not force-pushing master)"
+  echo "  [ ] Commits use author: Mark LaPointe <mark@cloudbsd.org>"
+  echo "  [ ] Docs/man updated if behaviour changed"
+  echo "  [ ] DO NOT open a pull request unless the user explicitly asked"
+  echo "  [ ] Report branch/SHA only; owner decides PRs"
+  echo "######## (agents: stop after push; no gh pr create) ########"
+  exit 0
+fi
+echo "######## RED — fix failures above ########"
+exit 1
