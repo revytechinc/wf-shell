@@ -338,6 +338,51 @@ struct ProbeOptions
     int  poll_interval_ms = 3000;
 };
 
+/* ─── FreeBSD rc.conf boot persistence for Wi‑Fi (pure planning) ─────── */
+
+/**
+ * Permanent boot bring-up for a wlan clone (not session-only):
+ *   wlans_<parent>="<wlan>"
+ *   ifconfig_<wlan>="WPA DHCP"
+ *   ifconfig_<wlan>_ipv6="inet6 accept_rtadv"
+ */
+struct WifiRcBootPlan
+{
+    bool ok = false;
+    std::string parent; /**< e.g. iwlwifi0 */
+    std::string wlan;   /**< e.g. wlan0 */
+    std::string wlans_key;
+    std::string wlans_value;
+    std::string ifconfig_key;
+    std::string ifconfig_value;
+    std::string ifconfig_ipv6_key;
+    std::string ifconfig_ipv6_value;
+    bool need_wlans = false;
+    bool need_ifconfig = false;
+    bool need_ipv6 = false;
+    std::string detail;
+};
+
+/** Merge wlan into space-separated wlans_PARENT value. Pure. */
+std::string merge_wlans_rc_value(const std::string& existing,
+    const std::string& wlan);
+
+/**
+ * Ensure WPA (+ DHCP when not static) on ifconfig_wlanN. Pure.
+ * Empty → "WPA DHCP". Never strips an existing inet/static assignment.
+ */
+std::string merge_ifconfig_wlan_rc_value(const std::string& existing);
+
+/** Ensure SLAAC-friendly ifconfig_wlanN_ipv6. Pure. */
+std::string merge_ifconfig_wlan_ipv6_rc_value(const std::string& existing);
+
+/** Plan rc.conf updates from current sysrc values (empty = unset). Pure. */
+WifiRcBootPlan plan_wifi_rc_boot(const std::string& parent,
+    const std::string& wlan,
+    const std::string& existing_wlans,
+    const std::string& existing_ifconfig,
+    const std::string& existing_ipv6 = {});
+
 /**
  * Privilege to mutate network state (ifconfig/sysrc/create/destroy).
  * Read-only probe always works without this.

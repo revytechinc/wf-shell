@@ -583,6 +583,153 @@ static std::string resolve_wlan_for_power(const std::string& iface_or_parent)
 
 static int wifi_dedupe_saved_networks(const std::string& wlan);
 
+/** sysrc -n KEY; empty if unset / error. Never throws. */
+static std::string sysrc_get(const std::string& key)
+{
+    if (key.empty())
+    {
+        return {};
+    }
+    for (char c : key)
+    {
+        if (!(std::isalnum(static_cast<unsigned char>(c)) || c == '_'))
+        {
+            return {};
+        }
+    }
+    std::string out = trim_ws(run_cmd("sysrc -n " + key + " 2>/dev/null"));
+    /* sysrc prints nothing useful for unset; sometimes "unknown variable" */
+    if (out.find("unknown variable") != std::string::npos ||
+        out.find("unknown") == 0)
+    {
+        return {};
+    }
+    return out;
+}
+
+/** sysrc KEY='value' elevated. Value must not contain single quotes. */
+static bool sysrc_set(const std::string& key, const std::string& value)
+{
+    if (key.empty() || value.find('\'') != std::string::npos)
+    {
+        return false;
+    }
+    for (char c : key)
+    {
+        if (!(std::isalnum(static_cast<unsigned char>(c)) || c == '_'))
+        {
+            return false;
+        }
+    }
+    return run_elevated_nopass("sysrc -q " + key + "='" + value + "'");
+}
+
+static std::string resolve_parent_for_wlan(const std::string& wlan)
+{
+    if (!is_wlan_clone_name(wlan))
+    {
+        return {};
+    }
+    InterfaceInfo tmp;
+    tmp.name = wlan;
+    parse_ifconfig_detail(run_cmd("ifconfig " + wlan + " 2>/dev/null"), tmp);
+    if (!tmp.wifi_parent.empty())
+    {
+        return tmp.wifi_parent;
+    }
+    /* Fallback: first net.wlan.devices entry */
+    auto parents = list_wlan_parent_devices();
+    return parents.empty() ? std::string{} : parents.front();
+}
+
+bool wifi_persist_boot_config(const std::string& wlan,
+    const std::string& parent_radio)
+{
+    if (!is_wlan_clone_name(wlan))
+    {
+        net_event_warn("wifi.boot.persist", {
+            field_str("error", "not_wlan"),
+            field_str("wlan", wlan),
+        }, wlan);
+        return false;
+    }
+    std::string parent = parent_radio;
+    if (parent.empty())
+    {
+        parent = resolve_parent_for_wlan(wlan);
+    }
+    if (parent.empty())
+    {
+        net_event_error("wifi.boot.persist", {
+            field_str("error", "no_parent"),
+            field_str("wlan", wlan),
+        }, wlan);
+        return false;
+    }
+
+    const std::string cur_wlans = sysrc_get("wlans_" + parent);
+    const std::string cur_ifc   = sysrc_get("ifconfig_" + wlan);
+    const std::string cur_v6    = sysrc_get("ifconfig_" + wlan + "_ipv6");
+    auto plan = plan_wifi_rc_boot(parent, wlan, cur_wlans, cur_ifc, cur_v6);
+    if (!plan.ok)
+    {
+        net_event_error("wifi.boot.persist", {
+            field_str("error", plan.detail),
+            field_str("parent", parent),
+            field_str("wlan", wlan),
+        }, wlan);
+        return false;
+    }
+
+    bool wrote = false;
+    bool ok_all = true;
+    if (plan.need_wlans)
+    {
+        if (sysrc_set(plan.wlans_key, plan.wlans_value))
+        {
+            wrote = true;
+        } else
+        {
+            ok_all = false;
+        }
+    }
+    if (plan.need_ifconfig)
+    {
+        if (sysrc_set(plan.ifconfig_key, plan.ifconfig_value))
+        {
+            wrote = true;
+        } else
+        {
+            ok_all = false;
+        }
+    }
+    if (plan.need_ipv6)
+    {
+        if (sysrc_set(plan.ifconfig_ipv6_key, plan.ifconfig_ipv6_value))
+        {
+            wrote = true;
+        } else
+        {
+            ok_all = false;
+        }
+    }
+
+    /* Harden wpa conf perms if we can (credentials live there permanently). */
+    (void)run_elevated_nopass("chmod 600 /etc/wpa_supplicant.conf");
+
+    net_event_info("wifi.boot.persist", {
+        field_bool("ok", ok_all),
+        field_bool("wrote", wrote),
+        field_str("parent", parent),
+        field_str("wlan", wlan),
+        field_str("wlans", plan.wlans_value),
+        field_str("ifconfig", plan.ifconfig_value),
+        field_str("ipv6", plan.ifconfig_ipv6_value),
+        field_str("detail", plan.detail),
+    }, wlan);
+    return ok_all;
+}
+
 WifiPowerResult wifi_turn_on(const std::string& iface_or_parent)
 {
     WifiPowerResult r;
@@ -647,6 +794,9 @@ WifiPowerResult wifi_turn_on(const std::string& iface_or_parent)
         (void)run_elevated_nopass("dhclient -b " + wlan);
     }
 
+    /* Permanent boot: wlans_PARENT + ifconfig_wlan WPA DHCP (rc.conf). */
+    const bool boot = wifi_persist_boot_config(wlan, resolve_parent_for_wlan(wlan));
+
     r.ok = true;
     if (wpa)
     {
@@ -655,10 +805,18 @@ WifiPowerResult wifi_turn_on(const std::string& iface_or_parent)
     {
         r.detail = "Wi-Fi link up (" + wlan + "); wpa_supplicant not ready";
     }
+    if (boot)
+    {
+        r.detail += "; boot config saved";
+    } else
+    {
+        r.detail += "; boot config NOT saved (need doas/sysrc)";
+    }
     net_event_info("wifi.power.on", {
         field_bool("ok", r.ok),
         field_str("wlan", r.wlan),
         field_bool("wpa", wpa),
+        field_bool("boot_persist", boot),
         field_str("detail", r.detail),
     }, r.wlan);
     return r;
@@ -1092,11 +1250,19 @@ WifiPowerResult wifi_join(const std::string& wlan, const std::string& ssid,
         (void)run_elevated_nopass("dhclient " + wlan + " &");
     }
 
+    /* Credentials already save_config'd; also ensure rc.conf boot bring-up. */
+    const bool boot = wifi_persist_boot_config(wlan, resolve_parent_for_wlan(wlan));
+
     r.ok = true;
     r.detail = reused ? ("Updated " + ssid) : ("Joined " + ssid);
+    if (boot)
+    {
+        r.detail += "; boot config saved";
+    }
     net_event_info("wifi.join", {
         field_bool("ok", true),
         field_bool("reused", reused),
+        field_bool("boot_persist", boot),
         field_int("removed_dupes", static_cast<long long>(remove_ids.size())),
         field_str("ssid", ssid),
         field_str("security", security),

@@ -212,6 +212,41 @@ TEST(NetworkTypes, WpaBssDetailEdges)
     EXPECT_EQ(e.est_throughput_mbps, 300u);
 }
 
+TEST(NetworkTypes, WifiRcBootPlan)
+{
+    EXPECT_EQ(merge_wlans_rc_value("", "wlan0"), "wlan0");
+    EXPECT_EQ(merge_wlans_rc_value("wlan0", "wlan0"), "wlan0");
+    EXPECT_EQ(merge_wlans_rc_value("wlan1", "wlan0"), "wlan1 wlan0");
+    EXPECT_EQ(merge_ifconfig_wlan_rc_value(""), "WPA DHCP");
+    EXPECT_EQ(merge_ifconfig_wlan_rc_value("DHCP"), "WPA DHCP");
+    EXPECT_EQ(merge_ifconfig_wlan_rc_value("WPA DHCP"), "WPA DHCP");
+    EXPECT_EQ(merge_ifconfig_wlan_rc_value("inet 10.0.0.2/24"), "WPA inet 10.0.0.2/24");
+    EXPECT_EQ(merge_ifconfig_wlan_ipv6_rc_value(""), "inet6 accept_rtadv");
+    EXPECT_EQ(merge_ifconfig_wlan_ipv6_rc_value("inet6 accept_rtadv"),
+        "inet6 accept_rtadv");
+
+    auto plan = plan_wifi_rc_boot("iwlwifi0", "wlan0", "", "", "");
+    ASSERT_TRUE(plan.ok);
+    EXPECT_TRUE(plan.need_wlans);
+    EXPECT_TRUE(plan.need_ifconfig);
+    EXPECT_TRUE(plan.need_ipv6);
+    EXPECT_EQ(plan.wlans_key, "wlans_iwlwifi0");
+    EXPECT_EQ(plan.wlans_value, "wlan0");
+    EXPECT_EQ(plan.ifconfig_key, "ifconfig_wlan0");
+    EXPECT_EQ(plan.ifconfig_value, "WPA DHCP");
+    EXPECT_EQ(plan.ifconfig_ipv6_value, "inet6 accept_rtadv");
+
+    auto done = plan_wifi_rc_boot("iwlwifi0", "wlan0", "wlan0", "WPA DHCP",
+        "inet6 accept_rtadv");
+    ASSERT_TRUE(done.ok);
+    EXPECT_FALSE(done.need_wlans);
+    EXPECT_FALSE(done.need_ifconfig);
+    EXPECT_FALSE(done.need_ipv6);
+
+    EXPECT_FALSE(plan_wifi_rc_boot("", "wlan0", "", "", "").ok);
+    EXPECT_FALSE(plan_wifi_rc_boot("iwlwifi0", "notwlan", "", "", "").ok);
+}
+
 TEST(NetworkTypes, WpaListNetworksDedupe)
 {
     const char *sample =

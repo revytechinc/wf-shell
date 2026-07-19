@@ -183,6 +183,162 @@ std::string build_wlan_create_command(const std::string& wlan_name,
     return "ifconfig " + wlan_name + " create wlandev " + parent_name;
 }
 
+namespace
+{
+
+std::string trim_rc_val(std::string s)
+{
+    while (!s.empty() && (s.front() == ' ' || s.front() == '\t' ||
+        s.front() == '"' || s.front() == '\''))
+    {
+        s.erase(s.begin());
+    }
+    while (!s.empty() && (s.back() == ' ' || s.back() == '\t' ||
+        s.back() == '"' || s.back() == '\'' || s.back() == '\n' ||
+        s.back() == '\r'))
+    {
+        s.pop_back();
+    }
+    return s;
+}
+
+bool rc_token_present(const std::string& hay, const char *tok)
+{
+    if (!tok || !*tok || hay.empty())
+    {
+        return false;
+    }
+    /* Whole-token match (space-delimited), case-sensitive FreeBSD style. */
+    size_t pos = 0;
+    const size_t n = std::strlen(tok);
+    while (pos < hay.size())
+    {
+        while (pos < hay.size() && (hay[pos] == ' ' || hay[pos] == '\t'))
+        {
+            ++pos;
+        }
+        if (pos >= hay.size())
+        {
+            break;
+        }
+        size_t end = pos;
+        while (end < hay.size() && hay[end] != ' ' && hay[end] != '\t')
+        {
+            ++end;
+        }
+        if (end - pos == n && hay.compare(pos, n, tok) == 0)
+        {
+            return true;
+        }
+        pos = end;
+    }
+    return false;
+}
+
+} // namespace
+
+std::string merge_wlans_rc_value(const std::string& existing,
+    const std::string& wlan)
+{
+    if (!is_wlan_clone_name(wlan))
+    {
+        return trim_rc_val(existing);
+    }
+    const std::string cur = trim_rc_val(existing);
+    if (cur.empty())
+    {
+        return wlan;
+    }
+    std::istringstream iss(cur);
+    std::string tok;
+    while (iss >> tok)
+    {
+        if (tok == wlan)
+        {
+            return cur; /* already listed */
+        }
+    }
+    return cur + " " + wlan;
+}
+
+std::string merge_ifconfig_wlan_rc_value(const std::string& existing)
+{
+    std::string e = trim_rc_val(existing);
+    if (e.empty())
+    {
+        return "WPA DHCP";
+    }
+    const bool has_wpa  = rc_token_present(e, "WPA");
+    const bool has_dhcp = rc_token_present(e, "DHCP") ||
+        rc_token_present(e, "SYNCDHCP") || rc_token_present(e, "NOAUTO");
+    const bool has_inet = e.find("inet") != std::string::npos;
+    if (!has_wpa)
+    {
+        e = "WPA " + e;
+    }
+    /* Only add DHCP when there is no addressing method yet. */
+    if (!has_dhcp && !has_inet)
+    {
+        e += " DHCP";
+    }
+    return e;
+}
+
+std::string merge_ifconfig_wlan_ipv6_rc_value(const std::string& existing)
+{
+    std::string e = trim_rc_val(existing);
+    if (e.empty())
+    {
+        return "inet6 accept_rtadv";
+    }
+    if (e.find("accept_rtadv") != std::string::npos ||
+        e.find("inet6") != std::string::npos)
+    {
+        return e;
+    }
+    return "inet6 accept_rtadv " + e;
+}
+
+WifiRcBootPlan plan_wifi_rc_boot(const std::string& parent,
+    const std::string& wlan,
+    const std::string& existing_wlans,
+    const std::string& existing_ifconfig,
+    const std::string& existing_ipv6)
+{
+    WifiRcBootPlan p;
+    if (!is_wlan_clone_name(wlan) || parent.empty() ||
+        !name_is_safe_ifunit(parent) || !name_is_safe_ifunit(wlan))
+    {
+        p.detail = "invalid parent/wlan names";
+        return p;
+    }
+    p.parent = parent;
+    p.wlan   = wlan;
+    p.wlans_key    = "wlans_" + parent;
+    p.ifconfig_key = "ifconfig_" + wlan;
+    p.ifconfig_ipv6_key = "ifconfig_" + wlan + "_ipv6";
+
+    const std::string want_wlans = merge_wlans_rc_value(existing_wlans, wlan);
+    const std::string want_ifc   = merge_ifconfig_wlan_rc_value(existing_ifconfig);
+    const std::string want_v6    = merge_ifconfig_wlan_ipv6_rc_value(existing_ipv6);
+
+    p.wlans_value         = want_wlans;
+    p.ifconfig_value      = want_ifc;
+    p.ifconfig_ipv6_value = want_v6;
+    p.need_wlans    = (trim_rc_val(existing_wlans) != want_wlans);
+    p.need_ifconfig = (trim_rc_val(existing_ifconfig) != want_ifc);
+    p.need_ipv6     = (trim_rc_val(existing_ipv6) != want_v6);
+    p.ok = true;
+    if (!p.need_wlans && !p.need_ifconfig && !p.need_ipv6)
+    {
+        p.detail = "rc.conf already configured for boot Wi-Fi";
+    } else
+    {
+        p.detail = "will persist wlans/ifconfig for boot";
+    }
+    return p;
+}
+
 std::vector<std::string> parents_needing_wlan_clone(
     const std::vector<std::string>& parents,
     const std::vector<std::string>& clone_parents)

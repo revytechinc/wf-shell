@@ -59,6 +59,8 @@ std::string create_wlan_for_parent(const std::string& parent_name,
  *   4. start wpa_supplicant -B if control socket missing
  *   5. wpa_cli reassociate / enable saved networks when possible
  *   6. dhclient wlanN for DHCP (best-effort)
+ *   7. **persist boot config** via sysrc (wlans_* + ifconfig_wlan* WPA DHCP)
+ *      so Wi‑Fi comes up on next reboot without the panel
  */
 struct WifiPowerResult
 {
@@ -69,6 +71,14 @@ struct WifiPowerResult
 
 WifiPowerResult wifi_turn_on(const std::string& iface_or_parent);
 WifiPowerResult wifi_turn_off(const std::string& iface_or_parent);
+
+/**
+ * Write FreeBSD rc.conf entries so this wlan comes up at multiuser boot.
+ * Uses sysrc; merges with existing values; never clobbers aq0/igb0 statics.
+ * Idempotent. Call after successful turn-on / join.
+ */
+bool wifi_persist_boot_config(const std::string& wlan,
+    const std::string& parent_radio = {});
 
 /** Minimal conf body for a fresh FreeBSD install (pure). */
 std::string default_wpa_supplicant_conf();
