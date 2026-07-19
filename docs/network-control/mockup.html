@@ -887,10 +887,12 @@
         render();
       });
       el.addEventListener("contextmenu", (ev) => {
-        ev.preventDefault();
         state.selected = el.getAttribute("data-name");
         state.ctxName = state.selected;
-        showCtx(ev.clientX, ev.clientY, state.ctxName);
+        /* Only swallow the browser menu when we have actions to show */
+        if (showCtx(ev.clientX, ev.clientY, state.ctxName)) {
+          ev.preventDefault();
+        }
         render();
       });
     });

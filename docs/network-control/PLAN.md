@@ -228,7 +228,7 @@ See **§3.1** for the full action design. Mockup: right-click + Create + knobs f
 ```mermaid
 flowchart TB
   RC[Right-click iface row] --> ADM{can_admin?}
-  ADM -->|no| RO[Information-only<br/>items disabled · no toast pretend]
+  ADM -->|no| RO[No context menu]
   ADM -->|yes| ST{InterfaceInfo.up<br/>IFF_UP live}
   ST -->|true| OFF[Menu: Turn off]
   ST -->|false| ON[Menu: Turn on]
