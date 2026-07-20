@@ -250,6 +250,43 @@ else
   fail "R10 missing $CFG_PATH"
 fi
 
+# R11: package system wf-shell panel position must be top (never polluted left/right)
+if [ -f "$SYS_WS" ]; then
+  sys_panel_pos=$(awk '
+    /^\[panel\]/ { in_panel=1; next }
+    /^\[/ { in_panel=0 }
+    in_panel && /^position[[:space:]]*=/ {
+      sub(/^[^=]*=[[:space:]]*/, "")
+      sub(/[[:space:]]*(#.*)?$/, "")
+      print
+      exit
+    }
+  ' "$SYS_WS")
+  if [ "$sys_panel_pos" = "top" ]; then
+    pass "R11 package system panel/position=top (not polluted)"
+  else
+    fail "R11 package system panel/position='$sys_panel_pos' want top"
+  fi
+  # dock default bottom (not panel)
+  sys_dock_pos=$(awk '
+    /^\[dock\]/ { in_dock=1; next }
+    /^\[/ { in_dock=0 }
+    in_dock && /^position[[:space:]]*=/ {
+      sub(/^[^=]*=[[:space:]]*/, "")
+      sub(/[[:space:]]*(#.*)?$/, "")
+      print
+      exit
+    }
+  ' "$SYS_WS")
+  if [ "$sys_dock_pos" = "bottom" ]; then
+    pass "R11 package system dock/position=bottom"
+  else
+    fail "R11 package system dock/position='$sys_dock_pos' want bottom"
+  fi
+else
+  fail "R11 missing $SYS_WS"
+fi
+
 # ── 3) RESTART SESSION (DRM, not nested wayland) ─────────────────────────
 section "3 RESTART WAYFIRE + CLIENTS"
 # Critical: never leave WAYLAND_DISPLAY set or wayfire nests and fails

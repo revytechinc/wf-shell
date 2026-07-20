@@ -136,6 +136,19 @@ if [ -f /usr/local/etc/wayfire/wayfire.ini ] && \
 else
   fail "system wayfire.ini references /home in settings (not a system default)"
 fi
+# Package panel default must stay top (side bar is not a system default)
+sys_panel_pos=$(awk '
+  /^\[panel\]/ { p=1; next }
+  /^\[/ { p=0 }
+  p && /^position[[:space:]]*=/ {
+    sub(/^[^=]*=[[:space:]]*/, ""); sub(/[[:space:]]*(#.*)?$/, ""); print; exit
+  }
+' /usr/local/etc/wf-shell/wf-shell.ini 2>/dev/null || true)
+if [ "$sys_panel_pos" = "top" ]; then
+  pass "package system panel/position=top"
+else
+  fail "package system panel/position='$sys_panel_pos' want top (polluted default)"
+fi
 
 # ── 1 optional reinstall ───────────────────────────────────────────────────
 if [ "$DO_REINSTALL" -eq 1 ]; then
