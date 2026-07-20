@@ -125,42 +125,33 @@ TEST_F(PowerControllerQuery, AllActionsReturnValidCapability)
 #if defined(__FreeBSD__)
 TEST_F(PowerControllerQuery, FreeBSDPlatformSpecificRules)
 {
-    // On FreeBSD, Shutdown capability must be configured for wheel group permission
+    /*
+     * FreeBSD: /sbin/shutdown is setuid, group operator.
+     * - If process can exec it (root/operator): bare "/sbin/shutdown …"
+     * - Else if wheel + passwordless doas: "doas -n /sbin/shutdown …"
+     * - Hibernate is never available.
+     */
     auto cap_shutdown = ctrl->query(WFPowerController::Action::Shutdown);
     EXPECT_TRUE(cap_shutdown.available);
-    EXPECT_EQ(cap_shutdown.command, "/sbin/shutdown -p now");
-    
-    // Check if the current user belongs to the wheel group (or is root)
-    bool in_wheel = false;
-    if (geteuid() == 0) {
-        in_wheel = true;
+    EXPECT_TRUE(cap_shutdown.permitted);
+    EXPECT_FALSE(cap_shutdown.command.empty());
+    EXPECT_NE(cap_shutdown.command.find("/sbin/shutdown"), std::string::npos);
+    EXPECT_NE(cap_shutdown.command.find("-p"), std::string::npos);
+    if (access("/sbin/shutdown", X_OK) == 0) {
+        EXPECT_EQ(cap_shutdown.command, "/sbin/shutdown -p now");
     } else {
-        gid_t wheel_gid = 0;
-        struct group *gr = getgrnam("wheel");
-        if (gr) {
-            wheel_gid = gr->gr_gid;
-            gid_t groups[64];
-            int ngroups = getgroups(64, groups);
-            if (ngroups >= 0) {
-                for (int i = 0; i < ngroups; i++) {
-                    if (groups[i] == wheel_gid) {
-                        in_wheel = true;
-                        break;
-                    }
-                }
-            }
-        }
+        /* Elevated path only (no password prompt in GUI) */
+        EXPECT_TRUE(cap_shutdown.command.rfind("doas -n ", 0) == 0 ||
+            cap_shutdown.command.rfind("sudo -n ", 0) == 0);
     }
-    
-    EXPECT_EQ(cap_shutdown.permitted, in_wheel);
 
-    // On FreeBSD, Reboot capability must be configured for wheel group permission
     auto cap_reboot = ctrl->query(WFPowerController::Action::Reboot);
     EXPECT_TRUE(cap_reboot.available);
-    EXPECT_EQ(cap_reboot.command, "/sbin/shutdown -r now");
-    EXPECT_EQ(cap_reboot.permitted, in_wheel);
+    EXPECT_TRUE(cap_reboot.permitted);
+    EXPECT_FALSE(cap_reboot.command.empty());
+    EXPECT_NE(cap_reboot.command.find("/sbin/shutdown"), std::string::npos);
+    EXPECT_NE(cap_reboot.command.find("-r"), std::string::npos);
 
-    // On FreeBSD, Hibernate is always unavailable
     auto cap_hib = ctrl->query(WFPowerController::Action::Hibernate);
     EXPECT_FALSE(cap_hib.available);
     EXPECT_FALSE(cap_hib.permitted);
