@@ -272,23 +272,43 @@ static void do_reload_config_now(WayfireShellApp *app)
         wf::config::load_configuration_options_from_file(
             app->config, app->get_config_file());
 
-        /* 2) JSON overrides INI (primary going forward) */
+        /* 2) JSON overrides INI (primary going forward).
+         * Resilient load: validate → last-good → baseline + quarantine. */
         try
         {
-            wf_shell::ShellJsonConfig jcfg;
-            std::string jerr;
             auto jpath = wf_shell::shell_json_config_path();
-            if (wf_shell::load_shell_json_config(jpath, jcfg, &jerr))
+            auto jload = wf_shell::load_shell_json_config_resilient(jpath);
+            if (jload.ok)
             {
                 std::vector<std::string> warns;
-                wf_shell::apply_shell_json_to_config_manager(jcfg, app->config, &warns);
+                wf_shell::apply_shell_json_to_config_manager(
+                    jload.cfg, app->config, &warns);
                 for (const auto& w : warns)
                 {
                     std::cerr << "wf-shell: config_reload warn: " << w << "\n";
                 }
-            } else if (wf_shell::apply_debug_enabled() && !jerr.empty())
+                for (const auto& w : jload.validation.soft_warnings)
+                {
+                    if (wf_shell::apply_debug_enabled())
+                    {
+                        std::cerr << "wf-shell:json soft: " << w << "\n";
+                    }
+                }
+                if (jload.source == wf_shell::ShellJsonLoadSource::last_good ||
+                    jload.source == wf_shell::ShellJsonLoadSource::baseline)
+                {
+                    std::cerr << "wf-shell: config_reload JSON source="
+                              << (jload.source == wf_shell::ShellJsonLoadSource::baseline
+                                  ? "baseline" : "last-good")
+                              << (jload.quarantined_path.empty()
+                                  ? ""
+                                  : (" quarantined=" + jload.quarantined_path))
+                              << "\n";
+                }
+            } else if (jload.source != wf_shell::ShellJsonLoadSource::missing &&
+                       !jload.error.empty())
             {
-                std::cerr << "wf-shell: config_reload json: " << jerr << "\n";
+                std::cerr << "wf-shell: config_reload json: " << jload.error << "\n";
             }
         } catch (const std::exception& e)
         {

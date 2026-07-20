@@ -158,6 +158,21 @@ test(
     suite: ['unit', 'config', 'fault-tolerance'],
 )
 
+# JSON validate / last-good / baseline / quarantine
+test_exec_shell_json = executable(
+    'shell-json-config-test',
+    'shell-json-config-test.cpp',
+    dependencies: [gtest_dep, libutil, json, wfconfig],
+    include_directories: test_includes,
+    link_with: util,
+)
+
+test(
+    'shell-json-config-test',
+    test_exec_shell_json,
+    suite: ['unit', 'config', 'fault-tolerance', 'json'],
+)
+
 # First-run user config create + fail-closed when unwritable
 test_exec_user_config = executable(
     'user-config-test',

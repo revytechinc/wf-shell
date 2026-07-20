@@ -217,17 +217,39 @@ std::string user_shell_json_path()
 
 bool ensure_settings_user_configs(std::string *error)
 {
-    /* JSON first — Settings primary store */
+    /* JSON first — Settings primary store.
+     * Use resilient path: if missing, write validated baseline (not raw {}). */
     {
-        auto j = ensure_user_config_file(user_shell_json_path(), {},
-            "{\n  \"version\": 1,\n  \"sections\": {}\n}\n");
-        if (!j.ok)
+        auto jpath = user_shell_json_path();
+        if (jpath.empty())
         {
             if (error)
             {
-                *error = j.error;
+                *error = "Cannot resolve config.json path (HOME unset).";
             }
             return false;
+        }
+        std::error_code ec;
+        if (!std::filesystem::is_regular_file(jpath, ec))
+        {
+            if (!write_baseline_shell_json(jpath, error))
+            {
+                return false;
+            }
+        } else
+        {
+            /* Existing file: resilient load repairs invalid primary */
+            auto lr = load_shell_json_config_resilient(jpath);
+            if (!lr.ok)
+            {
+                if (error)
+                {
+                    *error = lr.error.empty()
+                        ? "Could not load or repair config.json"
+                        : lr.error;
+                }
+                return false;
+            }
         }
     }
     /* Legacy dual-write INI — seed from package system default when first-run */

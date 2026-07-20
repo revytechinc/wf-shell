@@ -3,10 +3,13 @@
 #include "ini-file.hpp"
 #include "user-config.hpp"
 
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <sstream>
 
 #include <wayfire/nonstd/json.hpp>
@@ -15,6 +18,40 @@ namespace wf_shell
 {
 namespace
 {
+
+namespace fs = std::filesystem;
+
+const char *const kKnownRootKeys[] = {
+    "version", "panel", "background", "dock", "locker", "mcp",
+};
+
+const char *const kKnownSections[] = {
+    "panel", "background", "dock", "locker",
+};
+
+bool is_known_root_key(const std::string& k)
+{
+    for (const char *n : kKnownRootKeys)
+    {
+        if (k == n)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool is_known_section(const std::string& k)
+{
+    for (const char *n : kKnownSections)
+    {
+        if (k == n)
+        {
+            return true;
+        }
+    }
+    return false;
+}
 
 std::string read_file(const std::string& path)
 {
@@ -31,7 +68,6 @@ std::string read_file(const std::string& path)
 bool write_file_atomic(const std::string& path, const std::string& contents,
     std::string *error)
 {
-    namespace fs = std::filesystem;
     if (!ensure_parent_directories(path, error))
     {
         return false;
@@ -61,7 +97,6 @@ bool write_file_atomic(const std::string& path, const std::string& contents,
     fs::rename(tmp, path, ec);
     if (ec)
     {
-        /* FreeBSD may fail rename across; try copy */
         std::ofstream out(path, std::ios::trunc);
         if (!out)
         {
@@ -83,11 +118,6 @@ bool write_file_atomic(const std::string& path, const std::string& contents,
     return true;
 }
 
-bool write_file_atomic(const std::string& path, const std::string& contents)
-{
-    return write_file_atomic(path, contents, nullptr);
-}
-
 std::string json_escape(const std::string& s)
 {
     std::string o;
@@ -107,7 +137,203 @@ std::string json_escape(const std::string& s)
     return o;
 }
 
+std::string stamp_now()
+{
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+    return std::to_string(ms);
+}
+
+bool file_exists(const std::string& path)
+{
+    std::error_code ec;
+    return fs::is_regular_file(path, ec) && !ec;
+}
+
+/**
+ * Move path to quarantine dir for inspection. Returns quarantine path or empty.
+ */
+std::string quarantine_file(const std::string& path, const std::string& reason)
+{
+    if (!file_exists(path))
+    {
+        return {};
+    }
+    std::string qdir = shell_json_quarantine_dir(path);
+    std::error_code ec;
+    fs::create_directories(qdir, ec);
+    std::string base = fs::path(path).filename().string();
+    std::string dest = qdir + "/" + base + ".bad-" + stamp_now();
+    fs::rename(path, dest, ec);
+    if (ec)
+    {
+        fs::copy_file(path, dest, fs::copy_options::overwrite_existing, ec);
+        if (!ec)
+        {
+            fs::remove(path, ec);
+        }
+    }
+    /* Side-car reason */
+    if (file_exists(dest))
+    {
+        std::ofstream note(dest + ".reason.txt");
+        if (note)
+        {
+            note << reason << "\n";
+        }
+        return dest;
+    }
+    return {};
+}
+
+bool promote_last_good(const std::string& primary, std::string *error)
+{
+    if (!file_exists(primary))
+    {
+        if (error)
+        {
+            *error = "cannot promote last-good: primary missing";
+        }
+        return false;
+    }
+    auto lg = shell_json_last_good_path(primary);
+    if (!ensure_parent_directories(lg, error))
+    {
+        return false;
+    }
+    std::error_code ec;
+    fs::copy_file(primary, lg, fs::copy_options::overwrite_existing, ec);
+    if (ec)
+    {
+        if (error)
+        {
+            *error = "cannot write last-good backup: " + ec.message();
+        }
+        return false;
+    }
+    return true;
+}
+
+/** Structural validation on already-parsed root object. */
+void validate_root_object(const wf::json_t& root, ShellJsonValidateResult& r)
+{
+    r.ok = true;
+    if (!root.is_object())
+    {
+        r.hard("root must be a JSON object");
+        return;
+    }
+
+    for (const auto& key : root.get_member_names())
+    {
+        if (!is_known_root_key(key))
+        {
+            r.soft("ignored unknown root key: " + key);
+            r.ignore_key(key);
+            continue;
+        }
+        if (key == "version")
+        {
+            if (!root["version"].is_int() && !root["version"].is_int64() &&
+                !root["version"].is_double())
+            {
+                r.soft("version is not a number — treating as 1");
+            }
+            continue;
+        }
+        if (is_known_section(key))
+        {
+            if (!root[key].is_object())
+            {
+                r.soft("section \"" + key + "\" is not an object — ignored");
+                r.ignore_key(key);
+            }
+            continue;
+        }
+        if (key == "mcp")
+        {
+            if (!root["mcp"].is_object())
+            {
+                r.soft("mcp is not an object — ignored");
+                r.ignore_key(key);
+                continue;
+            }
+            auto mcp = root["mcp"];
+            if (mcp.has_member("enabled") && !mcp["enabled"].is_bool())
+            {
+                r.soft("mcp.enabled is not bool — ignored");
+            }
+            if (mcp.has_member("servers") && !mcp["servers"].is_array())
+            {
+                r.soft("mcp.servers is not an array — ignored");
+            }
+            if (mcp.has_member("servers") && mcp["servers"].is_array())
+            {
+                auto arr = mcp["servers"];
+                for (size_t i = 0; i < arr.size(); ++i)
+                {
+                    if (!arr[i].is_object())
+                    {
+                        r.soft("mcp.servers[" + std::to_string(i) +
+                            "] is not an object — skipped");
+                        continue;
+                    }
+                    auto s = arr[i];
+                    /* Unknown keys inside a server object: soft ignore */
+                    for (const auto& sk : s.get_member_names())
+                    {
+                        static const char *known[] = {
+                            "id", "name", "enabled", "transport", "command",
+                            "args", "env", "notes",
+                        };
+                        bool okk = false;
+                        for (const char *n : known)
+                        {
+                            if (sk == n)
+                            {
+                                okk = true;
+                                break;
+                            }
+                        }
+                        if (!okk)
+                        {
+                            r.soft("mcp.servers[" + std::to_string(i) +
+                                "] ignored key: " + sk);
+                            r.ignore_key("mcp.servers." + sk);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 } // namespace
+
+std::string ShellJsonValidateResult::summary() const
+{
+    if (ok && soft_warnings.empty() && ignored_keys.empty())
+    {
+        return "ok";
+    }
+    std::ostringstream o;
+    if (!ok)
+    {
+        o << "INVALID";
+        for (const auto& e : hard_errors)
+        {
+            o << " | " << e;
+        }
+    } else
+    {
+        o << "ok-with-warnings";
+    }
+    for (const auto& w : soft_warnings)
+    {
+        o << " | warn: " << w;
+    }
+    return o.str();
+}
 
 std::string shell_json_config_path()
 {
@@ -128,13 +354,43 @@ std::string shell_json_config_path()
     return base + "/wf-shell/config.json";
 }
 
+std::string shell_json_last_good_path(const std::string& primary)
+{
+    std::string p = primary.empty() ? shell_json_config_path() : primary;
+    return p + ".last-good";
+}
+
+std::string shell_json_quarantine_dir(const std::string& primary)
+{
+    std::string p = primary.empty() ? shell_json_config_path() : primary;
+    return (fs::path(p).parent_path() / "quarantine").string();
+}
+
+ShellJsonValidateResult validate_shell_json_text(const std::string& text)
+{
+    ShellJsonValidateResult r;
+    if (text.empty())
+    {
+        r.hard("empty json");
+        return r;
+    }
+    wf::json_t root;
+    auto err = wf::json_t::parse_string(text, root);
+    if (err)
+    {
+        r.hard("json parse error: " + *err);
+        return r;
+    }
+    validate_root_object(root, r);
+    return r;
+}
+
 void ensure_default_mcp_stub(ShellJsonConfig& cfg)
 {
     if (!cfg.mcp_servers.empty())
     {
         return;
     }
-    /* Scaffold for future AI tooling — disabled until wired. */
     McpServerConfig honcho;
     honcho.id = "honcho";
     honcho.name = "Honcho";
@@ -154,18 +410,37 @@ void ensure_default_mcp_stub(ShellJsonConfig& cfg)
     cfg.mcp_servers.push_back(local);
 }
 
+ShellJsonConfig make_baseline_shell_json()
+{
+    ShellJsonConfig cfg;
+    cfg.version = 1;
+    cfg.mcp_enabled = false;
+    ensure_default_mcp_stub(cfg);
+    /* Minimal known-good panel defaults (match package system where possible). */
+    cfg.sections["panel"]["position"] = "top";
+    cfg.sections["panel"]["layer"] = "top";
+    cfg.sections["dock"]["position"] = "bottom";
+    return cfg;
+}
+
 bool parse_shell_json_config(const std::string& text, ShellJsonConfig& out,
-    std::string *error)
+    std::string *error, ShellJsonValidateResult *validation)
 {
     out = ShellJsonConfig{};
-    if (text.empty())
+    auto vr = validate_shell_json_text(text);
+    if (validation)
+    {
+        *validation = vr;
+    }
+    if (!vr.ok)
     {
         if (error)
         {
-            *error = "empty json";
+            *error = vr.hard_errors.empty() ? "invalid json" : vr.hard_errors.front();
         }
         return false;
     }
+
     wf::json_t root;
     auto err = wf::json_t::parse_string(text, root);
     if (err)
@@ -176,17 +451,13 @@ bool parse_shell_json_config(const std::string& text, ShellJsonConfig& out,
         }
         return false;
     }
-    if (!root.is_object())
+
+    if (root.has_member("version") &&
+        (root["version"].is_int() || root["version"].is_int64()))
     {
-        if (error)
-        {
-            *error = "root must be object";
-        }
-        return false;
-    }
-    if (root.has_member("version") && root["version"].is_int())
-    {
-        out.version = root["version"].as_int();
+        out.version = root["version"].is_int()
+            ? root["version"].as_int()
+            : static_cast<int>(root["version"].as_int64());
     }
 
     auto load_section = [&] (const char *name) {
@@ -212,8 +483,10 @@ bool parse_shell_json_config(const std::string& text, ShellJsonConfig& out,
                 out.sections[name][key] = std::to_string(v.as_double());
             } else if (v.is_int64())
             {
-                out.sections[name][key] = std::to_string(static_cast<long long>(v.as_int64()));
+                out.sections[name][key] = std::to_string(
+                    static_cast<long long>(v.as_int64()));
             }
+            /* else: non-scalar ignored (already soft-warned at validate if needed) */
         }
     };
     load_section("panel");
@@ -383,6 +656,13 @@ std::string serialize_shell_json_config(const ShellJsonConfig& cfg)
     return o.str();
 }
 
+bool write_baseline_shell_json(const std::string& path, std::string *error)
+{
+    auto cfg = make_baseline_shell_json();
+    cfg.path = path;
+    return save_shell_json_config(path, cfg, error);
+}
+
 bool load_shell_json_config(const std::string& path, ShellJsonConfig& out,
     std::string *error)
 {
@@ -395,7 +675,8 @@ bool load_shell_json_config(const std::string& path, ShellJsonConfig& out,
         }
         return false;
     }
-    if (!parse_shell_json_config(text, out, error))
+    ShellJsonValidateResult vr;
+    if (!parse_shell_json_config(text, out, error, &vr))
     {
         return false;
     }
@@ -404,10 +685,129 @@ bool load_shell_json_config(const std::string& path, ShellJsonConfig& out,
     return true;
 }
 
+ShellJsonLoadResult load_shell_json_config_resilient(const std::string& path)
+{
+    ShellJsonLoadResult r;
+    r.cfg.path = path;
+
+    auto try_path = [&] (const std::string& p, ShellJsonLoadSource src) -> bool {
+        if (!file_exists(p))
+        {
+            return false;
+        }
+        auto text = read_file(p);
+        ShellJsonValidateResult vr;
+        std::string err;
+        ShellJsonConfig cfg;
+        if (!parse_shell_json_config(text, cfg, &err, &vr))
+        {
+            r.validation = vr;
+            r.error = err;
+            return false;
+        }
+        /* Round-trip validate serialize (catches internal inconsistency) */
+        auto ser = serialize_shell_json_config(cfg);
+        auto vr2 = validate_shell_json_text(ser);
+        if (!vr2.ok)
+        {
+            r.validation = vr2;
+            r.error = "round-trip validation failed after parse";
+            return false;
+        }
+        cfg.loaded_from_disk = true;
+        cfg.path = path; /* logical primary path */
+        r.cfg = std::move(cfg);
+        r.validation = vr;
+        r.source = src;
+        r.ok = true;
+        return true;
+    };
+
+    if (!file_exists(path))
+    {
+        /* First-run: optional last-good */
+        if (try_path(shell_json_last_good_path(path), ShellJsonLoadSource::last_good))
+        {
+            return r;
+        }
+        r.source = ShellJsonLoadSource::missing;
+        r.error = "missing: " + path;
+        r.ok = false;
+        return r;
+    }
+
+    if (try_path(path, ShellJsonLoadSource::primary))
+    {
+        return r;
+    }
+
+    /* Primary invalid — quarantine for inspection */
+    std::string reason = r.error.empty() ? r.validation.summary() : r.error;
+    r.quarantined_path = quarantine_file(path,
+        "primary config failed validation: " + reason);
+    std::cerr << "wf-shell:json: quarantined invalid config → "
+              << (r.quarantined_path.empty() ? "(failed)" : r.quarantined_path)
+              << " (" << reason << ")\n";
+
+    if (try_path(shell_json_last_good_path(path), ShellJsonLoadSource::last_good))
+    {
+        std::cerr << "wf-shell:json: restored from last-good backup\n";
+        /* Re-materialize primary from last-good so tools see a file */
+        std::string werr;
+        if (!write_file_atomic(path, serialize_shell_json_config(r.cfg), &werr))
+        {
+            std::cerr << "wf-shell:json: could not rewrite primary from last-good: "
+                      << werr << "\n";
+        }
+        return r;
+    }
+
+    /* Quarantine last-good if it exists but is also bad */
+    auto lg = shell_json_last_good_path(path);
+    if (file_exists(lg))
+    {
+        auto ql = quarantine_file(lg, "last-good also failed validation");
+        if (!ql.empty())
+        {
+            std::cerr << "wf-shell:json: quarantined last-good → " << ql << "\n";
+        }
+    }
+
+    /* Baseline */
+    r.cfg = make_baseline_shell_json();
+    r.cfg.path = path;
+    r.cfg.loaded_from_disk = true;
+    std::string berr;
+    if (!save_shell_json_config(path, r.cfg, &berr))
+    {
+        r.ok = false;
+        r.source = ShellJsonLoadSource::baseline;
+        r.error = "all configs invalid and baseline write failed: " + berr;
+        return r;
+    }
+    r.source = ShellJsonLoadSource::baseline;
+    r.ok = true;
+    r.error = "primary and last-good invalid; wrote baseline default";
+    std::cerr << "wf-shell:json: wrote baseline default config to " << path << "\n";
+    return r;
+}
+
 bool save_shell_json_config(const std::string& path, const ShellJsonConfig& cfg,
     std::string *error)
 {
     auto text = serialize_shell_json_config(cfg);
+
+    /* Validate before write */
+    auto vr = validate_shell_json_text(text);
+    if (!vr.ok)
+    {
+        if (error)
+        {
+            *error = "refusing to write invalid JSON: " + vr.summary();
+        }
+        return false;
+    }
+
     std::string werr;
     if (!write_file_atomic(path, text, &werr))
     {
@@ -416,6 +816,34 @@ bool save_shell_json_config(const std::string& path, const ShellJsonConfig& cfg,
             *error = werr.empty() ? ("Could not save settings to \"" + path + "\".") : werr;
         }
         return false;
+    }
+
+    /* Validate after write (re-read) */
+    auto disk = read_file(path);
+    auto vr2 = validate_shell_json_text(disk);
+    if (!vr2.ok)
+    {
+        /* Corrupt write — try restore last-good */
+        auto lg = shell_json_last_good_path(path);
+        if (file_exists(lg))
+        {
+            std::error_code ec;
+            fs::copy_file(lg, path, fs::copy_options::overwrite_existing, ec);
+        }
+        if (error)
+        {
+            *error = "post-write validation failed; restored last-good if available: " +
+                vr2.summary();
+        }
+        return false;
+    }
+
+    /* Promote last working backup */
+    std::string perr;
+    if (!promote_last_good(path, &perr))
+    {
+        /* Soft: save succeeded; backup optional */
+        std::cerr << "wf-shell:json: last-good promote: " << perr << "\n";
     }
     return true;
 }
@@ -472,7 +900,6 @@ bool settings_save_section(const std::string& section,
     const std::map<std::string, std::string>& kv,
     std::string *error)
 {
-    /* First-run: create ~/.config + user config files (seed from package). */
     std::string ensure_err;
     if (!ensure_settings_user_configs(&ensure_err))
     {
@@ -487,11 +914,21 @@ bool settings_save_section(const std::string& section,
 
     auto path = shell_json_config_path();
     ShellJsonConfig cfg;
-    std::string lerr;
-    if (!load_shell_json_config(path, cfg, &lerr))
+    auto loaded = load_shell_json_config_resilient(path);
+    if (loaded.ok)
     {
-        cfg = ShellJsonConfig{};
-        cfg.version = 1;
+        cfg = std::move(loaded.cfg);
+        if (loaded.source == ShellJsonLoadSource::baseline ||
+            loaded.source == ShellJsonLoadSource::last_good)
+        {
+            std::cerr << "wf-shell:settings: loaded JSON from "
+                      << (loaded.source == ShellJsonLoadSource::baseline
+                          ? "baseline" : "last-good")
+                      << "\n";
+        }
+    } else
+    {
+        cfg = make_baseline_shell_json();
         ensure_default_mcp_stub(cfg);
     }
     for (const auto& [k, v] : kv)
@@ -504,7 +941,6 @@ bool settings_save_section(const std::string& section,
         return false;
     }
 
-    /* Dual-write legacy INI until fully retired — must not ignore failures. */
     std::string ini = user_wf_shell_ini_path();
     if (ini.empty())
     {
