@@ -1,5 +1,6 @@
 #include "wf-shell-app.hpp"
 #include "session-env.hpp"
+#include "shell-json-config.hpp"
 #include <glibmm/main.h>
 #include <sys/inotify.h>
 #include <gdk/wayland/gdkwayland.h>
@@ -137,8 +138,30 @@ static void do_reload_css(WayfireShellApp *app)
 /* Reload file and add next inotify watch */
 static void do_reload_config(WayfireShellApp *app)
 {
+    /* 1) Legacy INI (still supported) */
     wf::config::load_configuration_options_from_file(
         app->config, app->get_config_file());
+
+    /* 2) JSON overrides INI (primary going forward) */
+    try
+    {
+        wf_shell::ShellJsonConfig jcfg;
+        std::string jerr;
+        auto jpath = wf_shell::shell_json_config_path();
+        if (wf_shell::load_shell_json_config(jpath, jcfg, &jerr))
+        {
+            std::vector<std::string> warns;
+            wf_shell::apply_shell_json_to_config_manager(jcfg, app->config, &warns);
+            for (const auto& w : warns)
+            {
+                std::cerr << "wf-shell: " << w << "\n";
+            }
+        }
+    } catch (const std::exception& e)
+    {
+        std::cerr << "wf-shell: json config apply failed: " << e.what() << "\n";
+    }
+
     app->on_config_reload();
 }
 
@@ -234,6 +257,16 @@ void WayfireShellApp::on_activate()
     inotify_add_watch(inotify_fd,
         get_config_file().c_str(),
         IN_CLOSE_WRITE);
+    /* Watch JSON config dir (create/modify of config.json) */
+    try
+    {
+        auto jpath = wf_shell::shell_json_config_path();
+        auto jdir  = std::filesystem::path(jpath).parent_path().string();
+        std::filesystem::create_directories(jdir);
+        inotify_add_watch(inotify_fd, jdir.c_str(),
+            IN_CLOSE_WRITE | IN_CREATE | IN_MOVED_TO);
+    } catch (...)
+    {}
     inotify_add_watch(inotify_css_fd,
         get_css_config_dir().c_str(),
         IN_CREATE | IN_MODIFY | IN_DELETE | IN_MOVED_FROM | IN_MOVED_TO | IN_DELETE);

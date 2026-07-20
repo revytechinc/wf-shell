@@ -40,7 +40,8 @@ class WayfireBatteryInfo : public WayfireWidget
     DBusProxy upower_proxy, powerprofile_proxy, display_device;
     std::string power_mode = "";
 
-    bool feat_bat, feat_modes; // the available features when running
+    bool feat_bat = false;   // UPower battery present
+    bool feat_modes = false; // power-profiles-daemon available
     bool setup_dbus_battery();
     bool setup_dbus_power_modes();
 

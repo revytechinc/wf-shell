@@ -1,12 +1,19 @@
 #include <dirent.h>
 #include <sstream>
+#include <sys/stat.h>
+#include <signal.h>
+#include <unistd.h>
 
 #include <cassert>
+#include <cctype>
+#include <cstring>
 #include <giomm.h>
 #include <glibmm/spawn.h>
 #include <iostream>
 #include <cstdlib>
 #include <gtk4-layer-shell.h>
+
+extern char **environ;
 
 #include "menu.hpp"
 #include "gtk-utils.hpp"
@@ -752,6 +759,35 @@ void WfMenuCategoryButton::on_click()
     menu->set_category(category);
 }
 
+/** Log launch diagnostics to stderr and a state-dir file (panel often has no TTY). */
+static void menu_launch_log(const std::string& msg)
+{
+    std::cerr << "wf-panel: " << msg << std::endl;
+    try
+    {
+        const char *state = std::getenv("XDG_STATE_HOME");
+        const char *home  = std::getenv("HOME");
+        std::string path;
+        if (state && state[0])
+        {
+            path = std::string(state) + "/wayfire/menu-launch.log";
+        } else if (home && home[0])
+        {
+            path = std::string(home) + "/.local/state/wayfire/menu-launch.log";
+        } else
+        {
+            return;
+        }
+        std::filesystem::create_directories(std::filesystem::path(path).parent_path());
+        std::ofstream out(path, std::ios::app);
+        if (out)
+        {
+            out << msg << "\n";
+        }
+    } catch (...)
+    {}
+}
+
 /** Inject session/graphics env into Gio launch context — never edit .desktop files. */
 static void inject_launch_env(const Glib::RefPtr<Gio::AppLaunchContext>& ctx)
 {
@@ -771,9 +807,527 @@ static void inject_launch_env(const Glib::RefPtr<Gio::AppLaunchContext>& ctx)
         }
     } catch (const std::exception& e)
     {
-        std::cerr << "wf-panel: launch env inject failed: " << e.what() << "\n";
+        menu_launch_log(std::string("launch env inject failed: ") + e.what());
     } catch (...)
     {}
+}
+
+/**
+ * Build a clean envp for app launch.
+ *
+ * Do NOT dump the full panel environ: when wf-panel is restarted from SSH/agent
+ * tooling it carries TERM=dumb, GROK_*, SSH_*, NO_COLOR, etc. GUI apps inherit
+ * that and can exit or fail to map a window — looks like "click does nothing".
+ *
+ * Start from a allowlist of session keys, then overlay session_env_for_app_launch.
+ * Caller must g_strfreev the result.
+ */
+static char **build_launch_envp()
+{
+    static const char *keep[] = {
+        "HOME", "USER", "LOGNAME", "SHELL", "PATH", "LANG", "LANGUAGE", "LC_ALL",
+        "LC_CTYPE", "LC_MESSAGES", "LC_TIME", "TZ", "XAUTHORITY",
+        "XDG_RUNTIME_DIR", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME",
+        "XDG_STATE_HOME", "XDG_DATA_DIRS", "XDG_CONFIG_DIRS",
+        "XDG_CURRENT_DESKTOP", "XDG_SESSION_TYPE", "XDG_SESSION_DESKTOP",
+        "XDG_SESSION_CLASS", "DESKTOP_SESSION",
+        "DISPLAY", "WAYLAND_DISPLAY", "WAYLAND_SOCKET",
+        "DBUS_SESSION_BUS_ADDRESS", "DBUS_SESSION_BUS_PID",
+        "GDK_BACKEND", "GTK_THEME", "QT_QPA_PLATFORM", "QT_QPA_PLATFORMTHEME",
+        "SDL_VIDEODRIVER", "CLUTTER_BACKEND", "MOZ_ENABLE_WAYLAND",
+        "ELECTRON_OZONE_PLATFORM_HINT", "_JAVA_AWT_WM_NONREPARENTING",
+        "PULSE_SERVER", "PULSE_RUNTIME_PATH", "PULSE_COOKIE",
+        "LIBGL_DRI3_DISABLE", "__GLX_VENDOR_LIBRARY_NAME", "WLR_NO_HARDWARE_CURSORS",
+        "LIBSEAT_BACKEND", "XDG_VTNR", "XDG_SEAT", "BRAVE_PATH", "BRAVE_WRAPPER",
+        nullptr
+    };
+
+    std::map<std::string, std::string> merged;
+    for (int i = 0; keep[i]; ++i)
+    {
+        const char *v = std::getenv(keep[i]);
+        if (v && v[0])
+        {
+            merged[keep[i]] = v;
+        }
+    }
+
+    /* Sensible TERM for anything that looks at it (never "dumb" from agent). */
+    const char *term = std::getenv("TERM");
+    if (!term || !term[0] || std::string(term) == "dumb" ||
+        std::string(term) == "unknown")
+    {
+        merged["TERM"] = "xterm-256color";
+    } else
+    {
+        merged["TERM"] = term;
+    }
+
+    auto overrides = wf_shell::session_env_for_app_launch(nullptr);
+    for (const auto& kv : overrides)
+    {
+        if (!kv.second.empty())
+        {
+            merged[kv.first] = kv.second;
+        }
+    }
+
+    /* Prefer real session toolkit defaults when still unset. */
+    if (!merged.count("GDK_BACKEND") && merged.count("WAYLAND_DISPLAY"))
+    {
+        merged["GDK_BACKEND"] = "wayland";
+    }
+    if (!merged.count("QT_QPA_PLATFORM") && merged.count("WAYLAND_DISPLAY"))
+    {
+        merged["QT_QPA_PLATFORM"] = "wayland";
+    }
+    if (!merged.count("XDG_SESSION_TYPE") && merged.count("WAYLAND_DISPLAY"))
+    {
+        merged["XDG_SESSION_TYPE"] = "wayland";
+    }
+    /* FreeBSD Brave/Chromium port: avoid DRI3 glitches (matches brave-browser wrapper). */
+    if (!merged.count("LIBGL_DRI3_DISABLE"))
+    {
+        merged["LIBGL_DRI3_DISABLE"] = "1";
+    }
+
+    char **envp = g_new0(char *, merged.size() + 1);
+    size_t i = 0;
+    for (const auto& kv : merged)
+    {
+        envp[i++] = g_strdup((kv.first + "=" + kv.second).c_str());
+    }
+    return envp;
+}
+
+/** Drop stale Chromium/Brave SingletonLock when the lock PID is dead. */
+static void clear_stale_chromium_singleton(const std::string& config_sub)
+{
+    const char *home = std::getenv("HOME");
+    if (!home || !home[0])
+    {
+        return;
+    }
+    std::string base = std::string(home) + "/.config/" + config_sub;
+    std::string lock = base + "/SingletonLock";
+    struct stat st{};
+    if (lstat(lock.c_str(), &st) != 0)
+    {
+        return;
+    }
+    char buf[512];
+    ssize_t n = readlink(lock.c_str(), buf, sizeof(buf) - 1);
+    if (n <= 0)
+    {
+        return;
+    }
+    buf[n] = '\0';
+    /* Format: hostname-pid */
+    std::string target(buf);
+    auto dash = target.rfind('-');
+    if (dash == std::string::npos)
+    {
+        return;
+    }
+    pid_t pid = static_cast<pid_t>(std::atoi(target.c_str() + dash + 1));
+    if (pid <= 1)
+    {
+        return;
+    }
+    if (kill(pid, 0) == 0)
+    {
+        return; /* owner still alive */
+    }
+    menu_launch_log("clearing stale singleton for dead pid " + std::to_string(pid) +
+        " in " + config_sub);
+    unlink(lock.c_str());
+    unlink((base + "/SingletonCookie").c_str());
+    /* Socket path is often under /tmp; best-effort leave it */
+}
+
+static void pre_launch_app_cleanup(const Glib::RefPtr<Gio::DesktopAppInfo>& app)
+{
+    if (!app)
+    {
+        return;
+    }
+    std::string exe = app->get_executable();
+    std::string name = app->get_name();
+    std::string low = exe + " " + name;
+    for (char& c : low)
+    {
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    if (low.find("brave") != std::string::npos)
+    {
+        clear_stale_chromium_singleton("BraveSoftware/Brave-Browser");
+    } else if (low.find("chrom") != std::string::npos)
+    {
+        clear_stale_chromium_singleton("chromium");
+        clear_stale_chromium_singleton("google-chrome");
+        clear_stale_chromium_singleton("chromium-browser");
+    }
+}
+
+static void launch_child_setup(gpointer)
+{
+    /* New session so children outlive the panel cleanly. */
+    setsid();
+}
+
+/**
+ * Fallback when Gio::DesktopAppInfo::launch fails or is a no-op: spawn the
+ * desktop Exec line with a full session environment. Never edits .desktop files.
+ */
+static bool spawn_desktop_app_fallback(const Glib::RefPtr<Gio::DesktopAppInfo>& app)
+{
+    if (!app)
+    {
+        return false;
+    }
+    /* Prefer the raw commandline (may contain %u etc.); strip field codes. */
+    std::string cmd = app->get_commandline();
+    if (cmd.empty())
+    {
+        std::string exe = app->get_executable();
+        if (exe.empty())
+        {
+            return false;
+        }
+        cmd = exe;
+    }
+    /* Desktop entry field codes: strip for bare launch with no files/URIs. */
+    static const char *codes[] = {
+        "%f", "%F", "%u", "%U", "%i", "%c", "%k", "%d", "%D", "%n", "%N", "%v", "%m", nullptr
+    };
+    for (int i = 0; codes[i]; ++i)
+    {
+        for (size_t pos = 0; (pos = cmd.find(codes[i], pos)) != std::string::npos;)
+        {
+            cmd.erase(pos, std::strlen(codes[i]));
+        }
+    }
+    /* Collapse whitespace */
+    std::string cleaned;
+    bool space = false;
+    for (char c : cmd)
+    {
+        if (std::isspace(static_cast<unsigned char>(c)))
+        {
+            space = true;
+            continue;
+        }
+        if (space && !cleaned.empty())
+        {
+            cleaned.push_back(' ');
+        }
+        space = false;
+        cleaned.push_back(c);
+    }
+    cmd = cleaned;
+    if (cmd.empty())
+    {
+        return false;
+    }
+
+    /*
+     * Chromium/Brave FreeBSD notes (spawn-time only — never edit .desktop):
+     *
+     * - The brave-browser wrapper adds --test-type (to hide the yellow
+     *   "unsupported flag" banner). That also breaks profile picker / window
+     *   creation ("No browser window found for startup"). Call the binary
+     *   directly without --test-type.
+     * - --no-sandbox --no-zygote are required on FreeBSD (no Linux user
+     *   namespaces). The yellow "no sandbox" banner is expected and harmless.
+     * - DRM/Wayland needs --render-node-override or ozone x11 via XWayland.
+     */
+    {
+        std::string low = cmd;
+        for (char& c : low)
+        {
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        }
+        const bool is_brave =
+            low.find("brave") != std::string::npos;
+        const bool is_chromium_family =
+            is_brave ||
+            low.find("chrom") != std::string::npos ||
+            low.find("/chrome") != std::string::npos;
+
+        if (is_brave)
+        {
+            /*
+             * Preserve any trailing URL/args after the executable; rebuild the
+             * front of the command without the port wrapper's --test-type.
+             */
+            std::string args;
+            auto sp = cmd.find(' ');
+            if (sp != std::string::npos)
+            {
+                args = cmd.substr(sp); /* includes leading space */
+            }
+            /* Drop flags we re-add or that break UI */
+            auto strip_flag = [] (std::string& s, const char *flag)
+            {
+                for (;;)
+                {
+                    auto p = s.find(flag);
+                    if (p == std::string::npos)
+                    {
+                        break;
+                    }
+                    auto e = p + std::strlen(flag);
+                    while (e < s.size() && s[e] != ' ')
+                    {
+                        /* consume =value if present without space */
+                        if (s[e] == '=')
+                        {
+                            while (e < s.size() && s[e] != ' ')
+                            {
+                                ++e;
+                            }
+                            break;
+                        }
+                        ++e;
+                    }
+                    s.erase(p, e - p);
+                }
+            };
+            strip_flag(args, "--test-type");
+            strip_flag(args, "--v=0");
+            strip_flag(args, "--no-sandbox");
+            strip_flag(args, "--no-zygote");
+
+            std::string bin = "/usr/local/share/brave/brave";
+            struct stat st{};
+            if (stat(bin.c_str(), &st) != 0)
+            {
+                bin = "brave";
+            }
+            cmd = bin + " --no-sandbox --no-zygote" + args;
+            menu_launch_log("brave: direct binary (no --test-type; --no-sandbox required on FreeBSD)");
+        }
+
+        if (is_chromium_family)
+        {
+            low = cmd;
+            for (char& c : low)
+            {
+                c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            }
+            const bool has_ozone = low.find("ozone-platform") != std::string::npos;
+            const bool has_render = low.find("render-node-override") != std::string::npos;
+            std::string extra;
+            if (!has_ozone)
+            {
+                /*
+                 * Prefer XWayland for Brave profile UI stability; Chrome can
+                 * use wayland+render-node. DISPLAY is always injected.
+                 */
+                if (is_brave && std::getenv("DISPLAY") && std::getenv("DISPLAY")[0])
+                {
+                    extra += " --ozone-platform=x11";
+                } else if (std::getenv("WAYLAND_DISPLAY") &&
+                    std::getenv("WAYLAND_DISPLAY")[0])
+                {
+                    extra += " --ozone-platform=wayland";
+                } else if (std::getenv("DISPLAY") && std::getenv("DISPLAY")[0])
+                {
+                    extra += " --ozone-platform=x11";
+                }
+            }
+            if (!has_render && low.find("ozone-platform=x11") == std::string::npos &&
+                extra.find("ozone-platform=x11") == std::string::npos)
+            {
+                struct stat st{};
+                if (stat("/dev/dri/renderD128", &st) == 0)
+                {
+                    extra += " --render-node-override=/dev/dri/renderD128";
+                }
+            }
+            if (!extra.empty())
+            {
+                cmd += extra;
+                menu_launch_log("chromium flags:" + extra);
+            }
+        }
+    }
+
+    /* Terminal=true desktop entries need a terminal emulator. */
+    bool needs_term = false;
+    {
+        auto path = app->get_filename();
+        if (!path.empty())
+        {
+            GKeyFile *kf = g_key_file_new();
+            GError *kerr = nullptr;
+            if (g_key_file_load_from_file(kf, path.c_str(), G_KEY_FILE_NONE, &kerr))
+            {
+                needs_term = g_key_file_get_boolean(kf, "Desktop Entry", "Terminal", nullptr);
+            }
+            g_clear_error(&kerr);
+            g_key_file_free(kf);
+        }
+    }
+    if (needs_term)
+    {
+        const char *terms[] = {
+            "alacritty", "kitty", "xfce4-terminal", "gnome-terminal",
+            "kgx", "xterm", nullptr
+        };
+        std::string wrapper;
+        for (int i = 0; terms[i]; ++i)
+        {
+            gchar *found = g_find_program_in_path(terms[i]);
+            if (!found)
+            {
+                continue;
+            }
+            g_free(found);
+            if (std::string(terms[i]) == "alacritty" ||
+                std::string(terms[i]) == "kitty" ||
+                std::string(terms[i]) == "xterm" ||
+                std::string(terms[i]) == "xfce4-terminal")
+            {
+                wrapper = std::string(terms[i]) + " -e " + cmd;
+            } else
+            {
+                wrapper = std::string(terms[i]) + " -- " + cmd;
+            }
+            break;
+        }
+        if (wrapper.empty())
+        {
+            menu_launch_log("no terminal emulator found for " + app->get_name());
+            return false;
+        }
+        cmd = wrapper;
+    }
+
+    menu_launch_log("spawn: " + app->get_name() + " → " + cmd);
+
+    char **envp = nullptr;
+    try
+    {
+        envp = build_launch_envp();
+    } catch (const std::exception& e)
+    {
+        menu_launch_log(std::string("build_launch_envp failed: ") + e.what());
+        return false;
+    }
+
+    GError *err = nullptr;
+    gint argc = 0;
+    gchar **argv = nullptr;
+    if (!g_shell_parse_argv(cmd.c_str(), &argc, &argv, &err))
+    {
+        menu_launch_log(std::string("parse Exec failed: ") +
+            (err ? err->message : "unknown"));
+        g_clear_error(&err);
+        g_strfreev(envp);
+        return false;
+    }
+
+    /* Log a short env fingerprint so we can debug display/session issues. */
+    {
+        auto get = [&] (const char *k) -> std::string {
+            for (char **e = envp; e && *e; ++e)
+            {
+                std::string s(*e);
+                auto eq = s.find('=');
+                if (eq != std::string::npos && s.substr(0, eq) == k)
+                {
+                    return s.substr(eq + 1);
+                }
+            }
+            return {};
+        };
+        menu_launch_log("spawn env DISPLAY=" + get("DISPLAY") +
+            " WAYLAND_DISPLAY=" + get("WAYLAND_DISPLAY") +
+            " XDG_RUNTIME_DIR=" + get("XDG_RUNTIME_DIR") +
+            " DBUS=" + (get("DBUS_SESSION_BUS_ADDRESS").empty() ? "unset" : "set") +
+            " TERM=" + get("TERM"));
+    }
+
+    GPid child_pid = 0;
+    gboolean ok = g_spawn_async(nullptr, argv, envp,
+        (GSpawnFlags)(G_SPAWN_SEARCH_PATH | G_SPAWN_SEARCH_PATH_FROM_ENVP |
+            G_SPAWN_CLOEXEC_PIPES | G_SPAWN_DO_NOT_REAP_CHILD),
+        launch_child_setup, nullptr, &child_pid, &err);
+    g_strfreev(argv);
+    g_strfreev(envp);
+    if (!ok)
+    {
+        menu_launch_log(std::string("spawn failed for ") + app->get_name() + ": " +
+            (err ? err->message : "unknown"));
+        g_clear_error(&err);
+        return false;
+    }
+    menu_launch_log("spawned pid=" + std::to_string(static_cast<long>(child_pid)) +
+        " for " + app->get_name());
+    /* Reap asynchronously so we don't leave zombies; ignore exit status. */
+    g_child_watch_add(child_pid, [] (GPid pid, gint, gpointer) {
+        g_spawn_close_pid(pid);
+    }, nullptr);
+    return true;
+}
+
+/**
+ * Launch desktop app with a clean session env (spawn primary).
+ * Gio is secondary: it merges panel environ and can "succeed" while the child
+ * dies or hands off to a dead single-instance owner.
+ */
+static bool launch_desktop_app(const Glib::RefPtr<Gio::DesktopAppInfo>& app)
+{
+    if (!app)
+    {
+        return false;
+    }
+    menu_launch_log(std::string("launch: ") + app->get_name() +
+        " exec=" + app->get_executable());
+
+    try
+    {
+        (void)wf_shell::session_env_for_app_launch(nullptr);
+    } catch (...)
+    {}
+
+    pre_launch_app_cleanup(app);
+
+    /* Primary: clean-env spawn (reliable on FreeBSD + agent-restarted panel). */
+    if (spawn_desktop_app_fallback(app))
+    {
+        return true;
+    }
+
+    menu_launch_log("spawn path failed; trying Gio launch");
+    auto display = Gdk::Display::get_default();
+    Glib::RefPtr<Gio::AppLaunchContext> ctx;
+    if (display)
+    {
+        ctx = display->get_app_launch_context();
+    }
+    if (!ctx)
+    {
+        ctx = Gio::AppLaunchContext::create();
+    }
+    inject_launch_env(ctx);
+
+    bool ok = false;
+    try
+    {
+        ok = app->launch(std::vector<Glib::RefPtr<Gio::File>>(), ctx);
+    } catch (const std::exception& e)
+    {
+        menu_launch_log(std::string("Gio launch exception: ") + e.what());
+        ok = false;
+    }
+
+    if (!ok)
+    {
+        menu_launch_log(std::string("FAILED to launch ") + app->get_name());
+    }
+    return ok;
 }
 
 WfMenuItem::WfMenuItem(WayfireMenu *_menu, Glib::RefPtr<Gio::DesktopAppInfo> app) :
@@ -791,44 +1345,54 @@ WfMenuItem::WfMenuItem(WayfireMenu *_menu, Glib::RefPtr<Gio::DesktopAppInfo> app
 
     box.set_expand(false);
     box.add_css_class("app-button");
+    button.add_css_class("flat");
+    button.add_css_class("app-button");
 
-    auto left_click_g  = Gtk::GestureClick::create();
-    auto right_click_g = Gtk::GestureClick::create();
-    auto long_press_g  = Gtk::GestureLongPress::create();
-    left_click_g->set_button(1);
-    right_click_g->set_button(3);
-    long_press_g->set_touch_only(true);
-
-    signals.push_back(left_click_g->signal_pressed().connect([=] (int, double, double)
-    {
-        left_click_g->set_state(Gtk::EventSequenceState::CLAIMED);
-    }));
-    signals.push_back(left_click_g->signal_released().connect(
-        [=] (int c, double x, double y)
+    /*
+     * Primary activation must always launch the app.
+     *
+     * Grid mode previously made apps with Desktop Actions a MenuButton as the
+     * sole child — left click only opened the action popup and never ran Exec.
+     * Gestures on an inner box inside Button/MenuButton were also eaten by GTK4
+     * so many apps appeared to do nothing.
+     *
+     * Fix: always use Gtk::Button + signal_clicked for launch; keep actions on
+     * a separate MenuButton (list) or right-click / long-press (grid).
+     */
+    signals.push_back(button.signal_clicked().connect([this] ()
     {
         on_click();
     }));
-    signals.push_back(right_click_g->signal_pressed().connect([=] (int, double, double)
+
+    auto right_click_g = Gtk::GestureClick::create();
+    auto long_press_g  = Gtk::GestureLongPress::create();
+    right_click_g->set_button(3);
+    long_press_g->set_touch_only(true);
+
+    auto open_extras = [this] ()
+    {
+        if (has_actions)
+        {
+            extra_actions_button.popup();
+        }
+    };
+
+    signals.push_back(right_click_g->signal_pressed().connect(
+        [=] (int, double, double)
     {
         right_click_g->set_state(Gtk::EventSequenceState::CLAIMED);
-    }));
-    signals.push_back(right_click_g->signal_released().connect(
-        [=] (int c, double x, double y)
-    {
-        extra_actions_button.activate();
+        open_extras();
     }));
     signals.push_back(long_press_g->signal_pressed().connect(
-        [=] (double x, double y)
+        [=] (double, double)
     {
-        extra_actions_button.activate();
         long_press_g->set_state(Gtk::EventSequenceState::CLAIMED);
-        left_click_g->set_state(Gtk::EventSequenceState::DENIED);
+        open_extras();
     }));
 
     if (menu->menu_list)
     {
         label.set_hexpand(true);
-        label.set_halign(Gtk::Align::FILL);
         label.set_halign(Gtk::Align::START);
         label.set_xalign(0.0);
         list_item.set_hexpand(true);
@@ -837,50 +1401,42 @@ WfMenuItem::WfMenuItem(WayfireMenu *_menu, Glib::RefPtr<Gio::DesktopAppInfo> app
         box.set_orientation(Gtk::Orientation::HORIZONTAL);
         extra_actions_button.set_halign(Gtk::Align::END);
         extra_actions_button.set_icon_name("arrow-right");
-        button.add_css_class("flat");
 
         list_item.append(image);
         list_item.append(label);
         button.set_child(list_item);
 
-        list_item.add_controller(left_click_g);
-        list_item.add_controller(right_click_g);
-        list_item.add_controller(long_press_g);
-
         box.append(button);
         box.append(extra_actions_button);
-
+        box.add_controller(right_click_g);
+        box.add_controller(long_press_g);
         set_child(box);
     } else
     {
+        /* Grid: always launch via button; never wrap the tile in MenuButton. */
         label.set_max_width_chars(0);
         box.set_orientation(Gtk::Orientation::VERTICAL);
         box.append(image);
-        if (app->list_actions().size() == 0)
-        {
-            button.set_child(box);
-            button.add_css_class("flat");
-            set_child(button);
-        } else
-        {
-            extra_actions_button.set_child(box);
-            extra_actions_button.add_css_class("flat");
-            set_child(extra_actions_button);
-        }
-
-        box.add_controller(left_click_g);
-        box.add_controller(right_click_g);
-        box.add_controller(long_press_g);
-
         box.append(label);
+        button.set_child(box);
+        button.add_controller(right_click_g);
+        button.add_controller(long_press_g);
+
+        /* Outer list_item holds the launch button (+ optional actions chevron). */
+        list_item.set_orientation(Gtk::Orientation::VERTICAL);
+        list_item.append(button);
+        list_item.append(extra_actions_button);
+        set_child(list_item);
     }
 
     m_menu  = Gio::Menu::create();
     actions = Gio::SimpleActionGroup::create();
     extra_actions_button.hide();
+    has_actions = false;
 
     for (auto action : app->list_actions())
     {
+        has_actions = true;
         std::stringstream ss;
         ss << "app." << action;
         std::string full_action = ss.str();
@@ -889,24 +1445,35 @@ WfMenuItem::WfMenuItem(WayfireMenu *_menu, Glib::RefPtr<Gio::DesktopAppInfo> app
 
         auto action_obj = Gio::SimpleAction::create(action);
         signals.push_back(action_obj->signal_activate().connect(
-            [this, action] (Glib::VariantBase vb)
+            [this, action] (Glib::VariantBase)
         {
+            menu_launch_log(std::string("launch_action: ") + app_info->get_name() +
+                " action=" + action);
             auto ctx = Gdk::Display::get_default()->get_app_launch_context();
             inject_launch_env(ctx);
-            app_info->launch_action(action, ctx);
+            try
+            {
+                app_info->launch_action(action, ctx);
+            } catch (const std::exception& e)
+            {
+                menu_launch_log(std::string("launch_action failed: ") + e.what());
+            }
             menu->hide_menu();
         }));
         m_menu->append_item(menu_item);
         actions->add_action(action_obj);
 
-        extra_actions_button.show();
+        if (menu->menu_list)
+        {
+            extra_actions_button.show();
+        }
     }
 
     extra_actions_button.set_menu_model(m_menu);
     extra_actions_button.insert_action_group("app", actions);
 
     set_has_tooltip();
-    signals.push_back(signal_query_tooltip().connect([=] (int x, int y, bool key_mode,
+    signals.push_back(signal_query_tooltip().connect([=] (int, int, bool,
                                                           const std::shared_ptr<Gtk::Tooltip>& tooltip) ->
         bool
     {
@@ -925,25 +1492,19 @@ WfMenuItem::~WfMenuItem()
 
 void WfMenuItem::on_click()
 {
-    std::cerr << "DEBUG: WfMenuItem::on_click() called, app=" << app_info->get_name() << std::endl;
-    /*
-     * Inject session + graphics env into the Gio launch context (not .desktop
-     * files). Required for JVM apps (IntelliJ) that need DISPLAY/XWayland.
-     */
-    auto ctx = Gdk::Display::get_default()->get_app_launch_context();
-    inject_launch_env(ctx);
-    try
+    /* Button clicked + FlowBox child-activated can both fire for one click. */
+    if (launch_in_progress)
     {
-        bool ok = app_info->launch(std::vector<Glib::RefPtr<Gio::File>>(), ctx);
-        if (!ok)
-        {
-            std::cerr << "ERROR: launch returned false for " << app_info->get_name() << std::endl;
-        }
-    } catch (std::exception& e)
-    {
-        std::cerr << "ERROR: launch failed: " << e.what() << std::endl;
+        return;
     }
+    launch_in_progress = true;
+    launch_desktop_app(app_info);
     menu->hide_menu();
+    Glib::signal_timeout().connect([this] ()
+    {
+        launch_in_progress = false;
+        return false; /* one-shot */
+    }, 750);
 }
 
 void WfMenuItem::set_search_value(uint32_t value)
@@ -1356,6 +1917,16 @@ void WayfireMenu::setup_popover_layout()
     flowbox.set_vexpand(true);
     flowbox.set_hexpand(true);
 
+    /* Belt-and-suspenders: keyboard / FlowBox activation also launches. */
+    signals.push_back(flowbox.signal_child_activated().connect(
+        [] (Gtk::FlowBoxChild *child)
+    {
+        if (auto *item = dynamic_cast<WfMenuItem*>(child))
+        {
+            item->on_click();
+        }
+    }));
+
     flowbox_container.append(flowbox);
     app_scrolled_window.set_child(flowbox_container);
     app_scrolled_window.add_css_class("app-list-scroll");
@@ -1753,81 +2324,26 @@ void WayfireMenu::init(Gtk::Box *container)
     box_bottom.set_hexpand(true);
     box_bottom.set_halign(Gtk::Align::FILL);
 
-    /* Theme picker (left): current theme listed first in the dropdown. */
-    auto *theme_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
-    theme_box->set_margin_start(15);
-    theme_box->set_halign(Gtk::Align::START);
+    /* Settings button (left) — themes/display/etc. live in wf-settings. */
+    auto *settings_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
+    settings_box->set_margin_start(15);
+    settings_box->set_halign(Gtk::Align::START);
 
-    theme_lbl.set_text("Theme:");
-    theme_lbl.add_css_class("dim-label");
-    theme_lbl.set_valign(Gtk::Align::CENTER);
-
-    std::string current_css;
+    settings_button.set_label("Settings");
+    settings_button.add_css_class("flat");
+    settings_button.set_tooltip_text("Desktop and panel settings");
     try
     {
-        current_css = static_cast<std::string>(WfOption<std::string>{"panel/css_path"});
+        settings_image.set_from_icon_name("preferences-system");
+        settings_button.set_child(settings_image);
+        /* Keep accessible name */
+        settings_button.set_tooltip_text("Settings");
     } catch (...)
-    {
-        current_css = get_ini_css_path();
-    }
-    if (current_css.empty())
-    {
-        current_css = get_ini_css_path();
-    }
-    std::string current_id = theme_id_from_css_path(current_css);
-
-    auto themes = discover_themes();
-    std::vector<std::pair<std::string, std::string>> theme_items;
-    /* default first among non-current; current will be hoisted by fill helper */
-    theme_items.emplace_back("default", "Default Theme");
-    /* Modern then retro, alpha within era */
-    std::vector<ThemeEntry> modern, retro, other;
-    for (auto& kv : themes)
-    {
-        if (kv.first == "default")
-        {
-            continue;
-        }
-        if (kv.second.era == "modern")
-        {
-            modern.push_back(kv.second);
-        } else if (kv.second.era == "retro")
-        {
-            retro.push_back(kv.second);
-        } else
-        {
-            other.push_back(kv.second);
-        }
-    }
-    auto by_name = [] (const ThemeEntry& a, const ThemeEntry& b) {
-        return a.name < b.name;
-    };
-    std::sort(modern.begin(), modern.end(), by_name);
-    std::sort(retro.begin(), retro.end(), by_name);
-    std::sort(other.begin(), other.end(), by_name);
-    for (auto& t : modern)
-    {
-        theme_items.emplace_back(t.id, t.name);
-    }
-    for (auto& t : other)
-    {
-        theme_items.emplace_back(t.id, t.name);
-    }
-    for (auto& t : retro)
-    {
-        theme_items.emplace_back(t.id, t.name);
-    }
-
-    fill_combo_current_first(theme_combo, theme_items, current_id);
-    theme_combo.set_valign(Gtk::Align::CENTER);
-    theme_combo.set_hexpand(false);
-    signals.push_back(theme_combo.signal_changed().connect(
-        sigc::mem_fun(*this, &WayfireMenu::on_theme_changed)));
-
-    theme_box->append(theme_lbl);
-    theme_box->append(theme_combo);
-    theme_box->set_hexpand(false);
-    box_bottom.append(*theme_box);
+    {}
+    signals.push_back(settings_button.signal_clicked().connect(
+        sigc::mem_fun(*this, &WayfireMenu::on_settings_clicked)));
+    settings_box->append(settings_button);
+    box_bottom.append(*settings_box);
 
     /* Spacer keeps logout pinned to the trailing edge (always in view). */
     auto *spacer = Gtk::make_managed<Gtk::Box>();
@@ -1944,114 +2460,36 @@ WayfireMenu::~WayfireMenu()
 
 
 
-void WayfireMenu::on_theme_changed()
+void WayfireMenu::on_settings_clicked()
 {
-    if (filling_theme_combo)
-    {
-        return;
-    }
-
-    std::string selected = theme_combo.get_active_id();
-    if (selected.empty())
-    {
-        return;
-    }
-    std::string target_path = resolve_theme_path(selected);
-
-    /*
-     * Seamless switch (must not crash the panel):
-     *  1) update in-memory option so on_css_reload sees the new path immediately
-     *  2) reload CSS only (no full widget config reload on this path)
-     *  3) defer ini write so inotify config reload cannot re-enter mid-handler
-     *  4) rebuild combo so the active theme sits at the top of the list
-     */
+    /* Theme/display/etc. live in wf-settings (GTK4). Launch with session env. */
+    hide_menu();
     try
     {
-        auto opt = WayfireShellApp::get().config.get_option<std::string>("panel/css_path");
-        if (opt)
-        {
-            opt->set_value(target_path);
-        }
-    } catch (...)
-    {
-        /* option may be missing in some configs */
-    }
-
-    try
-    {
-        WayfireShellApp::get().on_css_reload();
-    } catch (...)
-    {
-        std::cerr << "wf-panel: theme CSS reload failed" << std::endl;
-    }
-
-    /* Persist after the current event loop turn — avoids nested config reload
-     * while GTK is still processing the combo change. */
-    Glib::signal_idle().connect_once([path = target_path] ()
-    {
-        try
-        {
-            update_ini_css_path(path);
-        } catch (...)
-        {}
-    });
-
-    /* Keep current selection at top of the dropdown. */
-    try
-    {
-        auto themes = discover_themes();
-        std::vector<std::pair<std::string, std::string>> theme_items;
-        theme_items.emplace_back("default", "Default Theme");
-        std::vector<ThemeEntry> modern, retro, other;
-        for (auto& kv : themes)
-        {
-            if (kv.first == "default")
-            {
-                continue;
-            }
-            if (kv.second.era == "modern")
-            {
-                modern.push_back(kv.second);
-            } else if (kv.second.era == "retro")
-            {
-                retro.push_back(kv.second);
-            } else
-            {
-                other.push_back(kv.second);
-            }
-        }
-        auto by_name = [] (const ThemeEntry& a, const ThemeEntry& b) {
-            return a.name < b.name;
-        };
-        std::sort(modern.begin(), modern.end(), by_name);
-        std::sort(retro.begin(), retro.end(), by_name);
-        std::sort(other.begin(), other.end(), by_name);
-        for (auto& t : modern)
-        {
-            theme_items.emplace_back(t.id, t.name);
-        }
-        for (auto& t : other)
-        {
-            theme_items.emplace_back(t.id, t.name);
-        }
-        for (auto& t : retro)
-        {
-            theme_items.emplace_back(t.id, t.name);
-        }
-
-        /* Block signal while reordering so we do not recurse. */
-        filling_theme_combo = true;
-        fill_combo_current_first(theme_combo, theme_items, selected);
-        filling_theme_combo = false;
-    } catch (...)
-    {
-        filling_theme_combo = false;
-    }
-
-    /* Menu button mark always tracks the active theme pack. */
-    try
-    {
-        update_icon();
+        (void)wf_shell::session_env_for_app_launch(nullptr);
     } catch (...)
     {}
+    GError *err = nullptr;
+    /* Prefer installed binary; fall back to PATH. */
+    const char *candidates[] = {
+        "wf-settings",
+        "/home/mlapointe/.local/bin/wf-settings",
+        nullptr
+    };
+    bool ok = false;
+    for (int i = 0; candidates[i]; ++i)
+    {
+        g_clear_error(&err);
+        if (g_spawn_command_line_async(candidates[i], &err))
+        {
+            ok = true;
+            break;
+        }
+    }
+    if (!ok)
+    {
+        std::cerr << "wf-panel: failed to launch wf-settings: "
+                  << (err ? err->message : "not found") << std::endl;
+        g_clear_error(&err);
+    }
 }

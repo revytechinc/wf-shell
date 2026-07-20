@@ -4,3 +4,8 @@ build
 
 __pycache__/
 *.pyc
+
+# core dumps
+*.core
+panel_output.log
+nano.*.save

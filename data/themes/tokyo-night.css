@@ -1051,3 +1051,138 @@ passwordentry:focus text {
 .popover .dim-label {
     color: #c0caf5;
 }
+
+/* ── Settings app (wf-settings) — full chrome, not just window {} ──────── */
+window.wf-settings,
+.wf-settings {
+    background-color: rgba(26, 27, 38, 0.98);
+    color: #c0caf5;
+}
+
+.wf-settings .wf-settings-toolbar {
+    background-color: #24283b;
+    background: #24283b;
+    color: #7aa2f7;
+    border-bottom: 2px solid #7aa2f7;
+}
+
+.wf-settings .wf-settings-toolbar label {
+    color: #7aa2f7;
+    font-weight: bold;
+}
+
+.wf-settings .wf-settings-sidebar,
+.wf-settings .wf-settings-sidebar > scrolledwindow,
+.wf-settings .wf-settings-sidebar > scrolledwindow > viewport,
+.wf-settings .wf-settings-sidebar > scrolledwindow > undershoot,
+.wf-settings .wf-settings-sidebar > scrolledwindow > overshoot {
+    background-color: #24283b;
+    background: #24283b;
+    color: #7aa2f7;
+    border: none;
+    box-shadow: none;
+}
+
+.wf-settings .wf-settings-sidebar {
+    border-right: 2px solid #7aa2f7;
+}
+
+.wf-settings list.navigation-sidebar,
+.wf-settings .wf-settings-sidebar list,
+.wf-settings .wf-settings-sidebar list.navigation-sidebar {
+    background-color: transparent;
+    background: transparent;
+    color: #7aa2f7;
+    border: none;
+    box-shadow: none;
+}
+
+.wf-settings list.navigation-sidebar > row,
+.wf-settings .wf-settings-sidebar list > row {
+    background-color: transparent;
+    background: transparent;
+    color: #7aa2f7;
+    border-radius: 0;
+    margin: 0;
+    padding: 0;
+    border: none;
+    outline: none;
+    box-shadow: none;
+}
+
+.wf-settings list.navigation-sidebar > row > *,
+.wf-settings .wf-settings-sidebar list > row > * {
+    background: transparent;
+}
+
+.wf-settings list.navigation-sidebar > row label,
+.wf-settings .wf-settings-sidebar list > row label {
+    color: #7aa2f7;
+}
+
+.wf-settings list.navigation-sidebar > row:hover,
+.wf-settings .wf-settings-sidebar list > row:hover {
+    background-color: #7aa2f7;
+    background: #7aa2f7;
+    color: #1a1b26;
+}
+
+.wf-settings list.navigation-sidebar > row:hover label,
+.wf-settings .wf-settings-sidebar list > row:hover label {
+    color: #1a1b26;
+}
+
+.wf-settings list.navigation-sidebar > row:selected,
+.wf-settings list.navigation-sidebar > row:selected:hover,
+.wf-settings list.navigation-sidebar > row:selected:focus,
+.wf-settings .wf-settings-sidebar list > row:selected,
+.wf-settings .wf-settings-sidebar list > row:selected:hover {
+    background-color: #7aa2f7;
+    background: #7aa2f7;
+    color: #1a1b26;
+    outline: none;
+    box-shadow: none;
+}
+
+.wf-settings list.navigation-sidebar > row:selected label,
+.wf-settings list.navigation-sidebar > row:selected:hover label,
+.wf-settings .wf-settings-sidebar list > row:selected label {
+    color: #1a1b26;
+    font-weight: bold;
+}
+
+.wf-settings .wf-settings-sidebar searchentry,
+.wf-settings .wf-settings-sidebar entry {
+    background-color: #24283b;
+    color: #c0caf5;
+    border: 1px solid #7aa2f7;
+    border-radius: 0;
+    margin: 4px 8px;
+}
+
+.wf-settings .wf-settings-content,
+.wf-settings .wf-settings-content > *,
+.wf-settings .wf-settings-content scrolledwindow,
+.wf-settings .wf-settings-content scrolledwindow > viewport {
+    background-color: rgba(26, 27, 38, 0.98);
+    background: rgba(26, 27, 38, 0.98);
+    color: #c0caf5;
+}
+
+.wf-settings .dim-label {
+    color: #a9b1d6;
+    opacity: 1;
+}
+
+.wf-settings frame {
+    border: 1px solid #7aa2f7;
+    border-radius: 0;
+    background-color: rgba(36, 40, 59, 0.95);
+    color: #c0caf5;
+}
+
+.wf-settings .wf-settings-status {
+    background-color: #24283b;
+    color: #7aa2f7;
+    border-top: 1px solid #7aa2f7;
+}

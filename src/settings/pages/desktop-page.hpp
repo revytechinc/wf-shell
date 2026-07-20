@@ -1,0 +1,39 @@
+#pragma once
+
+#include <gtkmm.h>
+#include <string>
+#include <vector>
+
+namespace wf_settings
+{
+
+/** Desktop: workspaces + wallpaper in plain language. */
+class DesktopPage : public Gtk::Box
+{
+  public:
+    DesktopPage();
+    void refresh();
+    void set_status_target(Gtk::Label *status_label);
+
+  private:
+    void on_apply();
+    void on_browse();
+    void update_preview_hint();
+    std::string wayfire_ini() const;
+    std::string shell_ini() const;
+
+    Gtk::SpinButton *vwidth = nullptr;
+    Gtk::SpinButton *vheight = nullptr;
+    Gtk::Label *ws_summary = nullptr;
+    Gtk::Entry *bg_image = nullptr;
+    Gtk::DropDown *bg_fill = nullptr;
+    Gtk::CheckButton *bg_random = nullptr;
+    Gtk::Button *browse_btn = nullptr;
+    Gtk::Button *apply_btn = nullptr;
+    Gtk::Label *status = nullptr;
+    Gtk::Label *fill_hint = nullptr;
+
+    std::vector<std::string> fill_values; /* parallel to dropdown labels */
+};
+
+} // namespace wf_settings

@@ -93,6 +93,7 @@ class WfMenuItem : public Gtk::FlowBoxChild
     std::vector<sigc::connection> signals;
 
     bool has_actions = false;
+    bool launch_in_progress = false;
     uint32_t search_value = 0;
 
     AppInfo app_info;
@@ -166,10 +167,9 @@ class WayfireMenu : public WayfireWidget
     Gtk::FlowBox flowbox;
     Gtk::Button logout_button;
     Gtk::Image logout_image;
-    Gtk::ComboBoxText theme_combo;
-    Gtk::Label theme_lbl;
+    Gtk::Button settings_button;
+    Gtk::Image settings_image;
     Gtk::ScrolledWindow app_scrolled_window, category_scrolled_window;
-    bool filling_theme_combo = false;
 
   private:
     std::shared_ptr<WfMenuLayout> layout;
@@ -194,7 +194,7 @@ class WayfireMenu : public WayfireWidget
     bool on_sort(Gtk::FlowBoxChild*, Gtk::FlowBoxChild*);
     bool on_filter(Gtk::FlowBoxChild *child);
     void on_search_changed();
-    void on_theme_changed();
+    void on_settings_clicked();
     void on_popover_shown();
 
     /* loaded_apps is a list of the already-opened applications + their execs,

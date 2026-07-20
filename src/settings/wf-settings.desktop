@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Settings
+Comment=Desktop, display, and panel settings
+Exec=wf-settings
+Icon=preferences-system
+Type=Application
+Categories=Settings;DesktopSettings;Utility;
+StartupNotify=true
+Terminal=false

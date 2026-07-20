@@ -1,5 +1,6 @@
 gtest_dep = dependency('gtest_main')
 gtkmm_dep = dependency('gtkmm-4.0')
+libxml2_dep = dependency('libxml-2.0')
 
 # Headers live in src/util; add that to the include path for tests.
 test_includes = include_directories('../src/util')
@@ -73,6 +74,55 @@ test(
     'session-env-test',
     test_exec_session_env,
     suite: ['unit', 'session-env'],
+)
+
+test_exec_display = executable(
+    'display-config-test',
+    'display-config-test.cpp',
+    dependencies: [gtest_dep, libutil, json],
+    include_directories: test_includes,
+    link_with: util,
+)
+
+test(
+    'display-config-test',
+    test_exec_display,
+    suite: ['unit', 'display'],
+)
+
+test_exec_ini = executable(
+    'ini-file-test',
+    'ini-file-test.cpp',
+    dependencies: [gtest_dep, libutil],
+    include_directories: test_includes,
+    link_with: util,
+)
+
+test(
+    'ini-file-test',
+    test_exec_ini,
+    suite: ['unit', 'config'],
+)
+
+# ConfigBackend dirty-save safety (never full-dump wayfire.ini)
+test_exec_cfg_backend = executable(
+    'config-backend-test',
+    'config-backend-test.cpp',
+    '../src/settings/config-backend.cpp',
+    dependencies: [gtest_dep, libutil, wfconfig, json, libxml2_dep],
+    include_directories: [
+        test_includes,
+        include_directories('../src/settings'),
+    ],
+    cpp_args: [
+        '-DMETADATA_DIR="@0@"'.format(metadata_dir),
+    ],
+)
+
+test(
+    'config-backend-test',
+    test_exec_cfg_backend,
+    suite: ['unit', 'config', 'fault-tolerance'],
 )
 
 # Docs / config red-green (python)

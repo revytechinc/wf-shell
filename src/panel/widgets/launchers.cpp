@@ -1,4 +1,7 @@
 #include "launchers.hpp"
+#include <cstring>
+#include <iostream>
+#include <glib.h>
 #include "session-env.hpp"
 
 #include <giomm/file.h>
@@ -77,34 +80,78 @@ void WfLauncherButton::update_icon()
 
 void WfLauncherButton::launch()
 {
-    if (app_info)
+    if (!app_info)
     {
-        std::cerr << "DEBUG: WfLauncherButton::launch() called, app=" << app_info->get_name() << std::endl;
-        auto ctx = Gdk::Display::get_default()->get_app_launch_context();
-        try
+        return;
+    }
+    std::cerr << "DEBUG: WfLauncherButton::launch() called, app="
+              << app_info->get_name() << std::endl;
+    try
+    {
+        (void)wf_shell::session_env_for_app_launch(nullptr);
+    } catch (...)
+    {}
+    auto display = Gdk::Display::get_default();
+    Glib::RefPtr<Gio::AppLaunchContext> ctx;
+    if (display)
+    {
+        ctx = display->get_app_launch_context();
+    }
+    if (!ctx)
+    {
+        ctx = Gio::AppLaunchContext::create();
+    }
+    try
+    {
+        auto env = wf_shell::session_env_for_app_launch(nullptr);
+        for (const auto& kv : env)
         {
-            auto env = wf_shell::session_env_for_app_launch(nullptr);
-            for (const auto& kv : env)
+            if (!kv.second.empty())
             {
-                if (!kv.second.empty())
-                {
-                    ctx->setenv(kv.first, kv.second);
-                }
+                ctx->setenv(kv.first, kv.second);
             }
-        } catch (...)
-        {}
-        try
+        }
+    } catch (...)
+    {}
+    try
+    {
+        bool ok = app_info->launch(std::vector<Glib::RefPtr<Gio::File>>(), ctx);
+        if (!ok)
         {
-            bool ok = app_info->launch(std::vector<Glib::RefPtr<Gio::File>>(), ctx);
-            if (!ok)
+            /* Fallback: exec line with process env (DISPLAY already ensure'd). */
+            std::string cmd = app_info->get_commandline();
+            if (cmd.empty())
+            {
+                cmd = app_info->get_executable();
+            }
+            if (!cmd.empty())
+            {
+                /* Strip desktop field codes. */
+                for (const char *code : {"%f", "%F", "%u", "%U", "%i", "%c", "%k"})
+                {
+                    size_t pos;
+                    while ((pos = cmd.find(code)) != std::string::npos)
+                    {
+                        cmd.erase(pos, std::strlen(code));
+                    }
+                }
+                GError *err = nullptr;
+                if (!g_spawn_command_line_async(cmd.c_str(), &err))
+                {
+                    std::cerr << "ERROR: launcher spawn failed for "
+                              << app_info->get_name() << ": "
+                              << (err ? err->message : "?") << std::endl;
+                    g_clear_error(&err);
+                }
+            } else
             {
                 std::cerr << "ERROR: launch returned false for "
                           << app_info->get_name() << std::endl;
             }
-        } catch (std::exception& e)
-        {
-            std::cerr << "ERROR: launch failed: " << e.what() << std::endl;
         }
+    } catch (std::exception& e)
+    {
+        std::cerr << "ERROR: launch failed: " << e.what() << std::endl;
     }
 }
 

@@ -1475,6 +1475,141 @@ passwordentry:focus text {{
 .popover .dim-label {{
     color: {p['surface_fg']};
 }}
+
+/* ── Settings app (wf-settings) — full chrome, not just window {{}} ──────── */
+window.wf-settings,
+.wf-settings {{
+    background-color: {p['surface']};
+    color: {p['surface_fg']};
+}}
+
+.wf-settings .wf-settings-toolbar {{
+    background-color: {p['title_bg']};
+    background: {p['title_bg']};
+    color: {p['title_fg']};
+    border-bottom: 2px solid {p['panel_border']};
+}}
+
+.wf-settings .wf-settings-toolbar label {{
+    color: {p['title_fg']};
+    font-weight: bold;
+}}
+
+.wf-settings .wf-settings-sidebar,
+.wf-settings .wf-settings-sidebar > scrolledwindow,
+.wf-settings .wf-settings-sidebar > scrolledwindow > viewport,
+.wf-settings .wf-settings-sidebar > scrolledwindow > undershoot,
+.wf-settings .wf-settings-sidebar > scrolledwindow > overshoot {{
+    background-color: {p['title_bg']};
+    background: {p['title_bg']};
+    color: {p['title_fg']};
+    border: none;
+    box-shadow: none;
+}}
+
+.wf-settings .wf-settings-sidebar {{
+    border-right: 2px solid {p['panel_border']};
+}}
+
+.wf-settings list.navigation-sidebar,
+.wf-settings .wf-settings-sidebar list,
+.wf-settings .wf-settings-sidebar list.navigation-sidebar {{
+    background-color: transparent;
+    background: transparent;
+    color: {p['title_fg']};
+    border: none;
+    box-shadow: none;
+}}
+
+.wf-settings list.navigation-sidebar > row,
+.wf-settings .wf-settings-sidebar list > row {{
+    background-color: transparent;
+    background: transparent;
+    color: {p['title_fg']};
+    border-radius: 0;
+    margin: 0;
+    padding: 0;
+    border: none;
+    outline: none;
+    box-shadow: none;
+}}
+
+.wf-settings list.navigation-sidebar > row > *,
+.wf-settings .wf-settings-sidebar list > row > * {{
+    background: transparent;
+}}
+
+.wf-settings list.navigation-sidebar > row label,
+.wf-settings .wf-settings-sidebar list > row label {{
+    color: {p['title_fg']};
+}}
+
+.wf-settings list.navigation-sidebar > row:hover,
+.wf-settings .wf-settings-sidebar list > row:hover {{
+    background-color: {p['accent']};
+    background: {p['accent']};
+    color: {p['accent_fg']};
+}}
+
+.wf-settings list.navigation-sidebar > row:hover label,
+.wf-settings .wf-settings-sidebar list > row:hover label {{
+    color: {p['accent_fg']};
+}}
+
+.wf-settings list.navigation-sidebar > row:selected,
+.wf-settings list.navigation-sidebar > row:selected:hover,
+.wf-settings list.navigation-sidebar > row:selected:focus,
+.wf-settings .wf-settings-sidebar list > row:selected,
+.wf-settings .wf-settings-sidebar list > row:selected:hover {{
+    background-color: {p['accent']};
+    background: {p['accent']};
+    color: {p['accent_fg']};
+    outline: none;
+    box-shadow: none;
+}}
+
+.wf-settings list.navigation-sidebar > row:selected label,
+.wf-settings list.navigation-sidebar > row:selected:hover label,
+.wf-settings .wf-settings-sidebar list > row:selected label {{
+    color: {p['accent_fg']};
+    font-weight: bold;
+}}
+
+.wf-settings .wf-settings-sidebar searchentry,
+.wf-settings .wf-settings-sidebar entry {{
+    background-color: {p['field_bg']};
+    color: {p['field_fg']};
+    border: 1px solid {p['panel_border']};
+    border-radius: 0;
+    margin: 4px 8px;
+}}
+
+.wf-settings .wf-settings-content,
+.wf-settings .wf-settings-content > *,
+.wf-settings .wf-settings-content scrolledwindow,
+.wf-settings .wf-settings-content scrolledwindow > viewport {{
+    background-color: {p['surface']};
+    background: {p['surface']};
+    color: {p['surface_fg']};
+}}
+
+.wf-settings .dim-label {{
+    color: {p['dim']};
+    opacity: 1;
+}}
+
+.wf-settings frame {{
+    border: 1px solid {p['panel_border']};
+    border-radius: 0;
+    background-color: {p['surface_alt']};
+    color: {p['surface_fg']};
+}}
+
+.wf-settings .wf-settings-status {{
+    background-color: {p['title_bg']};
+    color: {p['title_fg']};
+    border-top: 1px solid {p['panel_border']};
+}}
 """
 
 

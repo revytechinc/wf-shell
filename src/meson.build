@@ -14,6 +14,7 @@ endif
 
 subdir('util')
 subdir('panel')
+subdir('settings')
 subdir('background')
 subdir('dock')
 if pam.found()
