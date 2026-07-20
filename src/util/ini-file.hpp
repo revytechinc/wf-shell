@@ -16,11 +16,13 @@ namespace wf_shell
 std::string ini_get(const std::string& path, const std::string& section,
     const std::string& key);
 
-/** Set key under [section] (creates section if needed). Removes duplicate keys. */
+/** Set key under [section] (creates section if needed). Removes duplicate keys.
+ *  Creates parent directories and the file if missing. */
 bool ini_set(const std::string& path, const std::string& section,
     const std::string& key, const std::string& value);
 
-/** Batch set many keys in one section (single read/write). */
+/** Batch set many keys in one section (single read/write).
+ *  Creates parent directories and the file if missing. */
 bool ini_set_many(const std::string& path, const std::string& section,
     const std::map<std::string, std::string>& kv);
 

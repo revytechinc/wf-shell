@@ -35,6 +35,7 @@ util = static_library(
         'session-env.cpp',
         'display-config.cpp',
         'ini-file.cpp',
+        'user-config.cpp',
         'shell-json-config.cpp',
         'power-controller.cpp',
         'power-controller-linux.cpp',

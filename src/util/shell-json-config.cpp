@@ -1,6 +1,7 @@
 #include "shell-json-config.hpp"
 
 #include "ini-file.hpp"
+#include "user-config.hpp"
 
 #include <cstdio>
 #include <cstdlib>
@@ -27,21 +28,33 @@ std::string read_file(const std::string& path)
     return oss.str();
 }
 
-bool write_file_atomic(const std::string& path, const std::string& contents)
+bool write_file_atomic(const std::string& path, const std::string& contents,
+    std::string *error)
 {
     namespace fs = std::filesystem;
+    if (!ensure_parent_directories(path, error))
+    {
+        return false;
+    }
     std::error_code ec;
-    fs::create_directories(fs::path(path).parent_path(), ec);
     std::string tmp = path + ".tmp";
     {
         std::ofstream out(tmp, std::ios::trunc);
         if (!out)
         {
+            if (error)
+            {
+                *error = "Cannot write temporary config \"" + tmp + "\".";
+            }
             return false;
         }
         out << contents;
         if (!out)
         {
+            if (error)
+            {
+                *error = "Failed while writing temporary config \"" + tmp + "\".";
+            }
             return false;
         }
     }
@@ -52,13 +65,27 @@ bool write_file_atomic(const std::string& path, const std::string& contents)
         std::ofstream out(path, std::ios::trunc);
         if (!out)
         {
+            std::remove(tmp.c_str());
+            if (error)
+            {
+                *error = "Cannot create config file \"" + path + "\": " + ec.message();
+            }
             return false;
         }
         out << contents;
         std::remove(tmp.c_str());
+        if (!out && error)
+        {
+            *error = "Failed while writing config file \"" + path + "\".";
+        }
         return static_cast<bool>(out);
     }
     return true;
+}
+
+bool write_file_atomic(const std::string& path, const std::string& contents)
+{
+    return write_file_atomic(path, contents, nullptr);
 }
 
 std::string json_escape(const std::string& s)
@@ -381,11 +408,12 @@ bool save_shell_json_config(const std::string& path, const ShellJsonConfig& cfg,
     std::string *error)
 {
     auto text = serialize_shell_json_config(cfg);
-    if (!write_file_atomic(path, text))
+    std::string werr;
+    if (!write_file_atomic(path, text, &werr))
     {
         if (error)
         {
-            *error = "write failed: " + path;
+            *error = werr.empty() ? ("Could not save settings to \"" + path + "\".") : werr;
         }
         return false;
     }
@@ -444,6 +472,19 @@ bool settings_save_section(const std::string& section,
     const std::map<std::string, std::string>& kv,
     std::string *error)
 {
+    /* First-run: create ~/.config + user config files (seed from package). */
+    std::string ensure_err;
+    if (!ensure_settings_user_configs(&ensure_err))
+    {
+        if (error)
+        {
+            *error = ensure_err.empty()
+                ? "Could not create your settings files."
+                : ensure_err;
+        }
+        return false;
+    }
+
     auto path = shell_json_config_path();
     ShellJsonConfig cfg;
     std::string lerr;
@@ -463,19 +504,36 @@ bool settings_save_section(const std::string& section,
         return false;
     }
 
-    /* Dual-write legacy INI until fully retired */
-    const char *home = std::getenv("HOME");
-    std::string ini;
-    if (const char *o = std::getenv("WF_SHELL_CONFIG_FILE"); o && o[0])
+    /* Dual-write legacy INI until fully retired — must not ignore failures. */
+    std::string ini = user_wf_shell_ini_path();
+    if (ini.empty())
     {
-        ini = o;
-    } else if (home)
-    {
-        ini = std::string(home) + "/.config/wf-shell.ini";
+        if (error)
+        {
+            *error = "HOME is not set; cannot write ~/.config/wf-shell.ini.";
+        }
+        return false;
     }
-    if (!ini.empty())
     {
-        (void)ini_set_many(ini, section, kv);
+        auto ens = ensure_user_config_file(ini, system_wf_shell_ini_path(),
+            "# User wf-shell preferences (created by Settings)\n");
+        if (!ens.ok)
+        {
+            if (error)
+            {
+                *error = ens.error;
+            }
+            return false;
+        }
+    }
+    if (!ini_set_many(ini, section, kv))
+    {
+        if (error)
+        {
+            *error = "Saved preferences to JSON, but could not update \"" + ini +
+                "\". Check that the file and its folder are writable.";
+        }
+        return false;
     }
     return true;
 }

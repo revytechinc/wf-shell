@@ -3,6 +3,7 @@
 #include "config-backend.hpp"
 #include "settings-theme.hpp"
 #include "startup-gate.hpp"
+#include "user-config.hpp"
 
 #include <wayfire/config/section.hpp>
 #include <wayfire/config/xml.hpp>
@@ -30,6 +31,22 @@ const std::vector<std::string> kCategoryOrder = {
     "Utility",
     "Other",
 };
+
+std::string friendly_category(const std::string& cat)
+{
+    if (cat == "General") return "General Settings";
+    if (cat == "Accessibility") return "Accessibility Options";
+    if (cat == "Desktop") return "Desktop Layouts";
+    if (cat == "Shell") return "Shell Settings";
+    if (cat == "Effects") return "Visual Effects";
+    if (cat == "Window Management") return "Window Behavior";
+    if (cat == "Utility") return "System Utilities";
+    if (cat.empty() || cat == "Other" || cat == "Uncategorized")
+    {
+        return "Additional Plugins";
+    }
+    return cat;
+}
 
 /* Sections covered by Common (curated) pages — never also list as raw plugins. */
 const std::set<std::string> kCuratedShellSections = {
@@ -201,6 +218,17 @@ void SettingsApp::on_activate()
         std::cerr << "wf-settings: " << evaluate_startup_gate().user_summary() << "\n";
         quit();
         return;
+    }
+
+    /* First open: create ~/.config + user prefs (seed from package) or report. */
+    {
+        std::string ensure_err;
+        if (!wf_shell::ensure_settings_user_configs(&ensure_err))
+        {
+            std::cerr << "wf-settings: cannot create user config: "
+                      << (ensure_err.empty() ? "unknown error" : ensure_err) << "\n";
+            /* Still try to open UI so mother sees the status; saves will re-report. */
+        }
     }
 
     try
@@ -448,8 +476,9 @@ void SettingsApp::rebuild_sidebar()
         row->set_activatable(false);
         row->set_name("hdr:" + label);
         auto l = Gtk::make_managed<Gtk::Label>();
+        std::string display_label = friendly_category(label);
         l->set_markup("<span size=\"small\" weight=\"bold\" alpha=\"70%\">" +
-            Glib::Markup::escape_text(label) + "</span>");
+            Glib::Markup::escape_text(display_label) + "</span>");
         l->set_halign(Gtk::Align::START);
         l->set_margin_start(12);
         l->set_margin_end(8);

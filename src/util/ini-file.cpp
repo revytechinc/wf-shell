@@ -1,5 +1,7 @@
 #include "ini-file.hpp"
 
+#include "user-config.hpp"
+
 #include <cctype>
 #include <fstream>
 #include <sstream>
@@ -93,6 +95,11 @@ std::vector<std::string> read_lines(const std::string& path)
 
 bool write_lines(const std::string& path, const std::vector<std::string>& lines)
 {
+    /* Parent dir must exist (first-run user prefs under ~/.config). */
+    if (!ensure_parent_directories(path, nullptr))
+    {
+        return false;
+    }
     /* Write via temp + rename so a concurrent wayfire inotify reload never
      * sees a half-written file (empty / truncated plugins=). */
     std::string tmp = path + ".tmp-wf-ini";

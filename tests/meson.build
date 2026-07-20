@@ -158,6 +158,21 @@ test(
     suite: ['unit', 'config', 'fault-tolerance'],
 )
 
+# First-run user config create + fail-closed when unwritable
+test_exec_user_config = executable(
+    'user-config-test',
+    'user-config-test.cpp',
+    dependencies: [gtest_dep, libutil, json, wfconfig],
+    include_directories: test_includes,
+    link_with: util,
+)
+
+test(
+    'user-config-test',
+    test_exec_user_config,
+    suite: ['unit', 'config', 'fault-tolerance', 'settings'],
+)
+
 # Validate-before-apply gates (must refuse bad theme/session combinations)
 test_exec_apply_gate = executable(
     'apply-gate-test',

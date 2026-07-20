@@ -2,6 +2,7 @@
 
 #include "ini-file.hpp"
 #include "shell-json-config.hpp"
+#include "user-config.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -207,6 +208,23 @@ bool ConfigBackend::save_wayfire(std::string *error)
         return true;
     }
 
+    /* First-run: create ~/.config + wayfire.ini (seed from package system default). */
+    {
+        auto ens = wf_shell::ensure_user_config_file(wayfire_ini,
+            wf_shell::system_wayfire_ini_path(),
+            "# User Wayfire preferences (created by Settings)\n");
+        if (!ens.ok)
+        {
+            if (error)
+            {
+                *error = ens.error.empty()
+                    ? ("Could not create \"" + wayfire_ini + "\".")
+                    : ens.error;
+            }
+            return false;
+        }
+    }
+
     if (!backup_file(wayfire_ini, error))
     {
         return false;
@@ -218,7 +236,8 @@ bool ConfigBackend::save_wayfire(std::string *error)
         {
             if (error)
             {
-                *error = "failed writing section [" + sec.first + "] to " + wayfire_ini;
+                *error = "Could not write section [" + sec.first + "] to \"" +
+                    wayfire_ini + "\". Check that the file is writable.";
             }
             return false;
         }
