@@ -17,9 +17,9 @@ class SessionPage : public Gtk::Box
     SessionPage();
     void refresh();
     void set_status_target(Gtk::Label *status_label);
+    bool save(std::string *error = nullptr);
 
   private:
-    void on_apply();
     void rebuild_rows();
     std::string shell_ini() const;
 
@@ -37,7 +37,6 @@ class SessionPage : public Gtk::Box
 
     std::vector<ActionRow> rows;
     Gtk::Box *list_box = nullptr;
-    Gtk::Button *apply_btn = nullptr;
     Gtk::Label *status = nullptr;
     Gtk::Label *help = nullptr;
 };

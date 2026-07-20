@@ -26,6 +26,7 @@ McpPage::McpPage() :
     append(*help);
 
     mcp_enabled = Gtk::make_managed<Gtk::CheckButton>("Enable MCP integration (global)");
+    mcp_enabled->signal_toggled().connect([this] () { save(nullptr); });
     append(*mcp_enabled);
 
     auto list_title = Gtk::make_managed<Gtk::Label>("Servers (discovered from config.json)");
@@ -41,16 +42,6 @@ McpPage::McpPage() :
     scroll->set_child(*list);
     append(*scroll);
 
-    auto actions = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 8);
-    reload_btn = Gtk::make_managed<Gtk::Button>("Reload");
-    apply_btn = Gtk::make_managed<Gtk::Button>("Apply");
-    apply_btn->add_css_class("suggested-action");
-    actions->append(*reload_btn);
-    actions->append(*apply_btn);
-    append(*actions);
-
-    reload_btn->signal_clicked().connect([this] () { refresh(); });
-    apply_btn->signal_clicked().connect([this] () { on_apply(); });
     refresh();
 }
 
@@ -75,6 +66,7 @@ void McpPage::rebuild_list()
         auto chk = Gtk::make_managed<Gtk::CheckButton>(
             s.name.empty() ? s.id : (s.name + " (" + s.id + ")"));
         chk->set_active(s.enabled);
+        chk->signal_toggled().connect([this] () { save(nullptr); });
         auto meta = Gtk::make_managed<Gtk::Label>();
         meta->set_halign(Gtk::Align::START);
         meta->add_css_class("dim-label");
@@ -128,7 +120,7 @@ void McpPage::refresh()
     rebuild_list();
 }
 
-void McpPage::on_apply()
+bool McpPage::save(std::string *error)
 {
     cfg.mcp_enabled = mcp_enabled->get_active();
     for (size_t i = 0; i < server_checks.size() && i < cfg.mcp_servers.size(); ++i)
@@ -157,13 +149,14 @@ void McpPage::on_apply()
         {
             status->set_text("Failed: " + err);
         }
-        return;
+        return false;
     }
     if (status)
     {
         status->set_text("MCP config saved → " + path +
             (cfg.mcp_enabled ? " (enabled)" : " (disabled until runtime)"));
     }
+    return true;
 }
 
 } // namespace wf_settings

@@ -91,6 +91,14 @@ class WayfireShellApp
     void on_css_reload();
     void clear_css_rules();
     void add_css_file(std::string file, int priority);
+
+    /** Last applied custom css_path (for change-detect + debug). */
+    std::string last_css_path;
+    /** Reentrancy + debounce for config/CSS reloads (theme thrash killed panel). */
+    bool css_reload_busy = false;
+    bool config_reload_busy = false;
+    sigc::connection config_reload_debounce;
+    std::string pending_css_path;
     virtual Gio::Application::Flags get_extra_application_flags();
     virtual std::string get_application_name() = 0;
     std::vector<std::unique_ptr<WayfireOutput>> *get_wayfire_outputs();

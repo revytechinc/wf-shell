@@ -1,4 +1,5 @@
 #include "display-config.hpp"
+#include "apply-gate.hpp"
 
 #include <cmath>
 #include <cstdio>
@@ -7,6 +8,7 @@
 #include <sstream>
 #include <array>
 #include <algorithm>
+#include <iostream>
 #include <sys/wait.h>
 
 #include <wayfire/nonstd/json.hpp>
@@ -542,6 +544,7 @@ DisplayProbeResult parse_wlr_randr_json(const std::string& json_text)
 
 DisplayProbeResult probe_displays(DisplayConfigHooks *hooks_in)
 {
+    DisplayProbeResult r;
     DisplayConfigHooks local;
     DisplayConfigHooks *hooks = hooks_in;
     if (!hooks)
@@ -551,15 +554,38 @@ DisplayProbeResult probe_displays(DisplayConfigHooks *hooks_in)
     }
     if (!hooks->run_cmd)
     {
-        DisplayProbeResult r;
         r.warnings.push_back("no run_cmd hook");
         return r;
     }
+
+    /* Preflight: refuse to talk to a missing compositor (avoids hang/crash). */
+    const char *wd = std::getenv("WAYLAND_DISPLAY");
+    const char *rd = std::getenv("XDG_RUNTIME_DIR");
+    if (!wd || !wd[0])
+    {
+        r.warnings.push_back("WAYLAND_DISPLAY unset — not probing (safe)");
+        return r;
+    }
+    if (rd && rd[0])
+    {
+        std::string sock = std::string(rd) + "/" + wd;
+        if (!default_path_exists(sock))
+        {
+            r.warnings.push_back("Wayland socket missing (" + sock +
+                ") — not probing (safe)");
+            return r;
+        }
+    }
+
     std::string out, err;
-    int code = hooks->run_cmd("wlr-randr --json", out, err);
+    /* Hard timeout so a wedged wlr-randr cannot hang Settings forever.
+     * Prefer system timeout(1); fall back to bare command. */
+    const char *probe_cmd =
+        "command -v timeout >/dev/null 2>&1 && "
+        "timeout 3 wlr-randr --json || wlr-randr --json";
+    int code = hooks->run_cmd(probe_cmd, out, err);
     if (code != 0)
     {
-        DisplayProbeResult r;
         r.warnings.push_back("wlr-randr --json failed (exit " + std::to_string(code) +
             "): " + trim(err));
         return r;
@@ -570,6 +596,29 @@ DisplayProbeResult probe_displays(DisplayConfigHooks *hooks_in)
 bool apply_display_mode(const DisplayOutput& output, const DisplayMode& mode,
     DisplayConfigHooks *hooks_in, std::string *error)
 {
+    gate_log("display_apply", "begin output=" + output.name + " mode=" + mode.label());
+
+    /*
+     * Pure domain gate first (always). Session/tool gates only for real OS
+     * hooks — unit tests inject hooks_in and must not require a live seat.
+     */
+    if (!mode.valid())
+    {
+        if (error)
+        {
+            *error = "mode invalid";
+        }
+        gate_log("display_apply", "REFUSE invalid mode");
+        return false;
+    }
+    if (output.name.empty())
+    {
+        if (error)
+        {
+            *error = "output name empty";
+        }
+        return false;
+    }
     if (!output.supports(mode))
     {
         if (error)
@@ -577,12 +626,34 @@ bool apply_display_mode(const DisplayOutput& output, const DisplayMode& mode,
             *error = "mode not advertised by " + output.name + ": " + mode.label() +
                 " (refusing unsafe mode)";
         }
+        gate_log("display_apply", "REFUSE mode not in hardware list");
         return false;
     }
+
     DisplayConfigHooks local;
     DisplayConfigHooks *hooks = hooks_in;
     if (!hooks)
     {
+        auto sess = validate_wayland_session_for_live_apply();
+        if (!sess.ok)
+        {
+            if (error)
+            {
+                *error = sess.summary();
+            }
+            gate_log_result("display_apply", sess);
+            return false;
+        }
+        /* wlr-randr must exist before we touch the live compositor */
+        if (system("command -v wlr-randr >/dev/null 2>&1") != 0)
+        {
+            if (error)
+            {
+                *error = "wlr-randr not installed — refuse display apply";
+            }
+            gate_log("display_apply", "REFUSE wlr-randr missing");
+            return false;
+        }
         local = default_display_config_hooks();
         hooks = &local;
     }
@@ -596,6 +667,7 @@ bool apply_display_mode(const DisplayOutput& output, const DisplayMode& mode,
     {
         cmd << " --adaptive-sync enabled";
     }
+    gate_log("display_apply", "cmd: " + cmd.str());
     std::string out, err;
     int code = hooks->run_cmd(cmd.str(), out, err);
     if (code != 0)
@@ -604,8 +676,10 @@ bool apply_display_mode(const DisplayOutput& output, const DisplayMode& mode,
         {
             *error = "wlr-randr apply failed: " + trim(err.empty() ? out : err);
         }
+        gate_log("display_apply", "cmd failed exit=" + std::to_string(code));
         return false;
     }
+    gate_log("display_apply", "ok");
     return true;
 }
 

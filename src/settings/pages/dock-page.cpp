@@ -45,11 +45,17 @@ DockPage::DockPage() :
     grid->attach(*autohide, 0, r++, 2, 1);
     append(*grid);
 
-    apply_btn = Gtk::make_managed<Gtk::Button>("Apply");
-    apply_btn->add_css_class("suggested-action");
-    apply_btn->set_halign(Gtk::Align::START);
-    append(*apply_btn);
-    apply_btn->signal_clicked().connect([this] () { on_apply(); });
+    auto live = [this] () {
+        if (!filling)
+        {
+            save(nullptr);
+        }
+    };
+    position->property_selected().signal_changed().connect(live);
+    icon_h->signal_value_changed().connect(live);
+    dock_h->signal_value_changed().connect(live);
+    autohide->signal_toggled().connect(live);
+
     refresh();
 }
 
@@ -70,6 +76,7 @@ std::string DockPage::shell_ini() const
 
 void DockPage::refresh()
 {
+    filling = true;
     auto ini = shell_ini();
     std::string pos = wf_shell::ini_get(ini, "dock", "position");
     const char *opts[] = {"bottom", "top", "left", "right"};
@@ -86,9 +93,10 @@ void DockPage::refresh()
     icon_h->set_value(wf_shell::ini_get_int(ini, "dock", "icon_height", 48));
     dock_h->set_value(wf_shell::ini_get_int(ini, "dock", "dock_height", 100));
     autohide->set_active(wf_shell::ini_get_bool(ini, "dock", "autohide", true));
+    filling = false;
 }
 
-void DockPage::on_apply()
+bool DockPage::save(std::string *error)
 {
     auto ini = shell_ini();
     const char *opts[] = {"bottom", "top", "left", "right"};
@@ -105,12 +113,13 @@ void DockPage::on_apply()
         {
             status->set_text("Failed: " + err);
         }
-        return;
+        return false;
     }
     if (status)
     {
-        status->set_text("Dock saved → config.json + legacy ini");
+        status->set_text("Dock updated.");
     }
+    return true;
 }
 
 } // namespace wf_settings

@@ -24,11 +24,11 @@ class DisplayPage : public Gtk::Box
 
     void refresh();
     void set_status_target(Gtk::Label *status_label);
+    bool save(std::string *error = nullptr);
 
   private:
     void on_output_changed();
     void on_resolution_changed();
-    void on_apply();
     void fill_resolutions();
     void fill_refresh_rates();
     void update_info();
@@ -43,8 +43,8 @@ class DisplayPage : public Gtk::Box
     Gtk::DropDown *res_drop    = nullptr;
     Gtk::DropDown *rate_drop   = nullptr;
     Gtk::Label *info_lbl = nullptr;
-    Gtk::Button *refresh_btn = nullptr;
-    Gtk::Button *apply_btn = nullptr;
+    Gtk::Button *refresh_btn = nullptr; /* discover only */
+    Gtk::Button *use_mode_btn = nullptr; /* intentional modeset operation */
     Gtk::Label *status = nullptr;
 
     wf_shell::DisplayProbeResult probe;

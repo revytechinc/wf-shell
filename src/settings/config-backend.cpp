@@ -83,9 +83,17 @@ std::string wayfire_metadata_dir()
 
 std::string shell_metadata_dir()
 {
+    /* Prefer system package metadata; ~/.local is last resort (stale overlays). */
 #ifdef METADATA_DIR
-    return METADATA_DIR;
-#else
+    if (std::filesystem::is_directory(METADATA_DIR))
+    {
+        return METADATA_DIR;
+    }
+#endif
+    if (std::filesystem::is_directory("/usr/local/share/wf-shell/metadata"))
+    {
+        return "/usr/local/share/wf-shell/metadata";
+    }
     const char *h = std::getenv("HOME");
     if (h)
     {
@@ -96,7 +104,6 @@ std::string shell_metadata_dir()
         }
     }
     return "/usr/local/share/wf-shell/metadata";
-#endif
 }
 
 ConfigBackend& ConfigBackend::instance()

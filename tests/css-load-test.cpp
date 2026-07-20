@@ -81,6 +81,10 @@ TEST_F(CssLoadTest, LoadMissingReturnsNull)
 
 TEST_F(CssLoadTest, LoadValidReturnsProvider)
 {
+    if (!Gdk::Display::get_default())
+    {
+        GTEST_SKIP() << "no display for CssProvider (set WAYLAND_DISPLAY for full test)";
+    }
     auto p = write_file("theme.css",
         "/* Name: Unit Test */\n.wf-panel { background: #111; }\n");
     auto css = load_css_from_path(p.string());
@@ -89,6 +93,10 @@ TEST_F(CssLoadTest, LoadValidReturnsProvider)
 
 TEST_F(CssLoadTest, LoadStringSafeNeverThrows)
 {
+    if (!Gdk::Display::get_default())
+    {
+        GTEST_SKIP() << "no display for CssProvider";
+    }
     std::string err;
     auto ok = load_css_from_string_safe(".x { color: blue; }", &err);
     EXPECT_TRUE(ok);
@@ -117,8 +125,9 @@ TEST_F(CssLoadTest, OversizedRejected)
 
 int main(int argc, char **argv)
 {
-    /* CssProvider needs a display type backend in some builds */
-    Gtk::Application::create("org.revytech.wf-shell.css-load-test");
     ::testing::InitGoogleTest(&argc, argv);
+    /* Do not construct Gtk::Application here — CI/headless has no display and
+     * Application::create aborts the process. Path checks need no display;
+     * load_* tests GTEST_SKIP when Gdk::Display::get_default() is null. */
     return RUN_ALL_TESTS();
 }

@@ -1,4 +1,5 @@
 #include "wf-shell-app.hpp"
+#include "apply-gate.hpp"
 #include "session-env.hpp"
 #include "shell-json-config.hpp"
 #include <glibmm/main.h>
@@ -13,6 +14,12 @@
 #include <gtk-utils.hpp>
 
 #include <unistd.h>
+
+namespace
+{
+/* Theme dropdown thrash: coalesce inotify reloads. */
+constexpr unsigned kConfigReloadDebounceMs = 250;
+} // namespace
 
 std::string WayfireShellApp::get_config_file()
 {
@@ -62,36 +69,127 @@ std::string WayfireShellApp::get_css_config_dir()
 
 void WayfireShellApp::on_css_reload()
 {
-    clear_css_rules();
-    /* Add our defaults */
-    add_css_file((std::string)RESOURCEDIR + "/css/default.css", GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
-    /* Add user directory */
-    std::string ext(".css");
-    for (auto & p : std::filesystem::directory_iterator(get_css_config_dir()))
+    /*
+     * VALIDATE → LOAD NEW → SWAP (never clear-first).
+     * Clearing CSS before load left the panel unstyled mid-reload and
+     * contributed to thrash/crash when Settings live-applied themes.
+     */
+    if (css_reload_busy)
     {
-        if (p.path().extension() == ext)
+        wf_shell::gate_log("css_reload", "reentrant call ignored");
+        return;
+    }
+    css_reload_busy = true;
+
+    auto display = Gdk::Display::get_default();
+    if (!display)
+    {
+        std::cerr << "wf-shell:css_reload: no Gdk display — skip\n";
+        css_reload_busy = false;
+        return;
+    }
+
+    std::vector<std::pair<Glib::RefPtr<Gtk::CssProvider>, int>> staged;
+    auto stage = [&] (const std::string& file, int priority) -> bool {
+        if (file.empty())
         {
-            add_css_file(p.path().string(), GTK_STYLE_PROVIDER_PRIORITY_USER);
+            return true;
+        }
+        auto gate = wf_shell::validate_theme_css_path(file);
+        if (!gate.ok)
+        {
+            std::cerr << "wf-shell:css_reload: skip invalid \"" << file
+                      << "\" — " << gate.summary() << "\n";
+            return false;
+        }
+        auto css_provider = load_css_from_path(file);
+        if (!css_provider)
+        {
+            std::cerr << "wf-shell:css_reload: load failed \"" << file
+                      << "\" — keep previous styles\n";
+            return false;
+        }
+        staged.emplace_back(css_provider, priority);
+        wf_shell::gate_log("css_reload", "staged " + file +
+            " prio=" + std::to_string(priority));
+        return true;
+    };
+
+    /* Base chrome */
+    const std::string def = std::string(RESOURCEDIR) + "/css/default.css";
+    if (!stage(def, GTK_STYLE_PROVIDER_PRIORITY_APPLICATION))
+    {
+        std::cerr << "wf-shell:css_reload: default.css failed — abort swap "
+                     "(keeping old providers)\n";
+        css_reload_busy = false;
+        return;
+    }
+
+    /* Optional per-user CSS dir (not full theme packs) */
+    std::string ext(".css");
+    try
+    {
+        for (auto & p : std::filesystem::directory_iterator(get_css_config_dir()))
+        {
+            if (p.path().extension() == ext)
+            {
+                (void)stage(p.path().string(), GTK_STYLE_PROVIDER_PRIORITY_USER);
+            }
+        }
+    } catch (const std::exception& e)
+    {
+        std::cerr << "wf-shell:css_reload: css dir scan: " << e.what() << "\n";
+    }
+
+    /* Theme pack path from config — only after validate */
+    std::string custom_css;
+    try
+    {
+        auto custom_css_config = WfOption<std::string>{"panel/css_path"};
+        custom_css = custom_css_config;
+    } catch (...)
+    {
+        custom_css.clear();
+    }
+
+    if (!custom_css.empty())
+    {
+        if (!stage(custom_css, GTK_STYLE_PROVIDER_PRIORITY_USER))
+        {
+            std::cerr << "wf-shell:css_reload: custom theme invalid, applying "
+                         "base styles only (not leaving panel unstyled)\n";
         }
     }
 
-    /* Add one user file */
-    auto custom_css_config = WfOption<std::string>{"panel/css_path"};
-    std::string custom_css = custom_css_config;
-    if (custom_css != "")
+    /* Atomic swap: remove old only after new providers are ready */
+    for (auto css_provider : css_rules)
     {
-        add_css_file(custom_css, GTK_STYLE_PROVIDER_PRIORITY_USER);
+        Gtk::StyleContext::remove_provider_for_display(display, css_provider);
     }
+    css_rules.clear();
+    for (auto& [prov, prio] : staged)
+    {
+        Gtk::StyleContext::add_provider_for_display(display, prov, prio);
+        css_rules.push_back(prov);
+    }
+    last_css_path = custom_css;
+    wf_shell::gate_log("css_reload", "swap complete providers=" +
+        std::to_string(css_rules.size()) + " css_path=\"" + custom_css + "\"");
+    css_reload_busy = false;
 }
 
 void WayfireShellApp::clear_css_rules()
 {
     auto display = Gdk::Display::get_default();
+    if (!display)
+    {
+        css_rules.clear();
+        return;
+    }
     for (auto css_provider : css_rules)
     {
         Gtk::StyleContext::remove_provider_for_display(display, css_provider);
     }
-
     css_rules.clear();
 }
 
@@ -102,8 +200,13 @@ void WayfireShellApp::add_css_file(std::string file, int priority)
     {
         return;
     }
-    /* Missing / bad theme: skip and keep already-loaded default.css.
-     * Never throw — a broken css_path must not take down the panel. */
+    auto gate = wf_shell::validate_theme_css_path(file);
+    if (!gate.ok)
+    {
+        std::cerr << "wf-shell: ignoring css_path \"" << file
+                  << "\" — " << gate.summary() << "\n";
+        return;
+    }
     auto css_provider = load_css_from_path(file);
     if (!css_provider)
     {
@@ -138,55 +241,133 @@ char buf[INOT_BUF_SIZE];
 
 static void do_reload_css(WayfireShellApp *app)
 {
-    app->on_css_reload();
+    try
+    {
+        app->on_css_reload();
+    } catch (const std::exception& e)
+    {
+        std::cerr << "wf-shell:css_reload: exception: " << e.what() << "\n";
+    } catch (...)
+    {
+        std::cerr << "wf-shell:css_reload: unknown exception\n";
+    }
 }
 
 /* Reload file and add next inotify watch */
-static void do_reload_config(WayfireShellApp *app)
+static void do_reload_config_now(WayfireShellApp *app)
 {
-    /* 1) Legacy INI (still supported) */
-    wf::config::load_configuration_options_from_file(
-        app->config, app->get_config_file());
+    if (app->config_reload_busy)
+    {
+        wf_shell::gate_log("config_reload", "already busy — skip nested");
+        return;
+    }
+    app->config_reload_busy = true;
+    wf_shell::gate_log("config_reload", "begin file=" + app->get_config_file());
 
-    /* 2) JSON overrides INI (primary going forward) */
+    std::string prev_css = app->last_css_path;
+
     try
     {
-        wf_shell::ShellJsonConfig jcfg;
-        std::string jerr;
-        auto jpath = wf_shell::shell_json_config_path();
-        if (wf_shell::load_shell_json_config(jpath, jcfg, &jerr))
+        /* 1) Legacy INI (still supported) */
+        wf::config::load_configuration_options_from_file(
+            app->config, app->get_config_file());
+
+        /* 2) JSON overrides INI (primary going forward) */
+        try
         {
-            std::vector<std::string> warns;
-            wf_shell::apply_shell_json_to_config_manager(jcfg, app->config, &warns);
-            for (const auto& w : warns)
+            wf_shell::ShellJsonConfig jcfg;
+            std::string jerr;
+            auto jpath = wf_shell::shell_json_config_path();
+            if (wf_shell::load_shell_json_config(jpath, jcfg, &jerr))
             {
-                std::cerr << "wf-shell: " << w << "\n";
+                std::vector<std::string> warns;
+                wf_shell::apply_shell_json_to_config_manager(jcfg, app->config, &warns);
+                for (const auto& w : warns)
+                {
+                    std::cerr << "wf-shell: config_reload warn: " << w << "\n";
+                }
+            } else if (wf_shell::apply_debug_enabled() && !jerr.empty())
+            {
+                std::cerr << "wf-shell: config_reload json: " << jerr << "\n";
             }
+        } catch (const std::exception& e)
+        {
+            std::cerr << "wf-shell: json config apply failed: " << e.what() << "\n";
+        }
+
+        app->on_config_reload();
+
+        /* CSS only if theme path changed (or first load empty→set). */
+        std::string new_css;
+        try
+        {
+            new_css = static_cast<std::string>(WfOption<std::string>{"panel/css_path"});
+        } catch (...)
+        {
+            new_css.clear();
+        }
+        if (new_css != prev_css)
+        {
+            wf_shell::gate_log("config_reload", "css_path changed \"" + prev_css +
+                "\" → \"" + new_css + "\" — reload CSS");
+            do_reload_css(app);
+        } else
+        {
+            wf_shell::gate_log("config_reload", "css_path unchanged — skip CSS reload");
         }
     } catch (const std::exception& e)
     {
-        std::cerr << "wf-shell: json config apply failed: " << e.what() << "\n";
+        std::cerr << "wf-shell:config_reload: exception: " << e.what() << "\n";
+    } catch (...)
+    {
+        std::cerr << "wf-shell:config_reload: unknown exception\n";
     }
 
-    app->on_config_reload();
+    app->config_reload_busy = false;
+    wf_shell::gate_log("config_reload", "end");
+}
+
+static void schedule_reload_config(WayfireShellApp *app)
+{
+    /* Debounce: rapid theme cycling must not stack reloads. */
+    if (app->config_reload_debounce.connected())
+    {
+        app->config_reload_debounce.disconnect();
+    }
+    app->config_reload_debounce = Glib::signal_timeout().connect(
+        [app] () {
+            do_reload_config_now(app);
+            return false; /* one-shot */
+        },
+        kConfigReloadDebounceMs);
+    wf_shell::gate_log("config_reload", "scheduled in " +
+        std::to_string(kConfigReloadDebounceMs) + "ms");
 }
 
 /* Handle inotify event */
 static bool handle_inotify_event(WayfireShellApp *app, Glib::IOCondition cond)
 {
-    /* read, but don't use */
-    read(app->inotify_fd, buf, INOT_BUF_SIZE);
-    do_reload_config(app);
-
+    /* Read once (fd is edge-triggered via Glib IO); debounce the actual work. */
+    (void)read(app->inotify_fd, buf, INOT_BUF_SIZE);
+    (void)cond;
+    schedule_reload_config(app);
     return true;
 }
 
 static bool handle_css_inotify_event(WayfireShellApp *app, Glib::IOCondition cond)
 {
-    /* read, but don't use */
-    read(app->inotify_css_fd, buf, INOT_BUF_SIZE);
-    do_reload_css(app);
-
+    (void)read(app->inotify_css_fd, buf, INOT_BUF_SIZE);
+    (void)cond;
+    if (app->config_reload_debounce.connected())
+    {
+        app->config_reload_debounce.disconnect();
+    }
+    app->config_reload_debounce = Glib::signal_timeout().connect(
+        [app] () {
+            do_reload_css(app);
+            return false;
+        },
+        kConfigReloadDebounceMs);
     return true;
 }
 
@@ -256,7 +437,7 @@ void WayfireShellApp::on_activate()
         get_config_file());
 
     inotify_fd = inotify_init();
-    do_reload_config(this);
+    do_reload_config_now(this);
     inotify_css_fd = inotify_init();
     do_reload_css(this);
 

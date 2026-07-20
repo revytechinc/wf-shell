@@ -16,15 +16,13 @@ class McpPage : public Gtk::Box
     McpPage();
     void refresh();
     void set_status_target(Gtk::Label *status_label);
+    bool save(std::string *error = nullptr);
 
   private:
-    void on_apply();
     void rebuild_list();
 
     Gtk::CheckButton *mcp_enabled = nullptr;
     Gtk::ListBox *list = nullptr;
-    Gtk::Button *apply_btn = nullptr;
-    Gtk::Button *reload_btn = nullptr;
     Gtk::Label *status = nullptr;
     Gtk::Label *help = nullptr;
 

@@ -325,7 +325,7 @@ PluginPage::PluginPage(ConfigDomain domain, std::string section, std::string tit
         if (status)
         {
             status->set_text((on ? "Enabled " : "Disabled ") + section_ +
-                " — click Save (reloads plugins carefully)");
+                " — changes apply immediately");
         }
     });
 
@@ -453,6 +453,15 @@ void PluginPage::rebuild()
                     }
                     return false;
                 }
+                /* Modeless (Apple HIG): commit dirty keys immediately. */
+                if (!ConfigBackend::instance().save_wayfire(&err))
+                {
+                    if (status)
+                    {
+                        status->set_text(err.empty() ? "Could not write settings." : err);
+                    }
+                    return false;
+                }
             } else
             {
                 if (opt && !opt->set_value_str(v))
@@ -467,9 +476,7 @@ void PluginPage::rebuild()
             }
             if (status)
             {
-                status->set_text("Updated " + full +
-                    (dom == ConfigDomain::Wayfire ? " — click Save when ready" :
-                                                    " → config.json"));
+                status->set_text("Updated.");
             }
             return true;
         };
@@ -506,6 +513,7 @@ void PluginPage::rebuild()
             col->append(*chk);
         } else if (is_color)
         {
+            /* Color wheel only — never ask anyone to type "r g b a". */
             auto dialog = Gtk::ColorDialog::create();
             dialog->set_with_alpha(true);
             dialog->set_title(short_label);
@@ -516,28 +524,12 @@ void PluginPage::rebuild()
                 rgba.set_rgba(0.1, 0.1, 0.1, 1.0);
             }
             btn->set_rgba(rgba);
+            btn->set_hexpand(false);
+            btn->set_tooltip_text("Click to open the color wheel");
             btn->property_rgba().signal_changed().connect([btn, commit] () {
                 commit(format_wf_color(btn->get_rgba()));
             });
-            /* Optional raw values for power users — picker is primary */
-            auto ent = Gtk::make_managed<Gtk::Entry>();
-            ent->set_text(val);
-            ent->set_placeholder_text("or type r g b a…");
-            ent->set_hexpand(true);
-            auto setb = Gtk::make_managed<Gtk::Button>("Use text");
-            auto brow = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
-            brow->append(*btn);
-            brow->append(*ent);
-            brow->append(*setb);
-            setb->signal_clicked().connect([ent, btn, commit] () {
-                Gdk::RGBA r;
-                if (parse_wf_color(ent->get_text(), r))
-                {
-                    btn->set_rgba(r);
-                }
-                commit(ent->get_text());
-            });
-            col->append(*brow);
+            col->append(*btn);
         } else if (!choices.empty() && (xml_type == "string" || xml_type.empty() ||
                    xml_type == "int"))
         {

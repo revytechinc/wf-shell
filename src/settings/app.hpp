@@ -57,17 +57,18 @@ class SettingsApp : public Gtk::Application
     void rebuild_sidebar();
     void rebuild_catalog();
     void select_page(const std::string& id);
+    void ensure_curated_page(const std::string& id);
     void ensure_plugin_page(const NavPlugin& p);
     void on_search_changed();
     void apply_sidebar_filter();
     void focus_plugin_section(const std::string& section);
+    bool compositor_still_alive() const;
 
     Gtk::ApplicationWindow *window = nullptr;
     Gtk::SearchEntry *search = nullptr;
     Gtk::ListBox *sidebar = nullptr;
     Gtk::Stack *stack = nullptr;
     Gtk::Label *status = nullptr;
-    Gtk::Button *save_wayfire_btn = nullptr;
 
     std::unique_ptr<DisplayPage> display_page;
     std::unique_ptr<PanelPage> panel_page;

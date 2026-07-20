@@ -14,9 +14,9 @@ class DesktopPage : public Gtk::Box
     DesktopPage();
     void refresh();
     void set_status_target(Gtk::Label *status_label);
+    bool save(std::string *error = nullptr);
 
   private:
-    void on_apply();
     void on_browse();
     void update_preview_hint();
     std::string wayfire_ini() const;
@@ -29,11 +29,11 @@ class DesktopPage : public Gtk::Box
     Gtk::DropDown *bg_fill = nullptr;
     Gtk::CheckButton *bg_random = nullptr;
     Gtk::Button *browse_btn = nullptr;
-    Gtk::Button *apply_btn = nullptr;
     Gtk::Label *status = nullptr;
     Gtk::Label *fill_hint = nullptr;
 
     std::vector<std::string> fill_values; /* parallel to dropdown labels */
+    bool filling = false;
 };
 
 } // namespace wf_settings

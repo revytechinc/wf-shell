@@ -1,5 +1,8 @@
 #include "theme-catalog.hpp"
 
+#include "apply-gate.hpp"
+#include "panel-capabilities.hpp"
+#include "shell-json-config.hpp"
 #include "theme-defaults.hpp"
 
 #include <algorithm>
@@ -133,19 +136,81 @@ std::map<std::string, ThemePack> discover_theme_packs(
             {
                 continue;
             }
-            if (user || themes.find(te.id) == themes.end())
+            /*
+             * System packs are the source of truth for known ids (new themes
+             * ship under /usr/local). User dir only adds *extra* custom packs,
+             * or replaces a system pack when the user file is newer.
+             */
+            auto existing = themes.find(te.id);
+            if (existing == themes.end())
             {
                 themes[te.id] = te;
+                continue;
             }
+            if (!user)
+            {
+                /* Later system scan wins over earlier */
+                themes[te.id] = te;
+                continue;
+            }
+            std::error_code ec1, ec2;
+            auto ut = std::filesystem::last_write_time(te.path, ec1);
+            auto st = std::filesystem::last_write_time(existing->second.path, ec2);
+            if (!ec1 && !ec2 && ut > st)
+            {
+                themes[te.id] = te; /* intentional newer user override */
+            }
+            /* else keep system pack (fixes stale ~/.config shadowing new themes) */
         }
     };
 
+    /* Prefer package themes; also scan explicit system path if different. */
     scan_dir(resource_themes_dir, false);
+    if (resource_themes_dir != "/usr/local/share/wf-shell/themes")
+    {
+        scan_dir("/usr/local/share/wf-shell/themes", false);
+    }
     if (!user_themes_dir.empty())
     {
         scan_dir(user_themes_dir, true);
     }
-    return themes;
+
+    /*
+     * Never present a theme that is missing CSS or menu-icon artifacts.
+     * Default always stays (empty path).
+     */
+    const std::string icon_roots[] = {
+        "/usr/local/share/wf-shell/icons",
+        resource_themes_dir + "/../icons",
+    };
+    std::string icons_dir = "/usr/local/share/wf-shell/icons";
+    for (const auto& r : icon_roots)
+    {
+        std::error_code ec;
+        if (std::filesystem::is_directory(r, ec) && !ec)
+        {
+            icons_dir = r;
+            break;
+        }
+    }
+
+    std::map<std::string, ThemePack> presentable;
+    for (auto& kv : themes)
+    {
+        if (kv.first == "default")
+        {
+            presentable[kv.first] = kv.second;
+            continue;
+        }
+        if (theme_artifacts_complete(kv.first, kv.second.path, icons_dir, {}))
+        {
+            presentable[kv.first] = kv.second;
+        } else
+        {
+            gate_log("discover_themes", "omit incomplete theme " + kv.first);
+        }
+    }
+    return presentable;
 }
 
 std::vector<ThemePack> theme_packs_ui_order(const std::map<std::string, ThemePack>& packs)
@@ -305,6 +370,10 @@ bool apply_theme_pack(const std::string& theme_id,
     const std::string& user_themes_dir,
     std::string *error)
 {
+    gate_log("apply_theme_pack", "begin id=" + theme_id +
+        " ini=" + ini_path + " res=" + resource_themes_dir +
+        " user=" + user_themes_dir);
+
     auto packs = discover_theme_packs(resource_themes_dir, user_themes_dir);
     std::string css;
     if (theme_id.empty() || theme_id == "default")
@@ -319,32 +388,59 @@ bool apply_theme_pack(const std::string& theme_id,
             {
                 *error = "unknown theme: " + theme_id;
             }
+            gate_log("apply_theme_pack", "REFUSE unknown theme id");
             return false;
         }
         css = it->second.path;
-        /* Don't persist a path that cannot be loaded — avoids panel restart
-         * loops / missing-file spam after theme packs move or fail to install. */
-        if (!css.empty())
-        {
-            std::error_code ec;
-            if (!std::filesystem::is_regular_file(css, ec) || ec)
-            {
-                if (error)
-                {
-                    *error = "theme css missing or unreadable: " + css;
-                }
-                return false;
-            }
-        }
+        gate_log("apply_theme_pack", "resolved path=" + css + " name=" + it->second.name);
     }
+
+    /* VALIDATE BEFORE WRITE — never persist a path the panel cannot load. */
+    auto gate = validate_theme_apply(theme_id.empty() ? "default" : theme_id, css);
+    if (!gate.ok)
+    {
+        if (error)
+        {
+            *error = gate.summary();
+        }
+        gate_log_result("apply_theme_pack", gate);
+        return false;
+    }
+
+    if (ini_path.empty())
+    {
+        if (error)
+        {
+            *error = "ini path empty";
+        }
+        return false;
+    }
+
     if (!update_ini_css_path(ini_path, css))
     {
         if (error)
         {
             *error = "failed to write " + ini_path;
         }
+        gate_log("apply_theme_pack", "REFUSE: ini write failed");
         return false;
     }
+    gate_log("apply_theme_pack", "ini written css_path=" + css);
+
+    /* Dual-write JSON so panel (JSON-wins) sees the theme. */
+    {
+        std::string jerr;
+        if (!settings_save_section("panel", {{"css_path", css}}, &jerr))
+        {
+            if (error)
+            {
+                *error = "saved ini but not config.json: " + jerr;
+            }
+            gate_log("apply_theme_pack", "REFUSE: json write failed: " + jerr);
+            return false;
+        }
+    }
+    gate_log("apply_theme_pack", "json written; apply complete");
     return true;
 }
 

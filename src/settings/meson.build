@@ -1,6 +1,7 @@
 settings_sources = [
   'main.cpp',
   'app.cpp',
+  'startup-gate.cpp',
   'config-backend.cpp',
   'settings-theme.cpp',
   'pages/display-page.cpp',

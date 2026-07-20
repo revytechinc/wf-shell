@@ -1,5 +1,7 @@
 #include "app.hpp"
+#include "startup-gate.hpp"
 
+#include <cstdlib>
 #include <iostream>
 #include <string>
 
@@ -21,13 +23,27 @@ int main(int argc, char **argv)
         } else if (a == "-h" || a == "--help")
         {
             std::cout <<
-                "wf-settings — GTK4 desktop settings (WCM replacement)\n"
+                "wf-settings — Settings for your Wayfire desktop\n"
                 "  -c, --config FILE         wayfire.ini path\n"
                 "  -s, --shell-config FILE   wf-shell.ini path\n"
-                "  -p, --plugin NAME         open plugin section in sidebar\n"
-                "  JSON config: ~/.config/wf-shell/config.json (overrides ini)\n";
+                "  -p, --plugin NAME         open a section by name\n"
+                "\n"
+                "Plain language: open this from the panel while logged in.\n"
+                "It will not touch your monitors unless you ask.\n";
             return 0;
         }
+    }
+
+    /* Boundary: sanitize env + gate before Gtk constructs a display. */
+    auto gate = wf_settings::prepare_settings_process_env();
+    if (!gate.safe_to_open())
+    {
+        std::cerr << "wf-settings: " << gate.user_summary() << "\n";
+        for (const auto& w : gate.warnings)
+        {
+            std::cerr << "  note: " << w << "\n";
+        }
+        return 2;
     }
 
     auto app = wf_settings::SettingsApp();

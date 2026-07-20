@@ -40,6 +40,7 @@
 #include "widgets/tray/tray.hpp"
 
 #include "wf-autohide-window.hpp"
+#include "panel-capabilities.hpp"
 
 class WayfirePanel::impl
 {
@@ -329,6 +330,9 @@ class WayfirePanel::impl
 
     static std::vector<std::string> tokenize(std::string list)
     {
+        /* Never attempt to construct widgets this build does not have. */
+        list = wf_shell::sanitize_panel_widgets_list(list);
+
         std::string token;
         std::istringstream stream(list);
         std::vector<std::string> result;

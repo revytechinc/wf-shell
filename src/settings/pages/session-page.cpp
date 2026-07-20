@@ -56,13 +56,8 @@ SessionPage::SessionPage() :
     /* Logout is special: wayland-logout is the shell session exit, not OS power */
     list_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 10);
     append(*list_box);
-
-    apply_btn = Gtk::make_managed<Gtk::Button>("Apply");
-    apply_btn->add_css_class("suggested-action");
-    apply_btn->set_halign(Gtk::Align::START);
-    append(*apply_btn);
-    apply_btn->signal_clicked().connect([this] () { on_apply(); });
     refresh();
+    /* Checkboxes connected in rebuild_rows for live commit */
 }
 
 void SessionPage::set_status_target(Gtk::Label *s)
@@ -128,6 +123,7 @@ void SessionPage::rebuild_rows()
         col->append(*r.detail_lbl);
         r.use_chk = Gtk::make_managed<Gtk::CheckButton>("Show this button");
         r.use_chk->set_active(true);
+        r.use_chk->signal_toggled().connect([this] () { save(nullptr); });
         col->append(*r.use_chk);
         frame->set_child(*col);
         list_box->append(*frame);
@@ -179,6 +175,7 @@ void SessionPage::rebuild_rows()
         r.use_chk = Gtk::make_managed<Gtk::CheckButton>("Show this button");
         r.use_chk->set_active(cap.available && cap.permitted && !cap.command.empty());
         r.use_chk->set_sensitive(cap.available && !cap.command.empty());
+        r.use_chk->signal_toggled().connect([this] () { save(nullptr); });
         col->append(*r.use_chk);
 
         frame->set_child(*col);
@@ -226,7 +223,7 @@ void SessionPage::refresh()
     }
 }
 
-void SessionPage::on_apply()
+bool SessionPage::save(std::string *error)
 {
     std::map<std::string, std::string> kv;
     for (const auto& r : rows)
@@ -248,12 +245,13 @@ void SessionPage::on_apply()
         {
             status->set_text("Could not save: " + err);
         }
-        return;
+        return false;
     }
     if (status)
     {
         status->set_text("Power & session saved. Logout menu will use these actions.");
     }
+    return true;
 }
 
 } // namespace wf_settings

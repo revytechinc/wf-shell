@@ -62,6 +62,22 @@ test(
     suite: ['unit', 'theme'],
 )
 
+# Never present widgets/themes that are not actually available (integration rules)
+test_exec_caps = executable(
+    'panel-capabilities-test',
+    'panel-capabilities-test.cpp',
+    dependencies: [gtest_dep, libutil, gtkmm_dep],
+    include_directories: test_includes,
+    link_with: util,
+    cpp_args: platform_cpp_args,
+)
+
+test(
+    'panel-capabilities-test',
+    test_exec_caps,
+    suite: ['unit', 'theme', 'integration', 'present-only-available'],
+)
+
 # CSS path preflight + safe load (no dependency on data/themes content)
 # Own main() for Gtk::Application — use gtest without gtest_main
 gtest_only = dependency('gtest')

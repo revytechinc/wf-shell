@@ -30,6 +30,8 @@ util = static_library(
         'platform.cpp',
         'theme-defaults.cpp',
         'theme-catalog.cpp',
+        'apply-gate.cpp',
+        'panel-capabilities.cpp',
         'session-env.cpp',
         'display-config.cpp',
         'ini-file.cpp',

@@ -20,8 +20,8 @@ DisplayPage::DisplayPage() :
 
     auto help = Gtk::make_managed<Gtk::Label>();
     help->set_text(
-        "We read what your monitor supports. Pick size and smoothness, then Apply — "
-        "that’s the only place monitor setup lives (no raw config text).");
+        "Find your monitors, pick a size and smoothness, then Use this display mode. "
+        "We only use modes your hardware lists — no guessing.");
     help->set_wrap(true);
     help->set_halign(Gtk::Align::START);
     help->add_css_class("dim-label");
@@ -65,14 +65,17 @@ DisplayPage::DisplayPage() :
 
     auto actions = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 8);
     refresh_btn = Gtk::make_managed<Gtk::Button>("Find monitors");
-    apply_btn = Gtk::make_managed<Gtk::Button>("Apply");
-    apply_btn->add_css_class("suggested-action");
+    refresh_btn->set_tooltip_text("Look up what your screen can do (safe — does not change anything yet)");
+    use_mode_btn = Gtk::make_managed<Gtk::Button>("Use this display mode");
+    use_mode_btn->add_css_class("suggested-action");
+    use_mode_btn->set_tooltip_text("Change the screen to the size and smoothness you picked");
+    use_mode_btn->set_sensitive(false);
     actions->append(*refresh_btn);
-    actions->append(*apply_btn);
+    actions->append(*use_mode_btn);
     append(*actions);
 
     refresh_btn->signal_clicked().connect([this] () { refresh(); });
-    apply_btn->signal_clicked().connect([this] () { on_apply(); });
+    use_mode_btn->signal_clicked().connect([this] () { save(nullptr); });
 
     out_conn = output_drop->property_selected().signal_changed().connect(
         [this] () {
@@ -107,7 +110,7 @@ DisplayPage::DisplayPage() :
     info_lbl->set_text(
         "Click “Find monitors” to read what the compositor reports. "
         "We never invent modes, and we do not touch the GPU until you ask.");
-    apply_btn->set_sensitive(false);
+    /* no per-page Apply — Save is global */
 }
 
 void DisplayPage::set_status_target(Gtk::Label *status_label)
@@ -169,8 +172,11 @@ wf_shell::DisplayMode DisplayPage::selected_safe_mode() const
 
 void DisplayPage::update_apply_sensitive()
 {
-    auto m = selected_safe_mode();
-    apply_btn->set_sensitive(m.valid());
+    if (use_mode_btn)
+    {
+        use_mode_btn->set_sensitive(selected_safe_mode().valid());
+    }
+    update_info();
 }
 
 void DisplayPage::refresh()
@@ -191,7 +197,7 @@ void DisplayPage::refresh()
         output_drop->set_model(Gtk::StringList::create({}));
         res_drop->set_model(Gtk::StringList::create({}));
         rate_drop->set_model(Gtk::StringList::create({}));
-        apply_btn->set_sensitive(false);
+        /* no per-page Apply — Save is global */
         filling_ui = false;
         if (status)
         {
@@ -258,7 +264,7 @@ void DisplayPage::fill_resolutions()
         res_drop->set_model(Gtk::StringList::create({}));
         rate_drop->set_model(Gtk::StringList::create({}));
         info_lbl->set_text("");
-        apply_btn->set_sensitive(false);
+        /* no per-page Apply — Save is global */
         filling_ui = false;
         return;
     }
@@ -298,7 +304,7 @@ void DisplayPage::fill_refresh_rates()
     if (!o || ridx >= res_cache.size())
     {
         rate_drop->set_model(Gtk::StringList::create({}));
-        apply_btn->set_sensitive(false);
+        /* no per-page Apply — Save is global */
         filling_ui = false;
         update_info();
         return;
@@ -372,59 +378,70 @@ void DisplayPage::update_info()
     info_lbl->set_text(info.str());
 }
 
-void DisplayPage::on_apply()
+bool DisplayPage::save(std::string *error)
 {
     const auto *o = selected_output();
     auto mode = selected_safe_mode();
     if (!o || !mode.valid())
     {
+        const std::string msg =
+            "Find monitors first, then pick a size and smoothness.";
+        if (error)
+        {
+            *error = msg;
+        }
         if (status)
         {
-            status->set_text("Pick a resolution and a refresh rate advertised for that mode.");
+            status->set_text(msg);
         }
-        apply_btn->set_sensitive(false);
-        return;
+        return false;
     }
-    /* Double-check gate (TACOP: never trust UI alone). */
+    /* TAOCP: never trust UI alone — re-check against discovered modes. */
     if (!o->supports(mode))
     {
+        const std::string msg = "That mode is not on the hardware list.";
+        if (error)
+        {
+            *error = msg;
+        }
         if (status)
         {
-            status->set_text("Refused unsafe mode (not in discovered list).");
+            status->set_text(msg);
         }
-        return;
+        return false;
     }
 
     auto output = *o;
     std::string err;
 
-    /*
-     * Apply live first; only then persist. Writing wayfire.ini triggers an
-     * inotify reload that can modeset again while DRM is still settling —
-     * that race has crashed the compositor. Persist path is optional and
-     * happens only after a successful apply.
-     */
     if (!wf_shell::apply_display_mode(output, mode, nullptr, &err))
     {
+        if (error)
+        {
+            *error = err;
+        }
         if (status)
         {
-            status->set_text("Apply failed (compositor untouched on disk): " + err);
+            status->set_text("Could not change display: " + err);
         }
-        return;
+        return false;
     }
 
-    /* Persist to wayfire.ini / kanshi without re-running wlr-randr. */
     std::string perr;
     if (!wayfire_ini_path().empty())
     {
         if (!wf_shell::persist_output_to_wayfire_ini(wayfire_ini_path(), output, mode,
                 nullptr, &perr))
         {
+            if (error)
+            {
+                *error = perr;
+            }
             if (status)
             {
-                status->set_text("Mode applied live, but save failed: " + perr);
+                status->set_text("Screen changed, but save failed: " + perr);
             }
-            return;
+            return false;
         }
     }
     if (!kanshi_path().empty())
@@ -436,15 +453,9 @@ void DisplayPage::on_apply()
 
     if (status)
     {
-        status->set_text("Applied " + mode.label() + " on " + output.name +
-            " and saved to wayfire.ini");
+        status->set_text("Display set to " + mode.label() + ".");
     }
-    /* Soft re-probe only; never hard-fail the UI if discovery glitches. */
-    try
-    {
-        refresh();
-    } catch (...)
-    {}
+    return true;
 }
 
 } // namespace wf_settings

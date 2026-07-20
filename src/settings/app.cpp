@@ -1,8 +1,8 @@
 #include "app.hpp"
 
-#include "session-env.hpp"
 #include "config-backend.hpp"
 #include "settings-theme.hpp"
+#include "startup-gate.hpp"
 
 #include <wayfire/config/section.hpp>
 #include <wayfire/config/xml.hpp>
@@ -10,7 +10,10 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
+#include <iostream>
 #include <set>
+#include <sys/stat.h>
 
 namespace wf_settings
 {
@@ -175,26 +178,77 @@ void clear_listbox(Gtk::ListBox *list)
 } // namespace
 
 SettingsApp::SettingsApp() :
-    Gtk::Application("org.wayfire.wf-settings", Gio::Application::Flags::DEFAULT_FLAGS)
+    /* NON_UNIQUE: avoid session-bus single-instance races when DBUS is flaky. */
+    Gtk::Application("org.wayfire.wf-settings", Gio::Application::Flags::NON_UNIQUE)
 {}
+
+bool SettingsApp::compositor_still_alive() const
+{
+    /* TAOCP: re-check facts at the boundary; never trust an earlier gate alone. */
+    return evaluate_startup_gate().safe_to_open();
+}
 
 void SettingsApp::on_activate()
 {
+    /*
+     * Do NOT call ensure_session_env() here. That helper invents DISPLAY /
+     * GDK_BACKEND / DBUS for panel *children*. Settings is a normal window
+     * client; inventing session vars has crashed this NVIDIA/FreeBSD seat.
+     * main() already ran prepare_settings_process_env().
+     */
+    if (!compositor_still_alive())
+    {
+        std::cerr << "wf-settings: " << evaluate_startup_gate().user_summary() << "\n";
+        quit();
+        return;
+    }
+
     try
     {
-        wf_shell::ensure_session_env(true, nullptr);
+        ConfigBackend::instance().reload();
+    } catch (const std::exception& e)
+    {
+        std::cerr << "wf-settings: config load failed (continuing empty): " << e.what() << "\n";
     } catch (...)
-    {}
+    {
+        std::cerr << "wf-settings: config load failed (continuing empty)\n";
+    }
 
-    ConfigBackend::instance().reload();
-    reload_app_theme();
+    /* Theme is cosmetic — never block open; fail-soft. */
+    try
+    {
+        reload_app_theme();
+    } catch (...)
+    {
+        std::cerr << "wf-settings: theme load skipped\n";
+    }
 
     if (window)
     {
-        window->present();
+        if (compositor_still_alive())
+        {
+            window->present();
+        }
         return;
     }
-    build_ui();
+
+    try
+    {
+        build_ui();
+    } catch (const std::exception& e)
+    {
+        std::cerr << "wf-settings: UI build failed: " << e.what() << "\n";
+        quit();
+        return;
+    }
+
+    if (!compositor_still_alive())
+    {
+        std::cerr << "wf-settings: desktop went away while opening — not showing window\n";
+        quit();
+        return;
+    }
+
     window->present();
 
     if (!start_plugin.empty())
@@ -214,50 +268,22 @@ void SettingsApp::build_ui()
     auto outer = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 0);
     window->set_child(*outer);
 
-    /* Top bar: title + single Save (wayfire.ini) */
+    /*
+     * Apple HIG modeless prefs: no Save / Apply / Cancel chrome.
+     * Changing a control commits. Status line is quiet unless something fails.
+     */
     auto top = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 8);
     top->add_css_class("wf-settings-toolbar");
-    top->set_margin_start(10);
-    top->set_margin_end(10);
-    top->set_margin_top(8);
-    top->set_margin_bottom(8);
+    top->set_margin_start(12);
+    top->set_margin_end(12);
+    top->set_margin_top(10);
+    top->set_margin_bottom(6);
     auto win_title = Gtk::make_managed<Gtk::Label>();
     win_title->set_markup("<b>Settings</b>");
     win_title->set_halign(Gtk::Align::START);
     win_title->set_hexpand(true);
     top->append(*win_title);
-    save_wayfire_btn = Gtk::make_managed<Gtk::Button>("Save");
-    save_wayfire_btn->add_css_class("suggested-action");
-    top->append(*save_wayfire_btn);
     outer->append(*top);
-
-    save_wayfire_btn->signal_clicked().connect([this] () {
-        auto& b = ConfigBackend::instance();
-        if (!b.has_dirty_wayfire())
-        {
-            if (status)
-            {
-                status->set_text("Nothing to save — no compositor changes yet.");
-            }
-            return;
-        }
-        const size_t n = b.dirty_wayfire_count();
-        std::string err;
-        /* Dirty-key upsert only + backup. Never rewrite whole wayfire.ini from XML. */
-        if (!b.save_wayfire(&err))
-        {
-            if (status)
-            {
-                status->set_text("Save failed: " + err);
-            }
-            return;
-        }
-        if (status)
-        {
-            status->set_text("Saved " + std::to_string(n) +
-                " change(s) → " + b.wayfire_ini + " (backup: .bak-last)");
-        }
-    });
 
     auto body = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 0);
     body->set_vexpand(true);
@@ -271,11 +297,11 @@ void SettingsApp::build_ui()
     left->set_vexpand(true);
 
     search = Gtk::make_managed<Gtk::SearchEntry>();
-    search->set_placeholder_text("Search settings…");
-    search->set_margin_start(4);
-    search->set_margin_end(4);
-    search->set_margin_top(8);
-    search->set_margin_bottom(4);
+    search->set_placeholder_text("Find a setting…");
+    search->set_margin_start(8);
+    search->set_margin_end(8);
+    search->set_margin_top(10);
+    search->set_margin_bottom(8);
     left->append(*search);
 
     auto side_scroll = Gtk::make_managed<Gtk::ScrolledWindow>();
@@ -311,37 +337,32 @@ void SettingsApp::build_ui()
     status->add_css_class("wf-settings-status");
     right->append(*status);
 
-    auto add_curated = [&] (const char *id, const char *title, auto & page_ptr, auto factory) {
-        page_ptr = factory();
-        page_ptr->set_status_target(status);
+    /*
+     * Lazy curated pages (Factory Method): placeholders only until selected.
+     * Building every page (Session power probes, etc.) on open was heavy and
+     * unsafe. Display never probes until the user clicks “Find monitors”.
+     */
+    auto add_placeholder = [&] (const char *id, const char *title) {
         auto scroll = Gtk::make_managed<Gtk::ScrolledWindow>();
         scroll->set_policy(Gtk::PolicyType::NEVER, Gtk::PolicyType::AUTOMATIC);
-        scroll->set_child(*page_ptr);
         scroll->set_hexpand(true);
         scroll->set_vexpand(true);
+        auto hold = Gtk::make_managed<Gtk::Label>("Loading…");
+        hold->set_margin(24);
+        hold->set_halign(Gtk::Align::START);
+        hold->add_css_class("dim-label");
+        scroll->set_child(*hold);
         stack->add(*scroll, id, title);
     };
 
-    add_curated("display", "Display", display_page,
-        [] { return std::make_unique<DisplayPage>(); });
-    add_curated("panel", "Panel", panel_page,
-        [] { return std::make_unique<PanelPage>(); });
-    if (panel_page)
-    {
-        panel_page->set_theme_applied_callback([] () { reload_app_theme(); });
-    }
-    add_curated("desktop", "Desktop", desktop_page,
-        [] { return std::make_unique<DesktopPage>(); });
-    add_curated("dock", "Dock", dock_page,
-        [] { return std::make_unique<DockPage>(); });
-    add_curated("sound", "Sound", sound_page,
-        [] { return std::make_unique<SoundPage>(); });
-    add_curated("network", "Network", network_page,
-        [] { return std::make_unique<NetworkPage>(); });
-    add_curated("session", "Session", session_page,
-        [] { return std::make_unique<SessionPage>(); });
-    add_curated("mcp", "AI / MCP", mcp_page,
-        [] { return std::make_unique<McpPage>(); });
+    add_placeholder("panel", "Panel");
+    add_placeholder("desktop", "Desktop");
+    add_placeholder("dock", "Dock");
+    add_placeholder("display", "Displays");
+    add_placeholder("sound", "Sound");
+    add_placeholder("network", "Network");
+    add_placeholder("session", "Power & logout");
+    add_placeholder("mcp", "AI helpers");
 
     rebuild_catalog();
     rebuild_sidebar();
@@ -361,7 +382,7 @@ void SettingsApp::build_ui()
         select_page(id);
     });
 
-    /* Open first selectable item (skip category headers) */
+    /* Open Panel first — everyday settings, no compositor probes. */
     for (int i = 0;; ++i)
     {
         auto *row = sidebar->get_row_at_index(i);
@@ -370,7 +391,7 @@ void SettingsApp::build_ui()
             break;
         }
         auto id = row->get_name();
-        if (!id.empty() && id.rfind("hdr:", 0) != 0 && row->get_selectable())
+        if (id == "panel")
         {
             sidebar->select_row(*row);
             select_page(id);
@@ -465,16 +486,16 @@ void SettingsApp::rebuild_sidebar()
         sidebar_rows[id] = row;
     };
 
-    /* —— Common tasks (curated) —— */
-    add_header("Common");
-    add_item("display", "Displays");
-    add_item("panel", "Panel");
+    /* —— Everyday settings first (mother-simple order) —— */
+    add_header("Everyday");
+    add_item("panel", "Panel (look & icons)");
     add_item("desktop", "Desktop & wallpaper");
-    add_item("dock", "Dock");
     add_item("sound", "Sound");
-    add_item("network", "Network");
-    add_item("session", "Power & session");
-    add_item("mcp", "AI / MCP");
+    add_item("network", "Network icon");
+    add_item("display", "Displays");
+    add_item("session", "Power & logout");
+    add_item("dock", "Dock");
+    add_item("mcp", "AI helpers");
 
     /* —— Every plugin, grouped by category (same level as Common) —— */
     std::map<std::string, std::vector<const NavPlugin*>> by_cat;
@@ -526,7 +547,7 @@ void SettingsApp::rebuild_sidebar()
     if (status)
     {
         status->set_text(std::to_string(catalog.size()) +
-            " plugins in sidebar · Common tasks on top · search filters the list");
+            " plugins in sidebar · Everyday tasks on top · search filters the list");
     }
 }
 
@@ -603,8 +624,8 @@ void SettingsApp::apply_sidebar_filter()
 
     for (auto *hdr : sidebar_headers)
     {
-        auto name = hdr->get_name(); /* hdr:Common or hdr:Effects */
-        if (name == "hdr:Common")
+        auto name = hdr->get_name(); /* hdr:Everyday / hdr:Common or hdr:Effects */
+        if (name == "hdr:Common" || name == "hdr:Everyday")
         {
             hdr->set_visible(any_common || !filtering);
             continue;
@@ -633,6 +654,66 @@ void SettingsApp::ensure_plugin_page(const NavPlugin& p)
     scroll->set_child(*page);
     stack->add(*scroll, p.stack_id, p.title);
     plugin_pages[p.stack_id] = std::move(page);
+}
+
+void SettingsApp::ensure_curated_page(const std::string& id)
+{
+    if (!stack)
+    {
+        return;
+    }
+
+    auto replace_child = [&] (Gtk::Widget& page) {
+        auto *scroll = dynamic_cast<Gtk::ScrolledWindow*>(stack->get_child_by_name(id));
+        if (!scroll)
+        {
+            return;
+        }
+        scroll->set_child(page);
+    };
+
+    if (id == "panel" && !panel_page)
+    {
+        panel_page = std::make_unique<PanelPage>();
+        panel_page->set_status_target(status);
+        panel_page->set_theme_applied_callback([] () { reload_app_theme(); });
+        replace_child(*panel_page);
+    } else if (id == "desktop" && !desktop_page)
+    {
+        desktop_page = std::make_unique<DesktopPage>();
+        desktop_page->set_status_target(status);
+        replace_child(*desktop_page);
+    } else if (id == "dock" && !dock_page)
+    {
+        dock_page = std::make_unique<DockPage>();
+        dock_page->set_status_target(status);
+        replace_child(*dock_page);
+    } else if (id == "display" && !display_page)
+    {
+        display_page = std::make_unique<DisplayPage>();
+        display_page->set_status_target(status);
+        replace_child(*display_page);
+    } else if (id == "sound" && !sound_page)
+    {
+        sound_page = std::make_unique<SoundPage>();
+        sound_page->set_status_target(status);
+        replace_child(*sound_page);
+    } else if (id == "network" && !network_page)
+    {
+        network_page = std::make_unique<NetworkPage>();
+        network_page->set_status_target(status);
+        replace_child(*network_page);
+    } else if (id == "session" && !session_page)
+    {
+        session_page = std::make_unique<SessionPage>();
+        session_page->set_status_target(status);
+        replace_child(*session_page);
+    } else if (id == "mcp" && !mcp_page)
+    {
+        mcp_page = std::make_unique<McpPage>();
+        mcp_page->set_status_target(status);
+        replace_child(*mcp_page);
+    }
 }
 
 void SettingsApp::select_page(const std::string& id)
@@ -664,12 +745,17 @@ void SettingsApp::select_page(const std::string& id)
         return;
     }
 
+    ensure_curated_page(id);
     stack->set_visible_child(id);
 
-    if (id == "display" && display_page)
-    {
-        display_page->refresh();
-    } else if (id == "panel" && panel_page)
+    /*
+     * Display: NEVER auto-call refresh() here.
+     * refresh() runs wlr-randr against the live compositor and has crashed
+     * Wayfire on open. User must click "Find monitors".
+     *
+     * Other pages: refresh only after lazy construct (config file reads only).
+     */
+    if (id == "panel" && panel_page)
     {
         panel_page->refresh();
     } else if (id == "desktop" && desktop_page)
@@ -691,6 +777,7 @@ void SettingsApp::select_page(const std::string& id)
     {
         mcp_page->refresh();
     }
+    /* display: no auto refresh */
 }
 
 void SettingsApp::focus_plugin_section(const std::string& section)

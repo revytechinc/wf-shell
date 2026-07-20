@@ -11,9 +11,9 @@ class NetworkPage : public Gtk::Box
     NetworkPage();
     void refresh();
     void set_status_target(Gtk::Label *status_label);
+    bool save(std::string *error = nullptr);
 
   private:
-    void on_apply();
     std::string shell_ini() const;
 
     Gtk::SpinButton *icon_size = nullptr;
@@ -22,8 +22,8 @@ class NetworkPage : public Gtk::Box
     Gtk::CheckButton *use_color = nullptr;
     Gtk::CheckButton *no_label = nullptr;
     Gtk::Entry *onclick = nullptr;
-    Gtk::Button *apply_btn = nullptr;
     Gtk::Label *status = nullptr;
+    bool filling = false;
 };
 
 } // namespace wf_settings

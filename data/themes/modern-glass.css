@@ -1173,6 +1173,8 @@ window.wf-settings,
     border: 1px solid rgba(255, 255, 255, 0.2);
     border-radius: 0;
     margin: 4px 8px;
+}
+
 .wf-settings .wf-settings-content,
 .wf-settings .wf-settings-content > *,
 .wf-settings .wf-settings-content scrolledwindow,

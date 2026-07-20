@@ -134,15 +134,27 @@ DesktopPage::DesktopPage() :
     bg_frame->set_child(*bg_box);
     append(*bg_frame);
 
-    bg_fill->property_selected().signal_changed().connect([this] () { update_preview_hint(); });
-
-    apply_btn = Gtk::make_managed<Gtk::Button>("Apply");
-    apply_btn->add_css_class("suggested-action");
-    apply_btn->set_halign(Gtk::Align::START);
-    append(*apply_btn);
-
-    apply_btn->signal_clicked().connect([this] () { on_apply(); });
+    auto live = [this] () {
+        if (!filling)
+        {
+            save(nullptr);
+        }
+    };
+    bg_fill->property_selected().signal_changed().connect([this, live] () {
+        update_preview_hint();
+        live();
+    });
     browse_btn->signal_clicked().connect([this] () { on_browse(); });
+    vwidth->signal_value_changed().connect([update_ws, live] () {
+        update_ws();
+        live();
+    });
+    vheight->signal_value_changed().connect([update_ws, live] () {
+        update_ws();
+        live();
+    });
+    bg_random->signal_toggled().connect(live);
+    bg_image->signal_changed().connect(live);
     refresh();
     update_ws();
 }
@@ -201,6 +213,7 @@ std::string DesktopPage::shell_ini() const
 
 void DesktopPage::refresh()
 {
+    filling = true;
     auto wf = wayfire_ini();
     auto sh = shell_ini();
     vwidth->set_value(wf_shell::ini_get_int(wf, "core", "vwidth", 3));
@@ -223,9 +236,10 @@ void DesktopPage::refresh()
     }
     bg_fill->set_selected(fi);
     update_preview_hint();
+    filling = false;
     if (status)
     {
-        status->set_text("Desktop ready.");
+        status->set_text("");
     }
 }
 
@@ -247,13 +261,14 @@ void DesktopPage::on_browse()
                 if (file)
                 {
                     bg_image->set_text(file->get_path());
+                    save(nullptr);
                 }
             } catch (...)
             {}
         });
 }
 
-void DesktopPage::on_apply()
+bool DesktopPage::save(std::string *error)
 {
     auto wf = wayfire_ini();
     /* Workspace grid is often not hot-reloadable — write carefully via dirty API. */
@@ -273,7 +288,7 @@ void DesktopPage::on_apply()
             {
                 status->set_text(err.empty() ? "Could not stage workspace layout." : err);
             }
-            return;
+            return false;
         }
         if (!b.save_wayfire(&err))
         {
@@ -281,7 +296,7 @@ void DesktopPage::on_apply()
             {
                 status->set_text(err.empty() ? "Could not save workspace layout." : err);
             }
-            return;
+            return false;
         }
     }
     auto fi = bg_fill->get_selected();
@@ -297,7 +312,7 @@ void DesktopPage::on_apply()
         {
             status->set_text("Could not save wallpaper: " + err);
         }
-        return;
+        return false;
     }
     if (status)
     {
@@ -310,6 +325,7 @@ void DesktopPage::on_apply()
             status->set_text("Wallpaper saved.");
         }
     }
+    return true;
 }
 
 } // namespace wf_settings

@@ -1809,6 +1809,8 @@ window.wf-settings,
     border: 1px solid {p['panel_border']};
     border-radius: 0;
     margin: 4px 8px;
+}}
+
 .wf-settings .wf-settings-content,
 .wf-settings .wf-settings-content > *,
 .wf-settings .wf-settings-content scrolledwindow,
