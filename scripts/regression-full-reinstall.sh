@@ -175,6 +175,81 @@ else
   pass "R2 panel includes weather (config may list it)"
 fi
 
+# ── 2b) SYSTEM DEFAULT CONFIG (from package) ─────────────────────────────
+section "2b SYSTEM DEFAULT CONFIG (package)"
+SYS_WF=/usr/local/etc/wayfire/wayfire.ini
+SYS_WS=/usr/local/etc/wf-shell/wf-shell.ini
+CFG_PATH=/usr/local/libexec/wayfire-config-path.sh
+
+if [ -f "$SYS_WF" ]; then
+  pass "R10 system wayfire.ini present: $SYS_WF"
+  owner=$(pkg which -q "$SYS_WF" 2>/dev/null || echo none)
+  case "$owner" in
+    revytech-wayfire-*) pass "R10 $SYS_WF owned by $owner" ;;
+    *) fail "R10 $SYS_WF not owned by revytech-wayfire (got: $owner)" ;;
+  esac
+else
+  fail "R10 missing system wayfire.ini at $SYS_WF"
+fi
+
+if [ -f "$SYS_WS" ]; then
+  pass "R10 system wf-shell.ini present"
+  owner=$(pkg which -q "$SYS_WS" 2>/dev/null || echo none)
+  case "$owner" in
+    revytech-wf-shell-*) pass "R10 $SYS_WS owned by $owner" ;;
+    *) fail "R10 $SYS_WS not owned by revytech-wf-shell (got: $owner)" ;;
+  esac
+else
+  fail "R10 missing system wf-shell.ini"
+fi
+
+if [ -x "$CFG_PATH" ]; then
+  # Explicit override
+  got=$(WAYFIRE_CONFIG_FILE="$SYS_WF" "$CFG_PATH" 2>/dev/null || true)
+  if [ "$got" = "$SYS_WF" ]; then
+    pass "R10 config-path honors WAYFIRE_CONFIG_FILE override"
+  else
+    fail "R10 config-path override got '$got' want '$SYS_WF'"
+  fi
+  # When no user prefs: must resolve system package path
+  if [ ! -f "${HOME}/.config/wayfire.ini" ]; then
+    got=$(env -u WAYFIRE_CONFIG_FILE HOME="$HOME" "$CFG_PATH" 2>/dev/null || true)
+    if [ "$got" = "$SYS_WF" ]; then
+      pass "R10 no user wayfire.ini → system default $SYS_WF"
+    else
+      fail "R10 no user prefs but path='$got' (want system $SYS_WF)"
+    fi
+  else
+    got=$(env -u WAYFIRE_CONFIG_FILE HOME="$HOME" "$CFG_PATH" 2>/dev/null || true)
+    if [ "$got" = "${HOME}/.config/wayfire.ini" ]; then
+      pass "R10 user wayfire.ini preferred when present"
+    else
+      fail "R10 user prefs present but path='$got'"
+    fi
+  fi
+  # System file must not reference personal home paths (comments ok for hierarchy)
+  if grep -E '^[^#]*/home/|/home/[a-zA-Z]|\$HOME/' "$SYS_WF" >/dev/null 2>&1; then
+    fail "R10 system wayfire.ini contains home-directory paths in active settings"
+  else
+    pass "R10 system wayfire.ini has no home-directory paths in settings"
+  fi
+  # Dual-panel guard
+  if grep -q 'autostart_wf_shell[[:space:]]*=[[:space:]]*false' "$SYS_WF" \
+     && grep -q 'wf-shell-launch panel' "$SYS_WF"; then
+    pass "R10 system default avoids dual panel (autostart_wf_shell=false + launcher)"
+  else
+    fail "R10 system default may dual-start panel"
+  fi
+  # No machine-specific outputs in system default
+  if grep -E '^\[output:' "$SYS_WF" >/dev/null 2>&1; then
+    fail "R10 system wayfire.ini has machine-specific [output:…] (belongs in user prefs)"
+  else
+    pass "R10 system wayfire.ini has no machine-specific outputs"
+  fi
+else
+  fail "R10 missing $CFG_PATH"
+fi
+
 # ── 3) RESTART SESSION (DRM, not nested wayland) ─────────────────────────
 section "3 RESTART WAYFIRE + CLIENTS"
 # Critical: never leave WAYLAND_DISPLAY set or wayfire nests and fails
@@ -208,7 +283,24 @@ export XDG_CURRENT_DESKTOP=wayfire
 export WLR_BACKENDS=drm,libinput
 [ -e /dev/dri/renderD128 ] && export WLR_RENDER_DRM_DEVICE=/dev/dri/renderD128
 
-CONFIG="${WAYFIRE_CONFIG_FILE:-$HOME/.config/wayfire.ini}"
+# Resolve via package helper — system default when user prefs absent
+if [ -x /usr/local/libexec/wayfire-config-path.sh ]; then
+  CONFIG=$(env -u WAYFIRE_CONFIG_FILE HOME="$HOME" /usr/local/libexec/wayfire-config-path.sh)
+else
+  CONFIG="${WAYFIRE_CONFIG_FILE:-}"
+  if [ -z "$CONFIG" ] || [ ! -f "$CONFIG" ]; then
+    if [ -f "$HOME/.config/wayfire.ini" ]; then
+      CONFIG="$HOME/.config/wayfire.ini"
+    else
+      CONFIG=/usr/local/etc/wayfire/wayfire.ini
+    fi
+  fi
+fi
+if [ ! -f "$CONFIG" ]; then
+  fail "R10 resolved config does not exist: $CONFIG"
+fi
+log "using wayfire config: $CONFIG"
+export WAYFIRE_CONFIG_FILE="$CONFIG"
 RESTART_LOG=/tmp/wf-shell-regression-restart.log
 PIDFILE=/tmp/wf-shell-regression.wayfire.pid
 : >"$RESTART_LOG"
@@ -262,6 +354,33 @@ else
   fi
 fi
 
+# Prove live compositor is using the package-resolved config path
+if pgrep -x wayfire >/dev/null 2>&1; then
+  _wf_pid=$(pgrep -n -x wayfire 2>/dev/null | head -1)
+  # FreeBSD: ps -p PID -o args=  (avoid -ax/-p combos that drop the row)
+  live_args=$(ps -p "$_wf_pid" -o args= 2>/dev/null || ps -axww -o pid,args | awk -v p="$_wf_pid" '$1==p {$1=""; print substr($0,2)}')
+  live_cfg=$(printf '%s\n' "$live_args" | sed -n 's/.* -c  *//p' | awk '{print $1}')
+  if [ -z "$live_cfg" ]; then
+    # Fallback: compare against resolved CONFIG we started with
+    live_cfg="$CONFIG"
+  fi
+  if [ -n "$live_cfg" ] && [ -f "$live_cfg" ]; then
+    pass "R10 live wayfire -c $live_cfg"
+    if [ ! -f "${HOME}/.config/wayfire.ini" ]; then
+      case "$live_cfg" in
+        /usr/local/etc/wayfire/wayfire.ini|/etc/wayfire/wayfire.ini)
+          pass "R10 no user prefs → live session on system default"
+          ;;
+        *)
+          fail "R10 no user prefs but live config is $live_cfg (want system)"
+          ;;
+      esac
+    fi
+  else
+    fail "R10 could not parse live wayfire -c path (args='$live_args')"
+  fi
+fi
+
 # Wait for autostart clients; if none, start via packaged launcher once
 wait_for 10 'pgrep -x wf-panel >/dev/null' || true
 if ! pgrep -x wf-panel >/dev/null 2>&1; then
@@ -303,9 +422,9 @@ PANEL_LOG=/tmp/wf-panel-regression.log
 pkill -x wf-panel 2>/dev/null || true
 sleep 0.3
 while pgrep -x wf-panel >/dev/null 2>&1; do pkill -9 -x wf-panel; sleep 0.1; done
-# Ensure we still only start ONE
+# Ensure we still only start ONE — package launcher picks user or system ini
 nohup env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" HOME="$HOME" \
-  /usr/local/bin/wf-panel -c "${HOME}/.config/wf-shell.ini" >"$PANEL_LOG" 2>&1 &
+  /usr/local/libexec/wf-shell-launch panel >"$PANEL_LOG" 2>&1 </dev/null &
 sleep 1.2
 if [ "$(count_proc wf-panel)" -eq 1 ]; then
   pass "R1 single panel after explicit start"

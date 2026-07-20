@@ -95,6 +95,7 @@ BINS="
 /usr/local/bin/ly_wrapper
 /usr/local/libexec/wayfire-session-launch
 /usr/local/libexec/wf-shell-launch
+/usr/local/libexec/wayfire-config-path.sh
 /usr/local/sbin/revytech-ly-enable
 "
 for b in $BINS; do
@@ -104,6 +105,37 @@ for b in $BINS; do
     fail "missing/non-exec $b"
   fi
 done
+
+# ── 0d system defaults (package paths only) ───────────────────────────────
+section "0d SYSTEM DEFAULTS (package)"
+for f in /usr/local/etc/wayfire/wayfire.ini /usr/local/etc/wf-shell/wf-shell.ini; do
+  if [ -f "$f" ]; then
+    owner=$(pkg which -q "$f" 2>/dev/null || echo none)
+    case "$owner" in
+      revytech-*) pass "system file $f owned by $owner" ;;
+      *) fail "system file $f not package-owned (got: $owner)" ;;
+    esac
+  else
+    fail "missing system default $f"
+  fi
+done
+# Hierarchy probe from package helper (must not depend on source tree)
+got=$(env -u WAYFIRE_CONFIG_FILE HOME=/tmp/no-such-wayfire-user-$$ \
+  /usr/local/libexec/wayfire-config-path.sh 2>/dev/null || true)
+case "$got" in
+  /usr/local/etc/wayfire/wayfire.ini|/etc/wayfire/wayfire.ini)
+    pass "config-path system default for empty home: $got"
+    ;;
+  *)
+    fail "config-path for empty home got '$got'"
+    ;;
+esac
+if [ -f /usr/local/etc/wayfire/wayfire.ini ] && \
+   ! grep -E '^[^#]*/home/|/home/[a-zA-Z]' /usr/local/etc/wayfire/wayfire.ini >/dev/null 2>&1; then
+  pass "system wayfire.ini has no /home paths in settings"
+else
+  fail "system wayfire.ini references /home in settings (not a system default)"
+fi
 
 # ── 1 optional reinstall ───────────────────────────────────────────────────
 if [ "$DO_REINSTALL" -eq 1 ]; then
