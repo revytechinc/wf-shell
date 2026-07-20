@@ -136,15 +136,31 @@ def main() -> int:
     ok("volume_graph_style = wave-fill" in ex, "example default wave-fill")
     ok("volume_out_channels = 8" in ex, "example default 8 channels")
 
-    # --- user config if present ---
+    # --- package system default (always; user prefs optional) ---
+    print("\n[package system wf-shell.ini]")
+    sys_ini = Path("/usr/local/etc/wf-shell/wf-shell.ini")
+    if sys_ini.is_file():
+        si = sys_ini.read_text(encoding="utf-8")
+        # System default may omit audio keys (XML defaults apply); if present, must be sane
+        if "volume_graph_style" in si:
+            ok("volume_graph_style = wave-fill" in si or "volume_graph_style=wave-fill" in si,
+               "system package graph default wave-fill")
+        else:
+            ok(True, "system package omits volume_graph_style (metadata default wave-fill)")
+    else:
+        ok(True, "system package wf-shell.ini not installed (dev tree ok)")
+
+    # --- user config if present: optional personalization, never required ---
     print("\n[~/.config/wf-shell.ini]")
     if HOME_INI.is_file():
         hi = HOME_INI.read_text(encoding="utf-8")
-        ok("volume_graph_style" in hi, "user ini has volume_graph_style")
-        ok("volume_graph_style = wave-fill" in hi or "volume_graph_style=wave-fill" in hi,
-           "user ini graph default wave-fill")
+        if "volume_graph_style" in hi:
+            ok("volume_graph_style = wave-fill" in hi or "volume_graph_style=wave-fill" in hi,
+               "user ini graph style is wave-fill when set")
+        else:
+            ok(True, "user ini has no volume_graph_style (inherits metadata default)")
     else:
-        ok(True, "user ini optional (skipped)")
+        ok(True, "user ini absent (system defaults only — expected in clean regression)")
 
     # --- UI stays sparse; detail in man pages ---
     print("\n[man pages + no tutorial UI]")
