@@ -34,17 +34,34 @@ wf-settings 2>&1 | tee /tmp/wf-settings.log
 
 Look for `wf-shell:gate[...]` lines: `ALLOW` vs `REFUSE`.
 
-## Integration tests (run every iteration)
+## Regression suite (this is what “full reinstall” means)
+
+A **regression test** encodes a bug that already bit us. It must **FAIL** if
+that bug returns. Smoke that “something started” is not a regression test.
 
 ```sh
-# unit + product rules (never present what is not built/installed)
-meson test -C build panel-capabilities-test display-config-test css-load-test --print-errorlogs
-meson test -C build --print-errorlogs   # full suite
+# FULL: stop stack → verify package on disk → restart DRM session →
+# assert R1–R8 (dual panel, weather widget, settings-kills-wayfire, missing
+# theme icons, pkg ownership, …) → unit suite
+./scripts/regression-full-reinstall.sh
+# log: /tmp/wf-shell-regression.log
+```
 
-# installed tree: themes have menu icons; no weather if unbuilt
+Known regressions asserted by that script:
+- **R1** dual wf-panel / dual background  
+- **R2** `Invalid widget: weather` (presenting unbuilt widgets)  
+- **R3** wf-settings kills wayfire  
+- **R4** theme CSS without menu icon  
+- **R5** package missing files / checksum / old binary  
+- **R6** panel dies when settings opens  
+- **R7** no panel when wayfire is up  
+- **R8** key files not owned by `revytech-wf-shell`
+
+### Smaller suites (not a substitute for full regression)
+
+```sh
+meson test -C build --print-errorlogs
 ./scripts/integration-present-only-available.sh
-
-# live seat: single panel, no Invalid widget, settings does not kill wayfire
 ./scripts/integration-live-session.sh
 ```
 
