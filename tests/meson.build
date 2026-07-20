@@ -158,6 +158,39 @@ test(
     suite: ['unit', 'config', 'fault-tolerance'],
 )
 
+# Validate-before-apply gates (must refuse bad theme/session combinations)
+test_exec_apply_gate = executable(
+    'apply-gate-test',
+    'apply-gate-test.cpp',
+    dependencies: [gtest_dep, gtkmm_dep, libutil],
+    include_directories: test_includes,
+    link_with: util,
+)
+
+test(
+    'apply-gate-test',
+    test_exec_apply_gate,
+    suite: ['unit', 'gate', 'fault-tolerance'],
+)
+
+# Settings startup gate — never invent compositor; fail closed offline
+test_exec_startup_gate = executable(
+    'startup-gate-test',
+    'startup-gate-test.cpp',
+    '../src/settings/startup-gate.cpp',
+    dependencies: [gtest_dep, libutil],
+    include_directories: [
+        test_includes,
+        include_directories('../src/settings'),
+    ],
+)
+
+test(
+    'startup-gate-test',
+    test_exec_startup_gate,
+    suite: ['unit', 'gate', 'fault-tolerance'],
+)
+
 # Docs / config red-green (python)
 py3 = find_program('python3')
 audio_defaults_py = join_paths(meson.current_source_dir(),
