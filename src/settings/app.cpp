@@ -486,15 +486,19 @@ void SettingsApp::rebuild_sidebar()
         sidebar_rows[id] = row;
     };
 
-    /* —— Everyday settings first (mother-simple order) —— */
-    add_header("Everyday");
+    /* —— Curated settings grouped logically (Apple System Settings style) —— */
+    add_header("Appearance");
     add_item("panel", "Panel (look & icons)");
     add_item("desktop", "Desktop & wallpaper");
+    add_item("dock", "Dock");
+
+    add_header("Hardware & Network");
+    add_item("display", "Displays");
     add_item("sound", "Sound");
     add_item("network", "Network icon");
-    add_item("display", "Displays");
+
+    add_header("System");
     add_item("session", "Power & logout");
-    add_item("dock", "Dock");
     add_item("mcp", "AI helpers");
 
     /* —— Every plugin, grouped by category (same level as Common) —— */
