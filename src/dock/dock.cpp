@@ -1,4 +1,5 @@
 #include <gtkmm/window.h>
+#include <iostream>
 #include <gdkmm/frameclock.h>
 #include <glibmm/main.h>
 #include <gdk/wayland/gdkwayland.h>
@@ -16,6 +17,7 @@
 #include "network/network.hpp"
 #include "wf-popover.hpp"
 #include <css-config.hpp>
+#include <apply-gate.hpp>
 
 
 class WfDock::impl
@@ -52,11 +54,19 @@ class WfDock::impl
 
         if (css_path.value() != "")
         {
-            auto css = load_css_from_path(css_path);
-            if (css)
+            auto gate = wf_shell::validate_theme_css_path(css_path);
+            if (gate.ok)
             {
-                auto display = Gdk::Display::get_default();
-                Gtk::StyleContext::add_provider_for_display(display, css, GTK_STYLE_PROVIDER_PRIORITY_USER);
+                auto css = load_css_from_path(css_path);
+                if (css)
+                {
+                    auto display = Gdk::Display::get_default();
+                    Gtk::StyleContext::add_provider_for_display(display, css, GTK_STYLE_PROVIDER_PRIORITY_USER);
+                }
+            }
+            else
+            {
+                std::cerr << "wf-dock: css path validation failed: " << gate.summary() << "\n";
             }
         }
 

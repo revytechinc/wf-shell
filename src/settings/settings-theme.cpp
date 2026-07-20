@@ -4,6 +4,7 @@
 #include "theme-catalog.hpp"
 #include "gtk-utils.hpp"
 #include "config-backend.hpp"
+#include "apply-gate.hpp"
 
 #include <gtkmm.h>
 #include <iostream>
@@ -89,7 +90,15 @@ void reload_app_theme()
     const auto custom = resolve_panel_css_path();
     if (!custom.empty())
     {
-        add_file(custom, GTK_STYLE_PROVIDER_PRIORITY_USER);
+        auto gate = wf_shell::validate_theme_css_path(custom);
+        if (gate.ok)
+        {
+            add_file(custom, GTK_STYLE_PROVIDER_PRIORITY_USER);
+        }
+        else
+        {
+            std::cerr << "wf-settings: custom theme validation failed: " << gate.summary() << "\n";
+        }
     }
 }
 
