@@ -27,6 +27,16 @@ DisplayPage::DisplayPage() :
     help->add_css_class("dim-label");
     append(*help);
 
+    /* Monitor Layout visualizer */
+    layout_container = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 6);
+    layout_container->add_css_class("display-layout-canvas");
+    layout_container->set_size_request(-1, 220);
+    layout_fixed = Gtk::make_managed<Gtk::Fixed>();
+    layout_fixed->set_expand(true);
+    layout_container->append(*layout_fixed);
+    append(*layout_container);
+    layout_container->set_visible(false);
+
     auto out_row = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 8);
     auto out_l = Gtk::make_managed<Gtk::Label>("Monitor");
     out_l->set_halign(Gtk::Align::START);
@@ -251,6 +261,7 @@ void DisplayPage::refresh()
 void DisplayPage::on_output_changed()
 {
     fill_resolutions();
+    update_layout_visualization();
 }
 
 void DisplayPage::fill_resolutions()
@@ -456,6 +467,118 @@ bool DisplayPage::save(std::string *error)
         status->set_text("Display set to " + mode.label() + ".");
     }
     return true;
+}
+
+void DisplayPage::update_layout_visualization()
+{
+    // Clear previous buttons
+    for (auto btn : monitor_buttons)
+    {
+        layout_fixed->remove(*btn);
+    }
+    monitor_buttons.clear();
+
+    if (!probe.ok || probe.outputs.empty())
+    {
+        layout_container->set_visible(false);
+        return;
+    }
+
+    layout_container->set_visible(true);
+
+    double min_x = 999999, max_x = -999999;
+    double min_y = 999999, max_y = -999999;
+    for (const auto& o : probe.outputs)
+    {
+        int w = 1920, h = 1080;
+        auto cur = o.current_mode();
+        if (cur.valid())
+        {
+            w = cur.width;
+            h = cur.height;
+        }
+        double x = o.pos_x;
+        double y = o.pos_y;
+        double width = w / o.scale;
+        double height = h / o.scale;
+
+        if (x < min_x) min_x = x;
+        if (y < min_y) min_y = y;
+        if (x + width > max_x) max_x = x + width;
+        if (y + height > max_y) max_y = y + height;
+    }
+
+    if (max_x <= min_x || max_y <= min_y)
+    {
+        return;
+    }
+
+    double canvas_w = 460;
+    double canvas_h = 200;
+    double total_w = max_x - min_x;
+    double total_h = max_y - min_y;
+
+    double scale_x = (canvas_w - 40) / total_w;
+    double scale_y = (canvas_h - 40) / total_h;
+    double scale = std::min(scale_x, scale_y);
+
+    if (scale > 0.08) scale = 0.08;
+    if (scale < 0.005) scale = 0.02;
+
+    double offset_x = 20 + (canvas_w - 40 - total_w * scale) / 2.0;
+    double offset_y = 20 + (canvas_h - 40 - total_h * scale) / 2.0;
+
+    auto current_sel = output_drop->get_selected();
+
+    for (size_t i = 0; i < probe.outputs.size(); ++i)
+    {
+        const auto& o = probe.outputs[i];
+        int w = 1920, h = 1080;
+        auto cur = o.current_mode();
+        if (cur.valid())
+        {
+            w = cur.width;
+            h = cur.height;
+        }
+
+        double box_w = (w / o.scale) * scale;
+        double box_h = (h / o.scale) * scale;
+        double box_x = offset_x + (o.pos_x - min_x) * scale;
+        double box_y = offset_y + (o.pos_y - min_y) * scale;
+
+        if (box_w < 100) box_w = 100;
+        if (box_h < 60) box_h = 60;
+
+        auto btn = Gtk::make_managed<Gtk::Button>();
+        btn->add_css_class("monitor-box");
+        if (i == current_sel)
+        {
+            btn->add_css_class("selected-monitor");
+        }
+
+        auto box_content = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 2);
+        box_content->set_valign(Gtk::Align::CENTER);
+        box_content->set_halign(Gtk::Align::CENTER);
+
+        auto lbl_title = Gtk::make_managed<Gtk::Label>();
+        lbl_title->set_markup("<b>" + o.name + "</b>");
+        lbl_title->add_css_class("monitor-title");
+        box_content->append(*lbl_title);
+
+        auto lbl_sub = Gtk::make_managed<Gtk::Label>(std::to_string(w) + "×" + std::to_string(h));
+        lbl_sub->add_css_class("monitor-sub");
+        box_content->append(*lbl_sub);
+
+        btn->set_child(*box_content);
+        btn->set_size_request(static_cast<int>(box_w), static_cast<int>(box_h));
+
+        btn->signal_clicked().connect([this, i] () {
+            output_drop->set_selected(static_cast<guint>(i));
+        });
+
+        layout_fixed->put(*btn, box_x, box_y);
+        monitor_buttons.push_back(btn);
+    }
 }
 
 } // namespace wf_settings

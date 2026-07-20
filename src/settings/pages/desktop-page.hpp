@@ -19,6 +19,7 @@ class DesktopPage : public Gtk::Box
   private:
     void on_browse();
     void update_preview_hint();
+    void refresh_wallpaper_previews();
     std::string wayfire_ini() const;
     std::string shell_ini() const;
 
@@ -31,6 +32,10 @@ class DesktopPage : public Gtk::Box
     Gtk::Button *browse_btn = nullptr;
     Gtk::Label *status = nullptr;
     Gtk::Label *fill_hint = nullptr;
+
+    Gtk::FlowBox *wallpaper_flow = nullptr;
+    std::vector<std::string> discovered_wallpapers;
+    std::vector<Gtk::Button*> wallpaper_buttons;
 
     std::vector<std::string> fill_values; /* parallel to dropdown labels */
     bool filling = false;

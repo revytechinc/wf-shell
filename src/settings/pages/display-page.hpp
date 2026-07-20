@@ -33,6 +33,7 @@ class DisplayPage : public Gtk::Box
     void fill_refresh_rates();
     void update_info();
     void update_apply_sensitive();
+    void update_layout_visualization();
     /** Resolve current UI selection to a supported mode (or invalid). */
     wf_shell::DisplayMode selected_safe_mode() const;
     const wf_shell::DisplayOutput *selected_output() const;
@@ -46,6 +47,10 @@ class DisplayPage : public Gtk::Box
     Gtk::Button *refresh_btn = nullptr; /* discover only */
     Gtk::Button *use_mode_btn = nullptr; /* intentional modeset operation */
     Gtk::Label *status = nullptr;
+
+    Gtk::Box *layout_container = nullptr;
+    Gtk::Fixed *layout_fixed = nullptr;
+    std::vector<Gtk::Button*> monitor_buttons;
 
     wf_shell::DisplayProbeResult probe;
     /* For selected output: unique resolutions in dropdown order */

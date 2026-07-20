@@ -8,6 +8,9 @@
 #include <cstdlib>
 #include <map>
 #include <string>
+#include <filesystem>
+#include <algorithm>
+#include <iostream>
 
 namespace wf_settings
 {
@@ -88,19 +91,32 @@ DesktopPage::DesktopPage() :
     bg_t->set_halign(Gtk::Align::START);
     bg_box->append(*bg_t);
 
+    /* Wallpaper visual flowbox */
+    auto flow_scroll = Gtk::make_managed<Gtk::ScrolledWindow>();
+    flow_scroll->set_policy(Gtk::PolicyType::NEVER, Gtk::PolicyType::AUTOMATIC);
+    flow_scroll->set_min_content_height(170);
+    flow_scroll->add_css_class("wallpaper-scroll-container");
+    wallpaper_flow = Gtk::make_managed<Gtk::FlowBox>();
+    wallpaper_flow->set_valign(Gtk::Align::START);
+    wallpaper_flow->set_column_spacing(10);
+    wallpaper_flow->set_row_spacing(10);
+    wallpaper_flow->set_selection_mode(Gtk::SelectionMode::NONE);
+    flow_scroll->set_child(*wallpaper_flow);
+    bg_box->append(*flow_scroll);
+
     auto bg_grid = Gtk::make_managed<Gtk::Grid>();
     bg_grid->set_column_spacing(12);
     bg_grid->set_row_spacing(8);
     int r = 0;
 
-    auto limg = Gtk::make_managed<Gtk::Label>("Picture");
+    auto limg = Gtk::make_managed<Gtk::Label>("Custom path");
     limg->set_halign(Gtk::Align::START);
     bg_grid->attach(*limg, 0, r, 1, 1);
     auto bg_row = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
     bg_image = Gtk::make_managed<Gtk::Entry>();
     bg_image->set_hexpand(true);
-    bg_image->set_placeholder_text("Choose a photo…");
-    browse_btn = Gtk::make_managed<Gtk::Button>("Choose…");
+    bg_image->set_placeholder_text("Custom path to photo…");
+    browse_btn = Gtk::make_managed<Gtk::Button>("Browse…");
     bg_row->append(*bg_image);
     bg_row->append(*browse_btn);
     bg_grid->attach(*bg_row, 1, r++, 1, 1);
@@ -154,7 +170,13 @@ DesktopPage::DesktopPage() :
         live();
     });
     bg_random->signal_toggled().connect(live);
-    bg_image->signal_changed().connect(live);
+    bg_image->signal_changed().connect([this, live] () {
+        live();
+        if (!filling)
+        {
+            refresh_wallpaper_previews();
+        }
+    });
     refresh();
     update_ws();
 }
@@ -236,6 +258,7 @@ void DesktopPage::refresh()
     }
     bg_fill->set_selected(fi);
     update_preview_hint();
+    refresh_wallpaper_previews();
     filling = false;
     if (status)
     {
@@ -326,6 +349,119 @@ bool DesktopPage::save(std::string *error)
         }
     }
     return true;
+}
+
+void DesktopPage::refresh_wallpaper_previews()
+{
+    // Clear previous buttons
+    for (auto btn : wallpaper_buttons)
+    {
+        wallpaper_flow->remove(*btn);
+    }
+    wallpaper_buttons.clear();
+
+    std::string bg_dir = std::string(RESOURCEDIR) + "/backgrounds";
+    std::vector<std::string> paths;
+    std::error_code ec;
+    if (std::filesystem::is_directory(bg_dir, ec) && !ec)
+    {
+        for (auto& p : std::filesystem::directory_iterator(bg_dir, ec))
+        {
+            if (ec) break;
+            if (p.is_regular_file())
+            {
+                auto ext = p.path().extension().string();
+                std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+                if (ext == ".png" || ext == ".jpg" || ext == ".jpeg")
+                {
+                    paths.push_back(p.path().string());
+                }
+            }
+        }
+    }
+
+    std::string cur_path = bg_image->get_text();
+    if (!cur_path.empty())
+    {
+        bool found = false;
+        for (const auto& p : paths)
+        {
+            if (p == cur_path)
+            {
+                found = true;
+                break;
+            }
+        }
+        if (!found && std::filesystem::exists(cur_path, ec) && !ec)
+        {
+            paths.push_back(cur_path);
+        }
+    }
+
+    // Sort to keep order consistent
+    std::sort(paths.begin(), paths.end());
+
+    for (const auto& path : paths)
+    {
+        auto btn = Gtk::make_managed<Gtk::Button>();
+        btn->add_css_class("wallpaper-card");
+        if (path == cur_path)
+        {
+            btn->add_css_class("selected-wallpaper");
+        }
+
+        auto card_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 4);
+        card_box->set_margin(4);
+
+        auto pic = Gtk::make_managed<Gtk::Picture>();
+        pic->set_filename(path);
+        pic->set_content_fit(Gtk::ContentFit::COVER);
+        pic->set_size_request(130, 80);
+        card_box->append(*pic);
+
+        auto stem = std::filesystem::path(path).stem().string();
+        std::replace(stem.begin(), stem.end(), '-', ' ');
+        std::replace(stem.begin(), stem.end(), '_', ' ');
+        if (!stem.empty())
+        {
+            stem[0] = std::toupper(stem[0]);
+        }
+        auto lbl = Gtk::make_managed<Gtk::Label>(stem);
+        lbl->add_css_class("wallpaper-title");
+        card_box->append(*lbl);
+
+        btn->set_child(*card_box);
+        btn->set_size_request(140, 110);
+
+        btn->signal_clicked().connect([this, path] () {
+            bg_image->set_text(path);
+        });
+
+        wallpaper_flow->append(*btn);
+        wallpaper_buttons.push_back(btn);
+    }
+
+    // Special custom browse card at the end
+    auto custom_btn = Gtk::make_managed<Gtk::Button>();
+    custom_btn->add_css_class("wallpaper-card");
+    custom_btn->add_css_class("wallpaper-custom-add");
+    custom_btn->set_size_request(140, 110);
+
+    auto add_content = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 4);
+    add_content->set_valign(Gtk::Align::CENTER);
+    add_content->set_halign(Gtk::Align::CENTER);
+
+    auto plus_lbl = Gtk::make_managed<Gtk::Label>("➕");
+    auto txt_lbl = Gtk::make_managed<Gtk::Label>("Browse...");
+    txt_lbl->add_css_class("wallpaper-title");
+    add_content->append(*plus_lbl);
+    add_content->append(*txt_lbl);
+
+    custom_btn->set_child(*add_content);
+    custom_btn->signal_clicked().connect([this] () { on_browse(); });
+
+    wallpaper_flow->append(*custom_btn);
+    wallpaper_buttons.push_back(custom_btn);
 }
 
 } // namespace wf_settings
