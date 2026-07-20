@@ -161,6 +161,22 @@ case "$dpms" in
   *) fail "package system idle/dpms_timeout='$dpms' want -1 (never)" ;;
 esac
 
+# Privileges installer must validate (and be present for package POST-INSTALL)
+if [ -x /usr/local/sbin/revytech-desktop-privileges-enable ]; then
+  if doas /usr/local/sbin/revytech-desktop-privileges-enable --check "${USER:-mlapointe}" >>"$LOG" 2>&1; then
+    pass "privileges enable --check green for ${USER:-mlapointe}"
+  else
+    # Non-root environments: try without doas if already root
+    if /usr/local/sbin/revytech-desktop-privileges-enable --check "${USER:-mlapointe}" >>"$LOG" 2>&1; then
+      pass "privileges enable --check green"
+    else
+      fail "privileges enable --check red (run: doas revytech-desktop-privileges-enable)"
+    fi
+  fi
+else
+  fail "missing /usr/local/sbin/revytech-desktop-privileges-enable (package post-install)"
+fi
+
 # ── 1 optional reinstall ───────────────────────────────────────────────────
 if [ "$DO_REINSTALL" -eq 1 ]; then
   section "1 REINSTALL STACK (pkg install -f)"

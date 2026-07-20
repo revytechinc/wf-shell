@@ -94,13 +94,28 @@ doas -n true && echo 'passwordless doas works' || echo 'doas needs password or d
 /sbin/shutdown -h +999 2>&1 | head -1   # expect usage if operator; permission denied if not
 ```
 
-## Enable helper
+## Enable helper (VALIDATE then APPLY)
+
+On **every** `revytech-wayfire` package install, `pkg-install` runs:
 
 ```sh
-doas /usr/local/sbin/revytech-desktop-privileges-enable [user]
+revytech-desktop-privileges-enable [installing-user]
 ```
 
-(Installed from the wayfire stack packaging; see ports file of the same name.)
+That script **validates** each requirement, prints `PASS` / `NEED` / `FIXED` /
+`FAIL`, and **only adds** what is missing (groups, seatd, doas rules, default
+sanity). Safe to re-run.
+
+```sh
+# Full validate + apply (as root)
+doas revytech-desktop-privileges-enable
+doas revytech-desktop-privileges-enable mlapointe
+
+# Validate only (exit 1 if anything still wrong)
+doas revytech-desktop-privileges-enable --check
+```
+
+Installed as `/usr/local/sbin/revytech-desktop-privileges-enable`.
 
 ## Regression ideas
 
