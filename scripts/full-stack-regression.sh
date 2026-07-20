@@ -149,6 +149,17 @@ if [ "$sys_panel_pos" = "top" ]; then
 else
   fail "package system panel/position='$sys_panel_pos' want top (polluted default)"
 fi
+dpms=$(awk '
+  /^\[idle\]/ { p=1; next }
+  /^\[/ { p=0 }
+  p && /^dpms_timeout[[:space:]]*=/ {
+    sub(/^[^=]*=[[:space:]]*/, ""); sub(/[[:space:]]*(#.*)?$/, ""); print; exit
+  }
+' /usr/local/etc/wayfire/wayfire.ini 2>/dev/null || true)
+case "$dpms" in
+  -1|0|never) pass "package system idle/dpms_timeout=$dpms (never)" ;;
+  *) fail "package system idle/dpms_timeout='$dpms' want -1 (never)" ;;
+esac
 
 # ── 1 optional reinstall ───────────────────────────────────────────────────
 if [ "$DO_REINSTALL" -eq 1 ]; then

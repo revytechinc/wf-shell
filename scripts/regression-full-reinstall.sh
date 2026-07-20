@@ -287,6 +287,25 @@ else
   fail "R11 missing $SYS_WS"
 fi
 
+# R13: monitor sleep / DPMS default must be never (-1)
+if [ -f "$SYS_WF" ]; then
+  dpms=$(awk '
+    /^\[idle\]/ { p=1; next }
+    /^\[/ { p=0 }
+    p && /^dpms_timeout[[:space:]]*=/ {
+      sub(/^[^=]*=[[:space:]]*/, ""); sub(/[[:space:]]*(#.*)?$/, ""); print; exit
+    }
+  ' "$SYS_WF")
+  case "$dpms" in
+    -1|0|never)
+      pass "R13 system idle/dpms_timeout=$dpms (never sleep)"
+      ;;
+    *)
+      fail "R13 system idle/dpms_timeout='$dpms' want -1 (never blank monitor)"
+      ;;
+  esac
+fi
+
 # R12: wf-settings must create user config dir/file when missing (and fail closed)
 section "2c SETTINGS CREATES USER CONFIG (R12)"
 if [ -x /usr/local/bin/wf-settings ] || [ -x "$ROOT/build/src/settings/wf-settings" ] 2>/dev/null; then
