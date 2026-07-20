@@ -529,6 +529,7 @@ void DisplayPage::update_layout_visualization()
     double offset_y = 20 + (canvas_h - 40 - total_h * scale) / 2.0;
 
     auto current_sel = output_drop->get_selected();
+    monitor_canvas_positions.resize(probe.outputs.size());
 
     for (size_t i = 0; i < probe.outputs.size(); ++i)
     {
@@ -548,6 +549,8 @@ void DisplayPage::update_layout_visualization()
 
         if (box_w < 100) box_w = 100;
         if (box_h < 60) box_h = 60;
+
+        monitor_canvas_positions[i] = {box_x, box_y};
 
         auto btn = Gtk::make_managed<Gtk::Button>();
         btn->add_css_class("monitor-box");
@@ -574,6 +577,88 @@ void DisplayPage::update_layout_visualization()
 
         btn->signal_clicked().connect([this, i] () {
             output_drop->set_selected(static_cast<guint>(i));
+        });
+
+        // Drag gesture for rearranging monitors
+        auto drag = Gtk::GestureDrag::create();
+        btn->add_controller(drag);
+
+        drag->signal_drag_begin().connect([this, i] (double start_x, double start_y) {
+            active_drag_start = monitor_canvas_positions[i];
+            output_drop->set_selected(static_cast<guint>(i));
+        });
+
+        drag->signal_drag_update().connect([this, i] (double offset_x, double offset_y) {
+            double new_x = active_drag_start.first + offset_x;
+            double new_y = active_drag_start.second + offset_y;
+            layout_fixed->move(*monitor_buttons[i], new_x, new_y);
+        });
+
+        drag->signal_drag_end().connect([this, i] (double offset_x, double offset_y) {
+            double final_x = active_drag_start.first + offset_x;
+            double final_y = active_drag_start.second + offset_y;
+
+            bool snapped = false;
+            for (size_t j = 0; j < probe.outputs.size(); ++j)
+            {
+                if (j == i) continue;
+                const auto& other = probe.outputs[j];
+                auto other_pos = monitor_canvas_positions[j];
+
+                int wi = 1920, hi = 1080;
+                auto cur_i = probe.outputs[i].current_mode();
+                if (cur_i.valid()) { wi = cur_i.width; hi = cur_i.height; }
+
+                int wj = 1920, hj = 1080;
+                auto cur_j = other.current_mode();
+                if (cur_j.valid()) { wj = cur_j.width; hj = cur_j.height; }
+
+                double lw_i = wi / probe.outputs[i].scale;
+                double lh_i = hi / probe.outputs[i].scale;
+                double lw_j = wj / other.scale;
+                double lh_j = hj / other.scale;
+
+                double dx = final_x - other_pos.first;
+                double dy = final_y - other_pos.second;
+
+                if (std::abs(dx) < 180 && std::abs(dy) < 180)
+                {
+                    if (std::abs(dx) > std::abs(dy))
+                    {
+                        if (dx > 0)
+                        {
+                            probe.outputs[i].pos_x = other.pos_x + lw_j;
+                            probe.outputs[i].pos_y = other.pos_y;
+                        }
+                        else
+                        {
+                            probe.outputs[i].pos_x = other.pos_x - lw_i;
+                            probe.outputs[i].pos_y = other.pos_y;
+                        }
+                    }
+                    else
+                    {
+                        if (dy > 0)
+                        {
+                            probe.outputs[i].pos_x = other.pos_x;
+                            probe.outputs[i].pos_y = other.pos_y + lh_j;
+                        }
+                        else
+                        {
+                            probe.outputs[i].pos_x = other.pos_x;
+                            probe.outputs[i].pos_y = other.pos_y - lh_i;
+                        }
+                    }
+                    snapped = true;
+                    break;
+                }
+            }
+
+            if (snapped)
+            {
+                save(nullptr);
+            }
+            update_layout_visualization();
         });
 
         layout_fixed->put(*btn, box_x, box_y);

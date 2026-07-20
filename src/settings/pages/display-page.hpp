@@ -51,6 +51,8 @@ class DisplayPage : public Gtk::Box
     Gtk::Box *layout_container = nullptr;
     Gtk::Fixed *layout_fixed = nullptr;
     std::vector<Gtk::Button*> monitor_buttons;
+    std::vector<std::pair<double, double>> monitor_canvas_positions;
+    std::pair<double, double> active_drag_start;
 
     wf_shell::DisplayProbeResult probe;
     /* For selected output: unique resolutions in dropdown order */
