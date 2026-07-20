@@ -35,6 +35,9 @@ if [ -d "$SHARE/themes" ]; then
       sgi-irix) icon=sgi-cube ;;
       ibm-aix) icon=ibm-logo ;;
       beos-haiku) icon=haiku-leaf ;;
+      nextstep) icon=nextstep-cube ;;
+      osx-aqua) icon=aqua-globe ;;
+      win-xp) icon=xp-flag ;;
       *) icon="" ;;
     esac
     if [ -z "$icon" ]; then

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="xp-bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#40c030" />
+      <stop offset="100%" stop-color="#208010" />
+    </linearGradient>
+  </defs>
+  <!-- XP Start Button Base -->
+  <rect width="64" height="64" rx="10" fill="url(#xp-bg)" stroke="#155005" stroke-width="2"/>
+  <!-- The Wavy XP Flag -->
+  <g transform="translate(14, 18) scale(0.9)">
+    <!-- Red (top left) -->
+    <path d="M 2,12 C 8,10 14,14 20,12 L 20,2 C 14,4 8,0 2,2 Z" fill="#ff3300"/>
+    <!-- Blue (bottom left) -->
+    <path d="M 2,24 C 8,22 14,26 20,24 L 20,14 C 14,16 8,12 2,14 Z" fill="#0066ff"/>
+    <!-- Green (top right) -->
+    <path d="M 22,11 C 28,9 34,13 40,11 L 40,1 C 34,3 28,-1 22,1 Z" fill="#33cc00"/>
+    <!-- Yellow (bottom right) -->
+    <path d="M 22,23 C 28,21 34,25 40,23 L 40,13 C 34,15 28,11 22,13 Z" fill="#ffcc00"/>
+  </g>
+</svg>

@@ -18,5 +18,8 @@ install_data(
   'sgi-cube.svg',
   'ibm-logo.svg',
   'haiku-leaf.svg',
+  'nextstep-cube.svg',
+  'aqua-globe.svg',
+  'xp-flag.svg',
   install_dir: menu_icons_path,
 )

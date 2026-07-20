@@ -298,7 +298,7 @@ popovermenu contents,
 popovermenu > contents {
     background-color: rgba(31, 29, 46, 0.98);
     background-image: none;
-    backdrop-filter: blur(20px);
+        backdrop-filter: blur(20px);
     border: 1px solid #eb6f92;
     border-radius: 8px;
     padding: 10px;

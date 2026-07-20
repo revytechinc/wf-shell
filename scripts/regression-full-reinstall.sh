@@ -146,6 +146,9 @@ if [ -d /usr/local/share/wf-shell/themes ]; then
       sgi-irix) icon=sgi-cube ;;
       ibm-aix) icon=ibm-logo ;;
       beos-haiku) icon=haiku-leaf ;;
+      nextstep) icon=nextstep-cube ;;
+      osx-aqua) icon=aqua-globe ;;
+      win-xp) icon=xp-flag ;;
       *) fail "R4 theme $id has no icon map (cannot present safely)"; continue ;;
     esac
     found=0

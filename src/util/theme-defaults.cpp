@@ -63,6 +63,9 @@ std::string theme_default_menu_icon_id(const std::string& theme_id)
         {"sgi-irix", "sgi-cube"},
         {"ibm-aix", "ibm-logo"},
         {"beos-haiku", "haiku-leaf"},
+        {"nextstep", "nextstep-cube"},
+        {"osx-aqua", "aqua-globe"},
+        {"win-xp", "xp-flag"},
     };
     auto it = map.find(theme_id);
     return it != map.end() ? it->second : "wayfire";
@@ -160,6 +163,9 @@ std::vector<std::string> themed_menu_icon_theme_ids()
         "sgi-irix",
         "ibm-aix",
         "beos-haiku",
+        "nextstep",
+        "osx-aqua",
+        "win-xp",
     };
 }
 

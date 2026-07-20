@@ -4,6 +4,8 @@
 
 #include <set>
 #include <string>
+#include <filesystem>
+#include "theme-catalog.hpp"
 
 using wf_shell::ThemeSelectionState;
 using wf_shell::clear_theme_to_defaults;
@@ -53,6 +55,9 @@ TEST(ThemeMenuIconMap, KnownThemesHaveDistinctPackIds)
     EXPECT_EQ(theme_default_menu_icon_id("amiga-workbench"), "amiga-wb");
     EXPECT_EQ(theme_default_menu_icon_id("miami-cyberpunk"), "neon-orb");
     EXPECT_EQ(theme_default_menu_icon_id("system7"), "system7-apple");
+    EXPECT_EQ(theme_default_menu_icon_id("nextstep"), "nextstep-cube");
+    EXPECT_EQ(theme_default_menu_icon_id("osx-aqua"), "aqua-globe");
+    EXPECT_EQ(theme_default_menu_icon_id("win-xp"), "xp-flag");
 }
 
 TEST(ThemeMenuIconMap, EveryThemedIdMapsAwayFromBareWayfire)
@@ -170,4 +175,23 @@ TEST(ThemeDefaults, IsDefaultThemeId)
     EXPECT_TRUE(is_default_theme_id(""));
     EXPECT_FALSE(is_default_theme_id("crt-phosphor"));
     EXPECT_FALSE(is_default_theme_id("win95"));
+}
+
+TEST(ThemeCatalogCasing, ThemeAcronymCasingRegression)
+{
+    std::string path = "../data/themes";
+    std::error_code ec;
+    if (!std::filesystem::is_directory(path, ec)) {
+        path = "data/themes";
+    }
+    auto packs = wf_shell::discover_theme_packs(path, "");
+    
+    EXPECT_EQ(packs["cde-solaris"].name, "CDE Solaris");
+    EXPECT_EQ(packs["ibm-aix"].name, "IBM AIX");
+    EXPECT_EQ(packs["sgi-irix"].name, "SGI IRIX");
+    EXPECT_EQ(packs["crt-phosphor"].name, "CRT Phosphor");
+    EXPECT_EQ(packs["beos-haiku"].name, "BeOS Haiku");
+    EXPECT_EQ(packs["nextstep"].name, "NeXTSTEP");
+    EXPECT_EQ(packs["osx-aqua"].name, "OS X Aqua");
+    EXPECT_EQ(packs["win-xp"].name, "Windows XP Luna");
 }

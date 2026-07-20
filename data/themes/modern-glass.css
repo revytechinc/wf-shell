@@ -300,7 +300,7 @@ popovermenu contents,
 popovermenu > contents {
     background-color: rgba(15, 15, 25, 0.7);
     background-image: none;
-    backdrop-filter: blur(20px);
+        backdrop-filter: blur(20px);
     border: 1px solid rgba(255, 255, 255, 0.2);
     border-radius: 10px;
     padding: 10px;

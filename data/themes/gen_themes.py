@@ -689,6 +689,132 @@ THEMES: dict[str, dict] = {
         "radius": "2px",
         "glow": "none",
     },
+    "nextstep": {
+        "name": "NeXTSTEP",
+        "era": "retro",
+        "style": "classic3d",
+        "panel_bg": "#4a4a4a",
+        "panel_fg": "#ffffff",
+        "panel_border": "#000000",
+        "accent": "#1a1a1a",
+        "accent_fg": "#ffffff",
+        "surface": "#3a3a3a",
+        "surface_fg": "#ffffff",
+        "surface_alt": "#444444",
+        "field_bg": "#111111",
+        "field_fg": "#ffffff",
+        "title_bg": "#000000",
+        "title_fg": "#ffffff",
+        "icon": "#ffffff",
+        "icon_outline": "#000000",
+        "icon_on_accent": "#ffffff",
+        "icon_on_accent_outline": "#000000",
+        "meter_bg": "#222222",
+        "highlight": "#555555",
+        "highlight2": "#999999",
+        "destructive_bg": "#4a4a4a",
+        "destructive_fg": "#ff4444",
+        "destructive_hover_bg": "#ff4444",
+        "destructive_hover_fg": "#ffffff",
+        "well_bg": "#2c2c2c",
+        "shadow": "#1a1a1a",
+        "shine": "#808080",
+        "success": "#00aa00",
+        "warn": "#aaaa00",
+        "danger": "#aa0000",
+        "dim": "#bbbbbb",
+        "net_ex": "#00aa00",
+        "net_good": "#888888",
+        "net_med": "#aaaa00",
+        "net_weak": "#aa0000",
+        "net_none": "#555555",
+        "radius": "0",
+        "glow": "none",
+    },
+    "osx-aqua": {
+        "name": "OS X Aqua",
+        "era": "retro",
+        "style": "glass",
+        "panel_bg": "rgba(225, 235, 245, 0.85)",
+        "panel_fg": "#111111",
+        "panel_border": "rgba(100, 140, 180, 0.4)",
+        "accent": "#007aff",
+        "accent_fg": "#ffffff",
+        "surface": "rgba(240, 245, 250, 0.95)",
+        "surface_fg": "#222222",
+        "surface_alt": "rgba(215, 225, 235, 0.8)",
+        "field_bg": "#ffffff",
+        "field_fg": "#111111",
+        "title_bg": "rgba(100, 140, 180, 0.25)",
+        "title_fg": "#111111",
+        "icon": "#444444",
+        "icon_outline": "#ffffff",
+        "icon_on_accent": "#ffffff",
+        "icon_on_accent_outline": "#0055b3",
+        "meter_bg": "rgba(200, 210, 220, 0.5)",
+        "highlight": "#007aff",
+        "highlight2": "#5ac8fa",
+        "destructive_bg": "rgba(255, 59, 48, 0.15)",
+        "destructive_fg": "#ff3b30",
+        "destructive_hover_bg": "#ff3b30",
+        "destructive_hover_fg": "#ffffff",
+        "well_bg": "rgba(200, 215, 230, 0.4)",
+        "shadow": "rgba(0, 0, 0, 0.15)",
+        "shine": "#ffffff",
+        "success": "#34c759",
+        "warn": "#ffcc00",
+        "danger": "#ff3b30",
+        "dim": "#666666",
+        "net_ex": "#34c759",
+        "net_good": "#007aff",
+        "net_med": "#ffcc00",
+        "net_weak": "#ff9500",
+        "net_none": "#999999",
+        "radius": "12px",
+        "glow": "0 2px 10px rgba(0, 0, 0, 0.08)",
+    },
+    "win-xp": {
+        "name": "Windows XP Luna",
+        "era": "retro",
+        "style": "soft",
+        "panel_bg": "#245edb",
+        "panel_fg": "#ffffff",
+        "panel_border": "#1a46ab",
+        "accent": "#ff8c00",
+        "accent_fg": "#ffffff",
+        "surface": "#ece9d8",
+        "surface_fg": "#000000",
+        "surface_alt": "#e0decb",
+        "field_bg": "#ffffff",
+        "field_fg": "#000000",
+        "title_bg": "#0053e1",
+        "title_fg": "#ffffff",
+        "icon": "#ffffff",
+        "icon_outline": "#003399",
+        "icon_on_accent": "#ffffff",
+        "icon_on_accent_outline": "#b35900",
+        "meter_bg": "#102030",
+        "highlight": "#319a21",
+        "highlight2": "#ff8c00",
+        "destructive_bg": "#e0decb",
+        "destructive_fg": "#cc0000",
+        "destructive_hover_bg": "#cc0000",
+        "destructive_hover_fg": "#ffffff",
+        "well_bg": "#245edb",
+        "shadow": "#808080",
+        "shine": "#ffffff",
+        "success": "#319a21",
+        "warn": "#fcc603",
+        "danger": "#cc0000",
+        "dim": "#a0a8b8",
+        "net_ex": "#319a21",
+        "net_good": "#ff8c00",
+        "net_med": "#fcc603",
+        "net_weak": "#cc0000",
+        "net_none": "#b0b0b0",
+        "radius": "4px",
+        "glow": "none",
+    },
 }
 
 
@@ -747,6 +873,13 @@ def render(theme_id: str, p: dict) -> str:
     bevel = border_3d(p, True)
     sunken = border_3d(p, False)
     glow = box_glow(p)
+    popover_filter = "    backdrop-filter: blur(20px);" if "rgba" in p['surface'] or p['style'] == "glass" else ""
+    popover_border = bevel if is_3d else f"    border: 1px solid {p['panel_border']};\n    border-radius: {soft_radius};"
+    combo_border = sunken if is_3d else f"    border: 1px solid {p['panel_border']};\n    border-radius: {soft_radius};"
+    volume_border = bevel if is_3d else f"    border: 1px solid {p['panel_border']};\n    border-radius: {soft_radius};"
+    volume_meter_border = sunken if is_3d else f"    border: 1px solid {p['panel_border']};"
+    network_border = bevel if is_3d else f"    border: 1px solid {p['panel_border']};\n    border-radius: {soft_radius};"
+    entry_border = sunken if is_3d else f"    border: 1px solid {p['panel_border']};\n    border-radius: {soft_radius};"
 
     panel_extra = ""
     if is_3d:
@@ -1024,8 +1157,8 @@ popovermenu contents,
 popovermenu > contents {{
     background-color: {p['surface']};
     background-image: none;
-    { "backdrop-filter: blur(20px);" if "rgba" in p['surface'] or p['style'] == "glass" else "" }
-{bevel if is_3d else f"    border: 1px solid {p['panel_border']};\\n    border-radius: {soft_radius};"}
+    {popover_filter}
+{popover_border}
     padding: 10px;
     color: {p['surface_fg']};
 {glow if not is_3d else f"    box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.3);"}
@@ -1141,7 +1274,7 @@ dropdown button {{
     background-image: none;
     background-color: {p['field_bg']};
     background: {p['field_bg']};
-{sunken if is_3d else f"    border: 1px solid {p['panel_border']};\\n    border-radius: {soft_radius};"}
+{combo_border}
     color: {p['field_fg']};
     text-shadow: none;
     font-weight: bold;
@@ -1264,7 +1397,7 @@ popover list,
 
 .volume-popover-section {{
     background-color: {p['surface_alt']};
-{bevel if is_3d else f"    border: 1px solid {p['panel_border']};\\n    border-radius: {soft_radius};"}
+{volume_border}
     padding: 6px;
     margin: 4px 0;
 }}
@@ -1342,7 +1475,7 @@ popover list,
 
 .volume-popover-meter {{
     border-radius: {soft_radius};
-{sunken if is_3d else f"    border: 1px solid {p['panel_border']};"}
+{volume_meter_border}
     margin: 6px 0;
     background-color: {p['meter_bg']};
 }}
@@ -1384,7 +1517,7 @@ popover list,
     padding: 8px 12px;
     margin-bottom: 10px;
     background-color: {p['surface_alt']};
-{bevel if is_3d else f"    border: 1px solid {p['panel_border']};\\n    border-radius: {soft_radius};"}
+{network_border}
 }}
 
 .network-toggle-button {{
@@ -1411,7 +1544,7 @@ popover list,
 .network-control-center .freebsd-iface {{
     margin-bottom: 8px;
     background-color: {p['surface_alt']};
-{bevel if is_3d else f"    border: 1px solid {p['panel_border']};\\n    border-radius: {soft_radius};"}
+{network_border}
     padding: 8px;
 }}
 
@@ -1596,7 +1729,7 @@ headerbar button image {{
 
 window .wifi-password-entry {{
     background-color: {p['field_bg']};
-{sunken if is_3d else f"    border: 1px solid {p['panel_border']};\\n    border-radius: {soft_radius};"}
+{entry_border}
     color: {p['field_fg']};
     padding: 6px;
 }}
@@ -1662,7 +1795,7 @@ entry text,
 passwordentry,
 passwordentry text {{
     background-color: {p['field_bg']};
-{sunken if is_3d else f"    border: 1px solid {p['panel_border']};\\n    border-radius: {soft_radius};"}
+{entry_border}
     color: {p['field_fg']};
     padding: 6px;
 }}

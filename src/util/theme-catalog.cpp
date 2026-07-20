@@ -33,24 +33,50 @@ std::string trim(std::string s)
 
 std::string title_case_id(const std::string& id)
 {
-    std::string out = id;
-    bool cap = true;
-    for (char& c : out)
+    std::vector<std::string> words;
+    std::string current;
+    for (char c : id)
     {
         if (c == '-' || c == '_')
         {
-            c   = ' ';
-            cap = true;
-            continue;
+            if (!current.empty())
+            {
+                words.push_back(current);
+                current.clear();
+            }
         }
-        if (cap && std::isalpha(static_cast<unsigned char>(c)))
+        else
         {
-            c   = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
-            cap = false;
-        } else
-        {
-            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            current.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
         }
+    }
+    if (!current.empty())
+    {
+        words.push_back(current);
+    }
+
+    std::string out;
+    for (size_t i = 0; i < words.size(); ++i)
+    {
+        std::string w = words[i];
+        if (w == "cde") w = "CDE";
+        else if (w == "aix") w = "AIX";
+        else if (w == "irix") w = "IRIX";
+        else if (w == "sgi") w = "SGI";
+        else if (w == "ibm") w = "IBM";
+        else if (w == "crt") w = "CRT";
+        else if (w == "beos") w = "BeOS";
+        else if (w == "win95") w = "Windows 95";
+        else if (!w.empty())
+        {
+            w[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(w[0])));
+        }
+
+        if (i > 0)
+        {
+            out += " ";
+        }
+        out += w;
     }
     return out;
 }
@@ -66,6 +92,44 @@ void parse_header(const std::string& path, ThemePack& te)
     int n = 0;
     while (n++ < 40 && std::getline(in, line))
     {
+        auto pos = line.find("wf-shell-theme:");
+        if (pos != std::string::npos)
+        {
+            auto rest = line.substr(pos + 15);
+            auto take = [&] (const char *key) -> std::string {
+                auto k = std::string(key) + "=";
+                auto p = rest.find(k);
+                if (p == std::string::npos)
+                {
+                    return {};
+                }
+                p += k.size();
+                auto end = rest.find_first_of(";,*/", p);
+                auto val = rest.substr(p, end == std::string::npos ? std::string::npos : end - p);
+                return trim(val);
+            };
+            auto id = take("id");
+            auto name = take("name");
+            auto era = take("era");
+            if (!id.empty())
+            {
+                te.id = id;
+            }
+            if (!name.empty())
+            {
+                te.name = name;
+            }
+            if (!era.empty())
+            {
+                te.era = era;
+                for (char& c : te.era)
+                {
+                    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                }
+            }
+            continue;
+        }
+
         auto t = trim(line);
         if (t.rfind("/*", 0) == 0)
         {
@@ -180,8 +244,8 @@ std::map<std::string, ThemePack> discover_theme_packs(
      * Default always stays (empty path).
      */
     const std::string icon_roots[] = {
-        "/usr/local/share/wf-shell/icons",
         resource_themes_dir + "/../icons",
+        "/usr/local/share/wf-shell/icons",
     };
     std::string icons_dir = "/usr/local/share/wf-shell/icons";
     for (const auto& r : icon_roots)
