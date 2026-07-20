@@ -776,8 +776,15 @@ void SettingsApp::select_page(const std::string& id)
     } else if (id == "mcp" && mcp_page)
     {
         mcp_page->refresh();
+    } else if (id == "display" && display_page)
+    {
+        Glib::signal_idle().connect_once([this] () {
+            if (display_page)
+            {
+                display_page->refresh();
+            }
+        });
     }
-    /* display: no auto refresh */
 }
 
 void SettingsApp::focus_plugin_section(const std::string& section)

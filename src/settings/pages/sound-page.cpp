@@ -359,13 +359,13 @@ bool SoundPage::save(std::string *error)
     {
         if (status)
         {
-            status->set_text("Could not save: " + err);
+            status->set_text("We couldn't update the sound settings: " + err);
         }
         return false;
     }
     if (status)
     {
-        status->set_text("Sound updated.");
+        status->set_text("✨ Sound settings updated successfully!");
     }
     return true;
 }

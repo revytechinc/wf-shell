@@ -147,14 +147,13 @@ bool McpPage::save(std::string *error)
     {
         if (status)
         {
-            status->set_text("Failed: " + err);
+            status->set_text("We couldn't save the MCP configuration: " + err);
         }
         return false;
     }
     if (status)
     {
-        status->set_text("MCP config saved → " + path +
-            (cfg.mcp_enabled ? " (enabled)" : " (disabled until runtime)"));
+        status->set_text("✨ MCP helper configuration updated successfully!");
     }
     return true;
 }

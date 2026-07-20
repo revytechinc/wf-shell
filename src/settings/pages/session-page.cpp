@@ -243,13 +243,13 @@ bool SessionPage::save(std::string *error)
     {
         if (status)
         {
-            status->set_text("Could not save: " + err);
+            status->set_text("We couldn't save your session and power settings: " + err);
         }
         return false;
     }
     if (status)
     {
-        status->set_text("Power & session saved. Logout menu will use these actions.");
+        status->set_text("✨ Power and session settings updated successfully!");
     }
     return true;
 }

@@ -211,7 +211,7 @@ void DisplayPage::refresh()
         filling_ui = false;
         if (status)
         {
-            status->set_text("Display discovery failed (is WAYLAND_DISPLAY set?)");
+            status->set_text("We couldn't find your monitors. Please ensure Wayfire is active.");
         }
         return;
     }
@@ -253,8 +253,8 @@ void DisplayPage::refresh()
     on_output_changed();
     if (status)
     {
-        status->set_text("Discovered " + std::to_string(probe.outputs.size()) +
-            " output(s). Resolution and refresh stay paired to hardware modes.");
+        status->set_text("✨ Found " + std::to_string(probe.outputs.size()) +
+            " active monitor(s)!");
     }
 }
 
@@ -396,7 +396,7 @@ bool DisplayPage::save(std::string *error)
     if (!o || !mode.valid())
     {
         const std::string msg =
-            "Find monitors first, then pick a size and smoothness.";
+            "Please choose a monitor to configure first.";
         if (error)
         {
             *error = msg;
@@ -410,7 +410,7 @@ bool DisplayPage::save(std::string *error)
     /* TAOCP: never trust UI alone — re-check against discovered modes. */
     if (!o->supports(mode))
     {
-        const std::string msg = "That mode is not on the hardware list.";
+        const std::string msg = "This screen size or refresh rate is not supported by your monitor.";
         if (error)
         {
             *error = msg;
@@ -433,7 +433,7 @@ bool DisplayPage::save(std::string *error)
         }
         if (status)
         {
-            status->set_text("Could not change display: " + err);
+            status->set_text("We couldn't update your screen settings: " + err);
         }
         return false;
     }
@@ -450,7 +450,7 @@ bool DisplayPage::save(std::string *error)
             }
             if (status)
             {
-                status->set_text("Screen changed, but save failed: " + perr);
+                status->set_text("Screen configuration applied, but we couldn't write it to disk: " + perr);
             }
             return false;
         }
@@ -464,7 +464,7 @@ bool DisplayPage::save(std::string *error)
 
     if (status)
     {
-        status->set_text("Display set to " + mode.label() + ".");
+        status->set_text("✨ Display resolution successfully set to " + mode.label() + "!");
     }
     return true;
 }

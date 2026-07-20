@@ -309,7 +309,7 @@ bool DesktopPage::save(std::string *error)
         {
             if (status)
             {
-                status->set_text(err.empty() ? "Could not stage workspace layout." : err);
+                status->set_text(err.empty() ? "We couldn't prepare your workspace layout. Please try again." : err);
             }
             return false;
         }
@@ -317,7 +317,7 @@ bool DesktopPage::save(std::string *error)
         {
             if (status)
             {
-                status->set_text(err.empty() ? "Could not save workspace layout." : err);
+                status->set_text(err.empty() ? "We couldn't save your workspace grid layout." : err);
             }
             return false;
         }
@@ -333,7 +333,7 @@ bool DesktopPage::save(std::string *error)
     {
         if (status)
         {
-            status->set_text("Could not save wallpaper: " + err);
+            status->set_text("We couldn't update your wallpaper: " + err);
         }
         return false;
     }
@@ -342,10 +342,10 @@ bool DesktopPage::save(std::string *error)
         if (workspace_changed)
         {
             status->set_text(
-                "Wallpaper saved. Workspace grid written — log out and back in for the new grid.");
+                "✨ Wallpaper updated! Please log out and back in to see your new workspace grid.");
         } else
         {
-            status->set_text("Wallpaper saved.");
+            status->set_text("✨ Wallpaper updated successfully!");
         }
     }
     return true;

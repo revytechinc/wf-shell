@@ -324,7 +324,7 @@ void PanelPage::rebuild_zone_ui()
             {
                 if (status)
                 {
-                    status->set_text("Pick an item from the list, then press Add.");
+                    status->set_text("Please select a widget from the list to add it to your panel.");
                 }
                 return;
             }
@@ -433,7 +433,7 @@ void PanelPage::remove_selected(const std::string& zone)
     {
         if (status)
         {
-            status->set_text("Select an item in the list first.");
+            status->set_text("Please select a widget from your layout list first to configure it.");
         }
         return;
     }
@@ -533,11 +533,6 @@ std::string PanelPage::shell_ini_path() const
 
 std::string PanelPage::resource_themes_dir() const
 {
-    /* Always prefer systemwide package themes (new packs land here). */
-    if (std::filesystem::is_directory("/usr/local/share/wf-shell/themes"))
-    {
-        return "/usr/local/share/wf-shell/themes";
-    }
 #ifdef RESOURCEDIR
     {
         std::string d = std::string(RESOURCEDIR) + "/themes";
@@ -555,6 +550,10 @@ std::string PanelPage::resource_themes_dir() const
         {
             return d;
         }
+    }
+    if (std::filesystem::is_directory("/usr/local/share/wf-shell/themes"))
+    {
+        return "/usr/local/share/wf-shell/themes";
     }
     return "/usr/local/share/wf-shell/themes";
 }
@@ -682,7 +681,7 @@ bool PanelPage::save(std::string *error)
         }
         if (status)
         {
-            status->set_text("Theme refused: " + tgate.summary());
+            status->set_text("We couldn't apply this theme: " + tgate.summary());
         }
         wf_shell::gate_log_result("panel-page", tgate);
         saving = false;
@@ -701,7 +700,7 @@ bool PanelPage::save(std::string *error)
             }
             if (status)
             {
-                status->set_text("Theme failed: " + err);
+                status->set_text("Oops, we ran into an issue applying this theme: " + err);
             }
             saving = false;
             return false;
@@ -781,7 +780,7 @@ bool PanelPage::save(std::string *error)
     }
     if (status)
     {
-        status->set_text("Panel updated.");
+        status->set_text("✨ Panel settings updated successfully!");
     }
     wf_shell::gate_log("panel-page", "save ok");
     saving = false;

@@ -172,13 +172,13 @@ bool NetworkPage::save(std::string *error)
     {
         if (status)
         {
-            status->set_text("Could not save: " + err);
+            status->set_text("We couldn't update the network settings: " + err);
         }
         return false;
     }
     if (status)
     {
-        status->set_text("Network updated.");
+        status->set_text("✨ Network settings updated successfully!");
     }
     return true;
 }

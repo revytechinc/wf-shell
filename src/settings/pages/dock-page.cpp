@@ -111,13 +111,13 @@ bool DockPage::save(std::string *error)
     {
         if (status)
         {
-            status->set_text("Failed: " + err);
+            status->set_text("We couldn't update the dock settings: " + err);
         }
         return false;
     }
     if (status)
     {
-        status->set_text("Dock updated.");
+        status->set_text("✨ Dock settings updated successfully!");
     }
     return true;
 }
