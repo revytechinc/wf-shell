@@ -496,11 +496,21 @@ class WayfireToplevel::impl
 
         this->tooltip_media = Gtk::make_managed<TooltipMedia>(this->window_list, this->ext_handle);
         this->custom_tooltip_content.append(*this->tooltip_media);
+
+        this->tooltip_media->signal_unmap().connect([this] ()
+        {
+            unset_tooltip_media(true);
+        });
     }
 
-    void unset_tooltip_media()
+    void unset_tooltip_media(bool force = false)
     {
         if (!this->tooltip_media)
+        {
+            return;
+        }
+
+        if (!force && this->tooltip_media->get_mapped())
         {
             return;
         }
@@ -821,7 +831,7 @@ class WayfireToplevel::impl
 
     ~impl()
     {
-        unset_tooltip_media();
+        unset_tooltip_media(true);
 
         gtk_widget_unparent(GTK_WIDGET(popover.gobj()));
 

@@ -2,8 +2,12 @@
 #include <gtk-utils.hpp>
 #include <glibmm.h>
 #include <gtkmm/icontheme.h>
+#include <gtkmm/cssprovider.h>
+#include <gtkmm/csssection.h>
 #include <gdk/gdkcairo.h>
 #include <iostream>
+#include <filesystem>
+#include <fstream>
 #include <giomm/desktopappinfo.h>
 #include "wf-shell-app.hpp"
 
@@ -27,19 +31,135 @@ Glib::RefPtr<Gdk::Pixbuf> load_icon_pixbuf_safe(std::string icon_path, int size)
     }
 }
 
+namespace
+{
+/* Hard cap — theme CSS should never need multi-MB files. */
+constexpr std::uintmax_t kMaxCssBytes = 2 * 1024 * 1024;
+} // namespace
+
+CssPathCheck check_css_file_path(const std::string& path, bool allow_empty)
+{
+    CssPathCheck r;
+    if (path.empty())
+    {
+        r.ok = allow_empty;
+        r.reason = allow_empty ? "" : "empty css path";
+        return r;
+    }
+    std::error_code ec;
+    namespace fs = std::filesystem;
+    if (!fs::exists(path, ec) || ec)
+    {
+        r.reason = "css path does not exist: " + path;
+        return r;
+    }
+    if (!fs::is_regular_file(path, ec) || ec)
+    {
+        r.reason = "css path is not a regular file: " + path;
+        return r;
+    }
+    auto sz = fs::file_size(path, ec);
+    if (ec)
+    {
+        r.reason = "cannot stat css file: " + path;
+        return r;
+    }
+    if (sz == 0)
+    {
+        r.reason = "css file is empty: " + path;
+        return r;
+    }
+    if (sz > kMaxCssBytes)
+    {
+        r.reason = "css file too large (" + std::to_string(sz) + " bytes): " + path;
+        return r;
+    }
+    /* Readable? */
+    std::ifstream in(path);
+    if (!in)
+    {
+        r.reason = "css file not readable: " + path;
+        return r;
+    }
+    r.ok = true;
+    return r;
+}
+
 Glib::RefPtr<Gtk::CssProvider> load_css_from_path(std::string path)
 {
+    auto check = check_css_file_path(path, false);
+    if (!check.ok)
+    {
+        std::cerr << "wf-shell: skip CSS — " << check.reason << std::endl;
+        return {};
+    }
     try {
         auto css = Gtk::CssProvider::create();
+        int parse_errors = 0;
+        css->signal_parsing_error().connect(
+            [&parse_errors, &path] (
+                const Glib::RefPtr<const Gtk::CssSection>& /* section */,
+                const Glib::Error& err) {
+                ++parse_errors;
+                std::cerr << "wf-shell: CSS parse warning in " << path
+                          << ": " << err.what() << std::endl;
+            });
         css->load_from_path(path);
+        if (parse_errors > 0)
+        {
+            std::cerr << "wf-shell: loaded " << path << " with " << parse_errors
+                      << " parse warning(s); applying partial styles"
+                      << std::endl;
+        }
         return css;
     } catch (Glib::Error& err)
     {
-        std::cerr << "Failed to load CSS: " << err.what() << std::endl;
+        std::cerr << "wf-shell: failed to load CSS " << path << ": "
+                  << err.what() << std::endl;
         return {};
     } catch (...)
     {
-        std::cerr << "Failed to load CSS at: " << path << std::endl;
+        std::cerr << "wf-shell: failed to load CSS at: " << path << std::endl;
+        return {};
+    }
+}
+
+Glib::RefPtr<Gtk::CssProvider> load_css_from_string_safe(const std::string& css_text,
+    std::string *error)
+{
+    try {
+        auto css = Gtk::CssProvider::create();
+        int parse_errors = 0;
+        css->signal_parsing_error().connect(
+            [&parse_errors] (
+                const Glib::RefPtr<const Gtk::CssSection>& /* section */,
+                const Glib::Error& err) {
+                ++parse_errors;
+                std::cerr << "wf-shell: CSS string parse warning: "
+                          << err.what() << std::endl;
+            });
+        css->load_from_string(css_text);
+        if (parse_errors > 0 && error)
+        {
+            *error = "css string had " + std::to_string(parse_errors) + " parse warning(s)";
+        }
+        return css;
+    } catch (Glib::Error& err)
+    {
+        if (error)
+        {
+            *error = err.what();
+        }
+        std::cerr << "wf-shell: failed to load CSS string: " << err.what()
+                  << std::endl;
+        return {};
+    } catch (...)
+    {
+        if (error)
+        {
+            *error = "unknown error loading css string";
+        }
+        std::cerr << "wf-shell: failed to load CSS string\n";
         return {};
     }
 }

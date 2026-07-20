@@ -479,6 +479,216 @@ THEMES: dict[str, dict] = {
         "radius": "6px",
         "glow": "none",
     },
+    "modern-glass": {
+        "name": "Modern Glass",
+        "era": "modern",
+        "style": "glass",
+        "panel_bg": "rgba(20, 20, 30, 0.45)",
+        "panel_fg": "#ffffff",
+        "panel_border": "rgba(255, 255, 255, 0.2)",
+        "accent": "rgba(255, 255, 255, 0.22)",
+        "accent_fg": "#ffffff",
+        "surface": "rgba(15, 15, 25, 0.7)",
+        "surface_fg": "#ffffff",
+        "surface_alt": "rgba(255, 255, 255, 0.1)",
+        "field_bg": "rgba(0, 0, 0, 0.35)",
+        "field_fg": "#ffffff",
+        "title_bg": "rgba(40, 40, 55, 0.8)",
+        "title_fg": "#ffffff",
+        "icon": "#ffffff",
+        "icon_outline": "rgba(0, 0, 0, 0.45)",
+        "icon_on_accent": "#ffffff",
+        "icon_on_accent_outline": "rgba(0, 0, 0, 0.6)",
+        "meter_bg": "rgba(0, 0, 0, 0.5)",
+        "highlight": "#38bdf8",
+        "highlight2": "#818cf8",
+        "destructive_bg": "rgba(239, 68, 68, 0.3)",
+        "destructive_fg": "#fca5a5",
+        "destructive_hover_bg": "rgba(220, 38, 38, 0.85)",
+        "destructive_hover_fg": "#ffffff",
+        "well_bg": "rgba(255, 255, 255, 0.08)",
+        "shadow": "rgba(0, 0, 0, 0.3)",
+        "shine": "rgba(255, 255, 255, 0.35)",
+        "success": "#34d399",
+        "warn": "#fbbf24",
+        "danger": "#f87171",
+        "dim": "rgba(255, 255, 255, 0.55)",
+        "net_ex": "#34d399",
+        "net_good": "#60a5fa",
+        "net_med": "#fbbf24",
+        "net_weak": "#f87171",
+        "net_none": "rgba(255, 255, 255, 0.25)",
+        "radius": "10px",
+        "glow": "0 8px 32px 0 rgba(0, 0, 0, 0.3)",
+    },
+    "cde-solaris": {
+        "name": "CDE Solaris",
+        "era": "retro",
+        "style": "classic3d",
+        "panel_bg": "#aeaeae",
+        "panel_fg": "#000000",
+        "panel_border": "#4b6678",
+        "accent": "#4b6678",
+        "accent_fg": "#ffffff",
+        "surface": "#aeaeae",
+        "surface_fg": "#000000",
+        "surface_alt": "#bebebe",
+        "field_bg": "#8e8e8e",
+        "field_fg": "#ffffff",
+        "title_bg": "#4b6678",
+        "title_fg": "#ffffff",
+        "icon": "#000000",
+        "icon_outline": "#ffffff",
+        "icon_on_accent": "#ffffff",
+        "icon_on_accent_outline": "#000000",
+        "meter_bg": "#3e3e3e",
+        "highlight": "#4b6678",
+        "highlight2": "#6b8b9b",
+        "destructive_bg": "#aeaeae",
+        "destructive_fg": "#800000",
+        "destructive_hover_bg": "#800000",
+        "destructive_hover_fg": "#ffffff",
+        "well_bg": "#bebebe",
+        "shadow": "#5a5a5a",
+        "shine": "#ffffff",
+        "success": "#008000",
+        "warn": "#808000",
+        "danger": "#800000",
+        "dim": "#4a4a4a",
+        "net_ex": "#008000",
+        "net_good": "#4b6678",
+        "net_med": "#808000",
+        "net_weak": "#800000",
+        "net_none": "#7a7a7a",
+        "radius": "0",
+        "glow": "none",
+    },
+    "sgi-irix": {
+        "name": "SGI IRIX",
+        "era": "retro",
+        "style": "classic3d",
+        "panel_bg": "#7e828c",
+        "panel_fg": "#000000",
+        "panel_border": "#3b4b66",
+        "accent": "#3b4b66",
+        "accent_fg": "#ffffff",
+        "surface": "#8e929d",
+        "surface_fg": "#000000",
+        "surface_alt": "#9ea2ad",
+        "field_bg": "#5e616b",
+        "field_fg": "#ffffff",
+        "title_bg": "#3b4b66",
+        "title_fg": "#ffffff",
+        "icon": "#000000",
+        "icon_outline": "#ffffff",
+        "icon_on_accent": "#ffffff",
+        "icon_on_accent_outline": "#000000",
+        "meter_bg": "#2e3035",
+        "highlight": "#008080",
+        "highlight2": "#b23b3b",
+        "destructive_bg": "#8e929d",
+        "destructive_fg": "#800000",
+        "destructive_hover_bg": "#b23b3b",
+        "destructive_hover_fg": "#ffffff",
+        "well_bg": "#6e727c",
+        "shadow": "#4e5159",
+        "shine": "#bec2cd",
+        "success": "#00a080",
+        "warn": "#d19a2a",
+        "danger": "#b23b3b",
+        "dim": "#3e4045",
+        "net_ex": "#00a080",
+        "net_good": "#3b4b66",
+        "net_med": "#d19a2a",
+        "net_weak": "#b23b3b",
+        "net_none": "#4e5159",
+        "radius": "0",
+        "glow": "none",
+    },
+    "ibm-aix": {
+        "name": "IBM AIX",
+        "era": "retro",
+        "style": "classic3d",
+        "panel_bg": "#7f8f9f",
+        "panel_fg": "#000000",
+        "panel_border": "#1f3f5f",
+        "accent": "#1f3f5f",
+        "accent_fg": "#ffffff",
+        "surface": "#8f9faf",
+        "surface_fg": "#000000",
+        "surface_alt": "#9fafbf",
+        "field_bg": "#ffffff",
+        "field_fg": "#000000",
+        "title_bg": "#1f3f5f",
+        "title_fg": "#ffffff",
+        "icon": "#000000",
+        "icon_outline": "#ffffff",
+        "icon_on_accent": "#ffffff",
+        "icon_on_accent_outline": "#000000",
+        "meter_bg": "#102030",
+        "highlight": "#1f3f5f",
+        "highlight2": "#3f6f9f",
+        "destructive_bg": "#8f9faf",
+        "destructive_fg": "#800000",
+        "destructive_hover_bg": "#800000",
+        "destructive_hover_fg": "#ffffff",
+        "well_bg": "#738393",
+        "shadow": "#4f5f6f",
+        "shine": "#cfdfef",
+        "success": "#1f8f3f",
+        "warn": "#8f7f1f",
+        "danger": "#8f1f1f",
+        "dim": "#3f4f5f",
+        "net_ex": "#1f8f3f",
+        "net_good": "#1f3f5f",
+        "net_med": "#8f7f1f",
+        "net_weak": "#8f1f1f",
+        "net_none": "#5f6f7f",
+        "radius": "0",
+        "glow": "none",
+    },
+    "beos-haiku": {
+        "name": "BeOS Haiku",
+        "era": "retro",
+        "style": "classic3d",
+        "panel_bg": "#ebebeb",
+        "panel_fg": "#000000",
+        "panel_border": "#3a3a3a",
+        "accent": "#3c76c4",
+        "accent_fg": "#ffffff",
+        "surface": "#ebebeb",
+        "surface_fg": "#000000",
+        "surface_alt": "#f5f5f5",
+        "field_bg": "#ffffff",
+        "field_fg": "#000000",
+        "title_bg": "#ffd300",
+        "title_fg": "#000000",
+        "icon": "#000000",
+        "icon_outline": "#ffffff",
+        "icon_on_accent": "#ffffff",
+        "icon_on_accent_outline": "#000000",
+        "meter_bg": "#222222",
+        "highlight": "#3c76c4",
+        "highlight2": "#ffd300",
+        "destructive_bg": "#ebebeb",
+        "destructive_fg": "#c30000",
+        "destructive_hover_bg": "#c30000",
+        "destructive_hover_fg": "#ffffff",
+        "well_bg": "#dedede",
+        "shadow": "#aaaaaa",
+        "shine": "#ffffff",
+        "success": "#228b22",
+        "warn": "#d2b48c",
+        "danger": "#c30000",
+        "dim": "#555555",
+        "net_ex": "#228b22",
+        "net_good": "#3c76c4",
+        "net_med": "#ffd300",
+        "net_weak": "#c30000",
+        "net_none": "#aaaaaa",
+        "radius": "2px",
+        "glow": "none",
+    },
 }
 
 
@@ -500,6 +710,10 @@ def icon_shadow(outline: str, extra: str = "") -> str:
 
 
 def border_3d(p: dict, raised: bool = True) -> str:
+    if p["style"] == "glass":
+        return f"""    border: 1px solid {p['panel_border']};
+    border-radius: {p['radius']};
+    box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.2), 0 4px 12px {p['shadow']};"""
     if p["style"] != "classic3d":
         return f"""    border: 1px solid {p['panel_border']};
     border-radius: {p['radius']};"""
@@ -539,9 +753,18 @@ def render(theme_id: str, p: dict) -> str:
         panel_extra = f"""
     border-top: 1px solid {p['shine']};
     box-shadow: inset 0 1px 0 {p['shine']}, 0 2px 0 {p['shadow']};"""
-    else:
+    elif p["style"] == "glass":
         panel_extra = f"""
-{glow}"""
+    background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0) 60%, rgba(0, 0, 0, 0.05) 100%);
+    backdrop-filter: blur(16px);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 8px 32px 0 {p['shadow']};"""
+    else:
+        blur_rule = ""
+        if "rgba" in p['panel_bg']:
+            blur_rule = "\n    backdrop-filter: blur(16px);"
+        gradient_rule = "\n    background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(0, 0, 0, 0.03));"
+        panel_extra = f"""
+{glow}{blur_rule}{gradient_rule}"""
 
     return f"""/* wf-shell-theme: id={theme_id}; name={p['name']}; era={p['era']} */
 /* ==========================================================================
@@ -573,6 +796,7 @@ def render(theme_id: str, p: dict) -> str:
     border-radius: {soft_radius};
     padding: 2px 6px;
     margin: 1px;
+    transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 }}
 
 /* Default labels on the bar (clock text, etc.) — NOT window-list titles */
@@ -621,6 +845,7 @@ def render(theme_id: str, p: dict) -> str:
     border-radius: {soft_radius};
     padding: 2px 6px;
     margin: 1px;
+    transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 }}
 
 .wf-panel .window-list button label,
@@ -799,7 +1024,8 @@ popovermenu contents,
 popovermenu > contents {{
     background-color: {p['surface']};
     background-image: none;
-{bevel if is_3d else f"    border: 2px solid {p['panel_border']};\\n    border-radius: {soft_radius};"}
+    { "backdrop-filter: blur(20px);" if "rgba" in p['surface'] or p['style'] == "glass" else "" }
+{bevel if is_3d else f"    border: 1px solid {p['panel_border']};\\n    border-radius: {soft_radius};"}
     padding: 10px;
     color: {p['surface_fg']};
 {glow if not is_3d else f"    box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.3);"}
@@ -823,6 +1049,7 @@ window button {{
     font-weight: bold;
     text-shadow: none;
     box-shadow: none;
+    transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 }}
 
 .popover button:hover,
@@ -1582,8 +1809,6 @@ window.wf-settings,
     border: 1px solid {p['panel_border']};
     border-radius: 0;
     margin: 4px 8px;
-}}
-
 .wf-settings .wf-settings-content,
 .wf-settings .wf-settings-content > *,
 .wf-settings .wf-settings-content scrolledwindow,
@@ -1617,25 +1842,32 @@ window.wf-settings,
 EXTRAS: dict[str, str] = {
     "crt-phosphor": r"""
 /* ==========================================================================
- * CRT Phosphor — Borg collective terminal flourishes
- * Void chassis · conduit edges · phosphor bloom · angular nodes
+ * CRT Phosphor — Borg Collective Cybernetic Terminal Flourishes
+ * Void chassis · green scanline grids · conduit piping · cybernetic nodes
  * ========================================================================== */
 
-/* Panel: deeper void, double conduit rail */
+/* Panel: deeper void, scanlines, double conduit rail */
 .wf-panel {
     background-color: rgba(2, 6, 4, 0.97);
     background-image:
+        repeating-linear-gradient(
+            0deg,
+            transparent 0px,
+            transparent 1px,
+            rgba(57, 255, 20, 0.04) 1px,
+            rgba(57, 255, 20, 0.04) 2px
+        ),
         linear-gradient(180deg,
-            rgba(57, 255, 20, 0.06) 0px,
+            rgba(57, 255, 20, 0.08) 0px,
             transparent 2px,
             transparent calc(100% - 3px),
-            rgba(0, 229, 168, 0.08) 100%);
+            rgba(0, 229, 168, 0.1) 100%);
     border-top: 1px solid #1a8f2a;
     border-bottom: 2px solid #39ff14;
     box-shadow:
-        0 0 14px rgba(57, 255, 20, 0.22),
-        inset 0 1px 0 rgba(57, 255, 20, 0.15),
-        inset 0 -2px 8px rgba(0, 0, 0, 0.65);
+        0 0 16px rgba(57, 255, 20, 0.3),
+        inset 0 1px 0 rgba(57, 255, 20, 0.2),
+        inset 0 -2px 8px rgba(0, 0, 0, 0.75);
 }
 
 /* Phosphor bloom on bar text (scanline terminal feel) — not window titles */
@@ -1645,14 +1877,15 @@ EXTRAS: dict[str, str] = {
 .wf-panel .volume,
 .wf-panel .menu,
 .wf-panel .app-button,
+.wf-panel .tray,
 .wf-panel .clock label,
 .wf-panel .battery label {
     color: #39ff14;
     font-family: monospace;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.06em;
     text-shadow:
-        0 0 4px rgba(57, 255, 20, 0.55),
-        0 0 10px rgba(57, 255, 20, 0.25);
+        0 0 4px rgba(57, 255, 20, 0.75),
+        0 0 12px rgba(57, 255, 20, 0.3);
 }
 
 .wf-panel .clock:hover,
@@ -1669,8 +1902,8 @@ EXTRAS: dict[str, str] = {
     border: 1px solid #00e5a8;
     text-shadow: none;
     box-shadow:
-        0 0 12px rgba(57, 255, 20, 0.55),
-        inset 0 0 6px rgba(0, 229, 168, 0.35);
+        0 0 16px rgba(57, 255, 20, 0.7),
+        inset 0 0 8px rgba(0, 229, 168, 0.4);
 }
 
 /*
@@ -1683,8 +1916,8 @@ EXTRAS: dict[str, str] = {
 .wf-panel .window-button label {
     color: #39ff14;
     font-family: monospace;
-    letter-spacing: 0.03em;
-    text-shadow: 0 0 3px rgba(57, 255, 20, 0.35);
+    letter-spacing: 0.04em;
+    text-shadow: 0 0 4px rgba(57, 255, 20, 0.4);
     background-color: transparent;
 }
 
@@ -1697,8 +1930,8 @@ EXTRAS: dict[str, str] = {
     border: 1px solid #00e5a8;
     text-shadow: none;
     box-shadow:
-        0 0 12px rgba(57, 255, 20, 0.55),
-        inset 0 0 6px rgba(0, 229, 168, 0.35);
+        0 0 16px rgba(57, 255, 20, 0.7),
+        inset 0 0 8px rgba(0, 229, 168, 0.4);
 }
 
 .wf-panel .window-list button:hover label,
@@ -1718,7 +1951,7 @@ EXTRAS: dict[str, str] = {
 .wf-panel .window-button.activated image {
     color: #020804;
     -gtk-icon-shadow:
-        0 0 2px #39ff14,
+        0 0 3px #39ff14,
         1px 1px 0 #00e5a8,
         -1px -1px 0 #00e5a8;
 }
@@ -1731,11 +1964,11 @@ EXTRAS: dict[str, str] = {
 .wf-panel .tray-button {
     background-color: rgba(2, 10, 6, 0.9);
     border: 1px solid #1a8f2a;
-    border-left: 2px solid #39ff14;
+    border-left: 3px solid #39ff14;
     border-radius: 0;
     box-shadow:
-        inset 0 0 8px rgba(0, 40, 15, 0.7),
-        0 0 6px rgba(57, 255, 20, 0.12);
+        inset 0 0 10px rgba(0, 45, 18, 0.75),
+        0 0 6px rgba(57, 255, 20, 0.15);
 }
 
 .wf-panel .volume:hover,
@@ -1745,7 +1978,7 @@ EXTRAS: dict[str, str] = {
 .wf-panel .tray-button:hover {
     background-color: #39ff14;
     border-color: #00e5a8;
-    box-shadow: 0 0 14px rgba(57, 255, 20, 0.5);
+    box-shadow: 0 0 16px rgba(57, 255, 20, 0.6);
 }
 
 /* Icons: brighter phosphor core + black cutout for readability on void */
@@ -1762,9 +1995,7 @@ EXTRAS: dict[str, str] = {
         0 1px 0 #020804,
         0 -1px 0 #020804,
         1px 0 0 #020804,
-        -1px 0 0 #020804,
-        1px 1px 0 #020804,
-        -1px -1px 0 #020804;
+        -1px 0 0 #020804;
 }
 
 .wf-panel .volume:hover image,
@@ -1776,7 +2007,7 @@ EXTRAS: dict[str, str] = {
 .wf-panel .menu.selected image {
     color: #020804;
     -gtk-icon-shadow:
-        0 0 2px #39ff14,
+        0 0 3px #39ff14,
         1px 1px 0 #00e5a8,
         -1px -1px 0 #00e5a8;
 }
@@ -1787,7 +2018,7 @@ EXTRAS: dict[str, str] = {
 .wf-panel .launchers image {
     filter:
         drop-shadow(0 0 1px #39ff14)
-        drop-shadow(0 0 3px rgba(57, 255, 20, 0.55))
+        drop-shadow(0 0 4px rgba(57, 255, 20, 0.65))
         drop-shadow(1px 1px 0 #020804);
 }
 
@@ -1796,17 +2027,17 @@ EXTRAS: dict[str, str] = {
     background-color: rgba(2, 10, 6, 0.85);
     border: 1px solid #1a8f2a;
     border-radius: 0;
-    box-shadow: inset 0 0 6px rgba(0, 30, 12, 0.8);
+    box-shadow: inset 0 0 8px rgba(0, 35, 15, 0.85);
 }
 
 .wf-panel .launcher-button:hover,
 .wf-panel .launcher:hover {
     background-color: rgba(8, 28, 14, 0.95);
     border-color: #39ff14;
-    box-shadow: 0 0 10px rgba(57, 255, 20, 0.35);
+    box-shadow: 0 0 12px rgba(57, 255, 20, 0.45);
 }
 
-/* Popovers: collective console chassis */
+/* Popovers: collective console chassis with CRT scanlines and conduit border */
 popover > contents,
 popovercontents,
 .popover > contents,
@@ -1814,16 +2045,23 @@ popovermenu contents,
 popovermenu > contents {
     background-color: rgba(2, 7, 4, 0.98);
     background-image:
-        linear-gradient(180deg, rgba(57, 255, 20, 0.05) 0px, transparent 3px);
+        repeating-linear-gradient(
+            0deg,
+            transparent 0px,
+            transparent 1px,
+            rgba(57, 255, 20, 0.04) 1px,
+            rgba(57, 255, 20, 0.04) 2px
+        ),
+        linear-gradient(180deg, rgba(57, 255, 20, 0.08) 0px, transparent 4px);
     border: 1px solid #1a8f2a;
-    border-top: 2px solid #39ff14;
-    border-left: 2px solid #00e5a8;
+    border-top: 3px solid #39ff14;
+    border-left: 3px solid #00e5a8;
     border-radius: 0;
     color: #7dff7a;
     box-shadow:
-        0 0 18px rgba(57, 255, 20, 0.2),
-        4px 4px 0 rgba(0, 0, 0, 0.75),
-        inset 0 0 24px rgba(0, 20, 8, 0.55);
+        0 0 24px rgba(57, 255, 20, 0.35),
+        4px 4px 0 rgba(0, 0, 0, 0.85),
+        inset 0 0 32px rgba(0, 24, 10, 0.7);
 }
 
 /* Sound Settings title — assimilation header strip */
@@ -1831,13 +2069,13 @@ popovermenu > contents {
     background-color: #020804;
     background-image:
         linear-gradient(90deg,
-            rgba(57, 255, 20, 0.2) 0%,
-            transparent 40%,
-            rgba(0, 229, 168, 0.12) 100%);
+            rgba(57, 255, 20, 0.25) 0%,
+            transparent 50%,
+            rgba(0, 229, 168, 0.15) 100%);
     border: 1px solid #1a8f2a;
-    border-left: 3px solid #39ff14;
+    border-left: 4px solid #39ff14;
     border-radius: 0;
-    box-shadow: inset 0 0 12px rgba(57, 255, 20, 0.12);
+    box-shadow: inset 0 0 12px rgba(57, 255, 20, 0.18);
 }
 
 .volume-popover-header label,
@@ -1845,26 +2083,26 @@ popovermenu > contents {
 .volume-popover-title * {
     color: #39ff14;
     font-family: monospace;
-    letter-spacing: 0.12em;
+    letter-spacing: 0.14em;
     text-transform: uppercase;
     text-shadow:
-        0 0 6px rgba(57, 255, 20, 0.65),
-        0 0 14px rgba(57, 255, 20, 0.3);
+        0 0 6px rgba(57, 255, 20, 0.75),
+        0 0 16px rgba(57, 255, 20, 0.4);
 }
 
 .volume-popover-section {
     background-color: rgba(4, 12, 8, 0.95);
     border: 1px solid #1a3d22;
-    border-left: 2px solid #00e5a8;
+    border-left: 3px solid #00e5a8;
     border-radius: 0;
-    box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
+    box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.6);
 }
 
 .volume-popover-section-title {
     color: #00e5a8;
     font-family: monospace;
-    letter-spacing: 0.18em;
-    text-shadow: 0 0 4px rgba(0, 229, 168, 0.4);
+    letter-spacing: 0.2em;
+    text-shadow: 0 0 5px rgba(0, 229, 168, 0.5);
 }
 
 .volume-popover-pct,
@@ -1874,16 +2112,24 @@ popovermenu > contents {
 .dim-label {
     font-family: monospace;
     color: #7dff7a;
-    text-shadow: 0 0 3px rgba(57, 255, 20, 0.25);
+    text-shadow: 0 0 4px rgba(57, 255, 20, 0.3);
 }
 
 .volume-popover-meter {
     background-color: #010402;
+    background-image:
+        repeating-linear-gradient(
+            90deg,
+            transparent 0px,
+            transparent 2px,
+            rgba(0, 20, 5, 0.35) 2px,
+            rgba(0, 20, 5, 0.35) 4px
+        );
     border: 1px solid #1a8f2a;
     border-radius: 0;
     box-shadow:
-        inset 0 0 10px rgba(0, 0, 0, 0.85),
-        0 0 6px rgba(57, 255, 20, 0.12);
+        inset 0 0 12px rgba(0, 0, 0, 0.9),
+        0 0 8px rgba(57, 255, 20, 0.15);
 }
 
 .volume-popover-scale trough {
@@ -1894,22 +2140,28 @@ popovermenu > contents {
 
 .volume-popover-scale highlight {
     background-color: #39ff14;
-    box-shadow: 0 0 8px rgba(57, 255, 20, 0.55);
+    background-image:
+        linear-gradient(90deg, #1a8f2a, #39ff14);
+    box-shadow: 0 0 10px rgba(57, 255, 20, 0.65);
     border-radius: 0;
 }
 
 .volume-popover-section:nth-child(5) .volume-popover-scale highlight {
     background-color: #00e5a8;
-    box-shadow: 0 0 8px rgba(0, 229, 168, 0.5);
+    background-image:
+        linear-gradient(90deg, #008080, #00e5a8);
+    box-shadow: 0 0 10px rgba(0, 229, 168, 0.6);
 }
 
 .volume-popover-scale slider {
     background-color: #041208;
     border: 1px solid #39ff14;
     border-radius: 0;
-    min-width: 12px;
-    min-height: 12px;
-    box-shadow: 0 0 6px rgba(57, 255, 20, 0.45);
+    min-width: 14px;
+    min-height: 14px;
+    box-shadow:
+        0 0 8px rgba(57, 255, 20, 0.65),
+        inset 0 0 4px rgba(57, 255, 20, 0.5);
 }
 
 /* Network: conduit list / active drone highlight */
@@ -1917,16 +2169,16 @@ popovermenu > contents {
 .network-control-center .freebsd-iface {
     background-color: rgba(4, 12, 8, 0.95);
     border: 1px solid #1a3d22;
-    border-left: 2px solid #1a8f2a;
+    border-left: 3px solid #1a8f2a;
     border-radius: 0;
-    box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.45);
+    box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
 }
 
 .network-control-center .freebsd-iface.is-up {
     border-left-color: #39ff14;
     box-shadow:
-        inset 0 0 8px rgba(0, 0, 0, 0.45),
-        0 0 8px rgba(57, 255, 20, 0.12);
+        inset 0 0 10px rgba(0, 0, 0, 0.5),
+        0 0 10px rgba(57, 255, 20, 0.15);
 }
 
 .network-control-center .access-point:hover,
@@ -1934,15 +2186,15 @@ popovermenu > contents {
 .network-control-center .access-point.active {
     background-color: rgba(8, 28, 14, 0.95);
     border: 1px solid #39ff14;
-    border-left: 3px solid #00e5a8;
+    border-left: 4px solid #00e5a8;
     color: #39ff14;
-    box-shadow: 0 0 10px rgba(57, 255, 20, 0.2);
+    box-shadow: 0 0 12px rgba(57, 255, 20, 0.25);
 }
 
 .network-control-center .access-point:hover label,
 .network-control-center .access-point.connected label {
     color: #39ff14;
-    text-shadow: 0 0 4px rgba(57, 255, 20, 0.4);
+    text-shadow: 0 0 5px rgba(57, 255, 20, 0.5);
     font-family: monospace;
 }
 
@@ -1950,7 +2202,7 @@ popovermenu > contents {
     background-color: #00e5a8;
     color: #020804;
     border-radius: 0;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
 }
 
@@ -1963,9 +2215,9 @@ window button {
     border-radius: 0;
     color: #7dff7a;
     font-family: monospace;
-    letter-spacing: 0.06em;
-    text-shadow: 0 0 3px rgba(57, 255, 20, 0.3);
-    box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.5);
+    letter-spacing: 0.08em;
+    text-shadow: 0 0 4px rgba(57, 255, 20, 0.4);
+    box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.6);
 }
 
 .popover button:hover,
@@ -1975,7 +2227,23 @@ window button:hover {
     border-color: #00e5a8;
     color: #020804;
     text-shadow: none;
-    box-shadow: 0 0 12px rgba(57, 255, 20, 0.45);
+    box-shadow: 0 0 16px rgba(57, 255, 20, 0.6);
+}
+
+.popover button.destructive-action,
+.network-control-center button.destructive-action {
+    background-color: rgba(40, 6, 6, 0.95);
+    border: 1px solid #b23b3b;
+    color: #ff8fa3;
+    text-shadow: 0 0 4px rgba(255, 85, 85, 0.4);
+}
+
+.popover button.destructive-action:hover,
+.network-control-center button.destructive-action:hover {
+    background-color: #b23b3b;
+    border-color: #ff5555;
+    color: #ffffff;
+    box-shadow: 0 0 16px rgba(178, 59, 59, 0.6);
 }
 
 /* Fields: dark wells with cyan-green caret line feel */
@@ -2001,7 +2269,7 @@ entry:focus text,
 passwordentry:focus,
 passwordentry:focus text {
     border-color: #39ff14;
-    box-shadow: 0 0 8px rgba(57, 255, 20, 0.25);
+    box-shadow: 0 0 10px rgba(57, 255, 20, 0.35);
     color: #39ff14;
 }
 
@@ -2011,7 +2279,7 @@ window headerbar,
 .titlebar {
     background-color: #020804;
     background-image:
-        linear-gradient(90deg, rgba(57, 255, 20, 0.18), transparent 50%);
+        linear-gradient(90deg, rgba(57, 255, 20, 0.25), transparent 50%);
     color: #39ff14;
     border-bottom: 2px solid #39ff14;
 }
@@ -2022,9 +2290,9 @@ window headerbar label,
 window headerbar .title {
     color: #39ff14;
     font-family: monospace;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
-    text-shadow: 0 0 6px rgba(57, 255, 20, 0.5);
+    text-shadow: 0 0 8px rgba(57, 255, 20, 0.65);
 }
 
 /* Separators as energy conduits */
@@ -2034,7 +2302,7 @@ separator {
     background-color: #1a8f2a;
     min-height: 1px;
     margin: 4px 0;
-    box-shadow: 0 0 4px rgba(57, 255, 20, 0.25);
+    box-shadow: 0 0 6px rgba(57, 255, 20, 0.35);
 }
 
 /* Menu / list selection = “assimilated” row */
@@ -2046,8 +2314,8 @@ popovermenu modelbutton:hover,
 popovermenu modelbutton:selected {
     background-color: rgba(12, 40, 20, 0.95);
     color: #39ff14;
-    border-left: 3px solid #00e5a8;
-    box-shadow: inset 0 0 10px rgba(57, 255, 20, 0.1);
+    border-left: 4px solid #00e5a8;
+    box-shadow: inset 0 0 12px rgba(57, 255, 20, 0.25);
 }
 
 /* Network quality: collective signal tiers */

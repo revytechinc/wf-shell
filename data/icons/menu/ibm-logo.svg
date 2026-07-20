@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="4" fill="#7f8f9f" stroke="#000" stroke-width="2"/>
+  <!-- CRT Screen Bezel -->
+  <rect x="8" y="10" width="48" height="36" rx="3" fill="#cfdfef" stroke="#1f3f5f" stroke-width="2"/>
+  <!-- Screen -->
+  <rect x="12" y="14" width="40" height="28" fill="#102030"/>
+  <!-- IBM Blue stripes representing letters or power -->
+  <g stroke="#3f6f9f" stroke-width="2">
+    <line x1="16" y1="20" x2="48" y2="20" />
+    <line x1="16" y1="24" x2="48" y2="24" />
+    <line x1="16" y1="28" x2="48" y2="28" />
+    <line x1="16" y1="32" x2="48" y2="32" />
+    <line x1="16" y1="36" x2="48" y2="36" />
+  </g>
+  <!-- Text overlay inside screen 'AIX' -->
+  <text x="32" y="31" fill="#ffffff" font-family="monospace" font-weight="bold" font-size="10" text-anchor="middle" letter-spacing="1">AIX</text>
+</svg>

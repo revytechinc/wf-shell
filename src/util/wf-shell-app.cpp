@@ -98,16 +98,22 @@ void WayfireShellApp::clear_css_rules()
 void WayfireShellApp::add_css_file(std::string file, int priority)
 {
     auto display = Gdk::Display::get_default();
-    if (file != "")
+    if (!display || file.empty())
     {
-        auto css_provider = load_css_from_path(file);
-        if (css_provider)
-        {
-            Gtk::StyleContext::add_provider_for_display(
-                display, css_provider, GTK_STYLE_PROVIDER_PRIORITY_USER);
-            css_rules.push_back(css_provider);
-        }
+        return;
     }
+    /* Missing / bad theme: skip and keep already-loaded default.css.
+     * Never throw — a broken css_path must not take down the panel. */
+    auto css_provider = load_css_from_path(file);
+    if (!css_provider)
+    {
+        std::cerr << "wf-shell: ignoring css_path \"" << file
+                  << "\" (not loaded); keeping prior styles\n";
+        return;
+    }
+    Gtk::StyleContext::add_provider_for_display(
+        display, css_provider, priority);
+    css_rules.push_back(css_provider);
 }
 
 bool WayfireShellApp::parse_cfgfile(const Glib::ustring & option_name,

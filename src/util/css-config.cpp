@@ -1,8 +1,43 @@
 #include <css-config.hpp>
+#include <gtk-utils.hpp>
 #include <sstream>
 #include <iostream>
 #include <regex>
 #include <string>
+
+namespace
+{
+/** Apply CSS string; on hard failure leave provider empty (no throw). */
+void provider_load_string(const Glib::RefPtr<Gtk::CssProvider>& provider,
+    const std::string& css)
+{
+    if (!provider)
+    {
+        return;
+    }
+    try
+    {
+        provider->load_from_string(css);
+    } catch (Glib::Error& err)
+    {
+        std::cerr << "wf-shell: config CSS rejected: " << err.what()
+                  << "\n  fragment: " << css.substr(0, 120) << std::endl;
+        try
+        {
+            provider->load_from_string("");
+        } catch (...)
+        {}
+    } catch (...)
+    {
+        std::cerr << "wf-shell: config CSS rejected (unknown error)\n";
+        try
+        {
+            provider->load_from_string("");
+        } catch (...)
+        {}
+    }
+}
+} // namespace
 
 void CssFromConfig::add_provider()
 {
@@ -23,8 +58,7 @@ CssFromConfigDouble::CssFromConfigDouble(std::string option_name, std::string be
     {
         std::stringstream ss;
         ss << before << std::to_string(option_value.value()) << after;
-        std::cout << ss.str() << std::endl;
-        provider->load_from_string(ss.str());
+        provider_load_string(provider, ss.str());
     };
     option_value.set_callback(cb);
     cb();
@@ -37,7 +71,7 @@ CssFromConfigBool::CssFromConfigBool(std::string option_name, std::string css_tr
     provider = Gtk::CssProvider::create();
     auto cb = [=]
     {
-        provider->load_from_string(option_value ? css_true : css_false);
+        provider_load_string(provider, option_value ? css_true : css_false);
     };
     option_value.set_callback(cb);
     cb();
@@ -55,12 +89,12 @@ CssFromConfigInt::CssFromConfigInt(std::string option_name, std::string css_befo
         // TODO When we go up to c++20 use std::format
         std::stringstream ss;
         ss << css_before << std::to_string(value) << css_after;
-        provider->load_from_string(ss.str());
+        provider_load_string(provider, ss.str());
     });
     int value = option_value;
     std::stringstream ss;
     ss << css_before << std::to_string(value) << css_after;
-    provider->load_from_string(ss.str());
+    provider_load_string(provider, ss.str());
 
     add_provider();
 }
@@ -74,13 +108,13 @@ CssFromConfigIconSize::CssFromConfigIconSize(std::string option_name,
     {
         if (option_value.value() == 0)
         {
-            provider->load_from_string("");
+            provider_load_string(provider, "");
             return;
         }
 
         std::stringstream ss;
         ss << ".wf-panel " << css_class << " {-gtk-icon-size:" << option_value.value() << "px;}";
-        provider->load_from_string(ss.str());
+        provider_load_string(provider, ss.str());
     };
 
     option_value.set_callback(reload_css);
@@ -99,11 +133,11 @@ CssFromConfigString::CssFromConfigString(std::string option_name, std::string cs
         // TODO When we go up to c++20 use std::format
         std::stringstream ss;
         ss << css_before << (std::string)option_value << css_after;
-        provider->load_from_string(ss.str());
+        provider_load_string(provider, ss.str());
     });
     std::stringstream ss;
     ss << css_before << (std::string)option_value << css_after;
-    provider->load_from_string(ss.str());
+    provider_load_string(provider, ss.str());
 
     add_provider();
 }
@@ -148,15 +182,13 @@ void CssFromConfigFont::set_from_string()
         ss << css_before << "font: " << size << unit << " " << before.str() << " " << after.str() << ";" <<
             css_after;
         auto css = ss.str();
-        provider->load_from_string(css);
-
-        std::cout << "Font " << css << std::endl;
+        provider_load_string(provider, css);
     } else
     {
         std::stringstream ss;
         ss << css_before << "font: 1rem " << font_name << ";" << css_after;
         auto css = ss.str();
-        provider->load_from_string(css);
+        provider_load_string(provider, css);
         std::cout << "Font fallback " << css << std::endl;
     }
 }

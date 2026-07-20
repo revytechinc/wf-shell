@@ -13,5 +13,10 @@ install_data(
   'rose-bloom.svg',
   'tokyo-pulse.svg',
   'catppuccin-latte.svg',
+  'glass-orb.svg',
+  'solaris-sun.svg',
+  'sgi-cube.svg',
+  'ibm-logo.svg',
+  'haiku-leaf.svg',
   install_dir: menu_icons_path,
 )

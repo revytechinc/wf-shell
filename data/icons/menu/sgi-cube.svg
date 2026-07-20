@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="4" fill="#7e828c" stroke="#000000" stroke-width="2"/>
+  <!-- SGI Cube in isometric view -->
+  <g stroke="#008080" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <!-- Front face -->
+    <path d="M 32,12 L 52,22 L 52,44 L 32,54 L 12,44 L 12,22 Z" stroke-width="4"/>
+    <!-- Y connections -->
+    <path d="M 32,12 L 32,33" />
+    <path d="M 12,22 L 32,33" />
+    <path d="M 52,22 L 32,33" />
+    <!-- Inside lines / pipes -->
+    <path d="M 32,54 L 32,33" stroke="#b23b3b" stroke-width="3"/>
+    <path d="M 12,44 L 32,33" stroke="#b23b3b" stroke-width="3"/>
+    <path d="M 52,44 L 32,33" stroke="#b23b3b" stroke-width="3"/>
+  </g>
+</svg>

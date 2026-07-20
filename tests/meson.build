@@ -62,6 +62,23 @@ test(
     suite: ['unit', 'theme'],
 )
 
+# CSS path preflight + safe load (no dependency on data/themes content)
+# Own main() for Gtk::Application — use gtest without gtest_main
+gtest_only = dependency('gtest')
+test_exec_css = executable(
+    'css-load-test',
+    'css-load-test.cpp',
+    dependencies: [gtest_only, gtkmm_dep, libutil],
+    include_directories: test_includes,
+    link_with: util,
+)
+
+test(
+    'css-load-test',
+    test_exec_css,
+    suite: ['unit', 'theme', 'fault-tolerance'],
+)
+
 test_exec_session_env = executable(
     'session-env-test',
     'session-env-test.cpp',

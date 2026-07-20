@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="4" fill="#ebebeb" stroke="#3a3a3a" stroke-width="2"/>
+  <!-- Haiku leaf shape -->
+  <path d="M32 12 C44 20, 52 32, 48 46 C44 52, 36 50, 32 46 C28 50, 20 52, 16 46 C12 32, 20 20, 32 12 Z" fill="#ffd300" stroke="#3c76c4" stroke-width="2"/>
+  <!-- Leaf veins -->
+  <path d="M32 16 L32 46 M32 24 L42 22 M32 30 L45 32 M32 36 L40 42 M32 24 L22 22 M32 30 L19 32 M32 36 L24 42" stroke="#3c76c4" stroke-width="1.5" stroke-linecap="round"/>
+</svg>

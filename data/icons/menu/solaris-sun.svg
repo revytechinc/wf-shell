@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="4" fill="#aeaeae" stroke="#000000" stroke-width="2"/>
+  <!-- Rotated diamond layout with sunburst lines -->
+  <g transform="translate(32,32) rotate(45)">
+    <!-- Inner diamond -->
+    <rect x="-10" y="-10" width="20" height="20" fill="none" stroke="#4b6678" stroke-width="3"/>
+    <!-- outer diamond corners -->
+    <path d="M-18 -18 L-10 -10 M18 -18 L10 -10 M-18 18 L-10 10 M18 18 L10 10" stroke="#4b6678" stroke-width="3"/>
+    <!-- Solaris central sun disc -->
+    <circle cx="0" cy="0" r="5" fill="#ffd300"/>
+  </g>
+</svg>

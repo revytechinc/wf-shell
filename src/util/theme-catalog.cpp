@@ -322,6 +322,20 @@ bool apply_theme_pack(const std::string& theme_id,
             return false;
         }
         css = it->second.path;
+        /* Don't persist a path that cannot be loaded — avoids panel restart
+         * loops / missing-file spam after theme packs move or fail to install. */
+        if (!css.empty())
+        {
+            std::error_code ec;
+            if (!std::filesystem::is_regular_file(css, ec) || ec)
+            {
+                if (error)
+                {
+                    *error = "theme css missing or unreadable: " + css;
+                }
+                return false;
+            }
+        }
     }
     if (!update_ini_css_path(ini_path, css))
     {
