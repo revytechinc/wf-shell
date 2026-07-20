@@ -182,6 +182,21 @@ unset WAYLAND_DISPLAY
 unset DISPLAY
 unset GDK_BACKEND
 
+# Drop stale sockets from a dead prior compositor (suite used to leave these)
+for sock in "$XDG_RUNTIME_DIR"/wayland-*; do
+  [ -e "$sock" ] || continue
+  case "$sock" in *.lock) continue ;; esac
+  # if nothing holds it, remove
+  if ! fstat "$sock" 2>/dev/null | awk 'NR>1 {found=1} END{exit !found}'; then
+    rm -f "$sock" "${sock}.lock" 2>/dev/null || true
+  fi
+done
+
+# seatd must be up for DRM (FreeBSD)
+if ! doas pgrep -x seatd >/dev/null 2>&1 && ! service seatd status >/dev/null 2>&1; then
+  doas service seatd start >/dev/null 2>&1 || doas service seatd onestart >/dev/null 2>&1 || true
+fi
+
 eval "$(dbus-launch --sh-syntax 2>/dev/null || true)"
 export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-}"
 export LIBSEAT_BACKEND="${LIBSEAT_BACKEND:-seatd}"
@@ -195,29 +210,56 @@ export WLR_BACKENDS=drm,libinput
 
 CONFIG="${WAYFIRE_CONFIG_FILE:-$HOME/.config/wayfire.ini}"
 RESTART_LOG=/tmp/wf-shell-regression-restart.log
+PIDFILE=/tmp/wf-shell-regression.wayfire.pid
 : >"$RESTART_LOG"
+rm -f "$PIDFILE"
 
-nohup env -u WAYLAND_DISPLAY -u DISPLAY \
-  HOME="$HOME" USER="$USER" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
-  LIBSEAT_BACKEND="$LIBSEAT_BACKEND" \
-  WLR_NO_HARDWARE_CURSORS="$WLR_NO_HARDWARE_CURSORS" \
-  __GLX_VENDOR_LIBRARY_NAME="$__GLX_VENDOR_LIBRARY_NAME" \
-  XDG_SESSION_TYPE=wayland XDG_SESSION_DESKTOP=wayfire XDG_CURRENT_DESKTOP=wayfire \
-  WLR_BACKENDS=drm,libinput \
-  ${WLR_RENDER_DRM_DEVICE:+WLR_RENDER_DRM_DEVICE=$WLR_RENDER_DRM_DEVICE} \
-  ${DBUS_SESSION_BUS_ADDRESS:+DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS} \
-  /usr/local/bin/wayfire -c "$CONFIG" >>"$RESTART_LOG" 2>&1 &
-WF_PID=$!
-log "started wayfire pid=$WF_PID"
+# Detach for real: setsid + nohup so suite exit cannot SIGHUP the compositor.
+# (Plain `nohup ... &` still left us with dead wayfire + stale sockets after "PASS".)
+start_wayfire() {
+  # shellcheck disable=SC2086
+  if command -v setsid >/dev/null 2>&1; then
+    setsid nohup env -u WAYLAND_DISPLAY -u DISPLAY \
+      HOME="$HOME" USER="$USER" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
+      LIBSEAT_BACKEND="$LIBSEAT_BACKEND" \
+      WLR_NO_HARDWARE_CURSORS="$WLR_NO_HARDWARE_CURSORS" \
+      __GLX_VENDOR_LIBRARY_NAME="$__GLX_VENDOR_LIBRARY_NAME" \
+      XDG_SESSION_TYPE=wayland XDG_SESSION_DESKTOP=wayfire XDG_CURRENT_DESKTOP=wayfire \
+      WLR_BACKENDS=drm,libinput \
+      ${WLR_RENDER_DRM_DEVICE:+WLR_RENDER_DRM_DEVICE=$WLR_RENDER_DRM_DEVICE} \
+      ${DBUS_SESSION_BUS_ADDRESS:+DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS} \
+      /usr/local/bin/wayfire -c "$CONFIG" >>"$RESTART_LOG" 2>&1 </dev/null &
+  else
+    nohup env -u WAYLAND_DISPLAY -u DISPLAY \
+      HOME="$HOME" USER="$USER" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
+      LIBSEAT_BACKEND="$LIBSEAT_BACKEND" \
+      WLR_NO_HARDWARE_CURSORS="$WLR_NO_HARDWARE_CURSORS" \
+      __GLX_VENDOR_LIBRARY_NAME="$__GLX_VENDOR_LIBRARY_NAME" \
+      XDG_SESSION_TYPE=wayland XDG_SESSION_DESKTOP=wayfire XDG_CURRENT_DESKTOP=wayfire \
+      WLR_BACKENDS=drm,libinput \
+      ${WLR_RENDER_DRM_DEVICE:+WLR_RENDER_DRM_DEVICE=$WLR_RENDER_DRM_DEVICE} \
+      ${DBUS_SESSION_BUS_ADDRESS:+DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS} \
+      /usr/local/bin/wayfire -c "$CONFIG" >>"$RESTART_LOG" 2>&1 </dev/null &
+  fi
+  WF_PID=$!
+  echo "$WF_PID" >"$PIDFILE"
+  log "started wayfire pid=$WF_PID"
+}
 
-if ! wait_for 15 'ls "$XDG_RUNTIME_DIR"/wayland-[0-9] >/dev/null 2>&1'; then
+start_wayfire
+
+if ! wait_for 15 'pgrep -x wayfire >/dev/null 2>&1 && ls "$XDG_RUNTIME_DIR"/wayland-[0-9] >/dev/null 2>&1'; then
   fail "R7 wayfire did not create wayland socket (see $RESTART_LOG)"
   tail -40 "$RESTART_LOG" | tee -a "$LOG" || true
 else
   export WAYLAND_DISPLAY
   WAYLAND_DISPLAY=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-[0-9] 2>/dev/null | head -1)")
   export WAYLAND_DISPLAY
-  pass "R7 wayland socket up: $WAYLAND_DISPLAY"
+  if pgrep -x wayfire >/dev/null 2>&1; then
+    pass "R7 wayland socket up: $WAYLAND_DISPLAY (wayfire alive)"
+  else
+    fail "R7 socket appeared but wayfire process already dead"
+  fi
 fi
 
 # Wait for autostart clients; if none, start via packaged launcher once
@@ -342,13 +384,77 @@ else
   log "skip unit suite (no build/ or meson)"
 fi
 
+# ── 6) LEAVE-UP GATE (R9) — suite must NOT leave a dead desktop ──────────
+# Past bug: suite printed PASS while wayfire was already gone (or died
+# immediately after), leaving stale wayland sockets and no compositor.
+section "6 LEAVE-UP GATE (R9)"
+leave_up_ok=1
+n_wf=$(count_proc wayfire)
+n_p=$(count_proc wf-panel)
+if [ "$n_wf" -lt 1 ]; then
+  log "R9 wayfire dead at end — attempting one recovery start"
+  unset WAYLAND_DISPLAY
+  rm -f "$XDG_RUNTIME_DIR"/wayland-* 2>/dev/null || true
+  start_wayfire
+  wait_for 15 'pgrep -x wayfire >/dev/null 2>&1 && ls "$XDG_RUNTIME_DIR"/wayland-[0-9] >/dev/null 2>&1' || true
+  n_wf=$(count_proc wayfire)
+fi
+if [ "$n_wf" -eq 1 ]; then
+  pass "R9 exactly one wayfire still running at suite end"
+else
+  fail "R9 wayfire count=$n_wf at suite end (want 1)"
+  leave_up_ok=0
+fi
+
+WAYLAND_DISPLAY=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-[0-9] 2>/dev/null | head -1)" 2>/dev/null || true)
+export WAYLAND_DISPLAY
+if [ -n "${WAYLAND_DISPLAY:-}" ] && [ -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ] && pgrep -x wayfire >/dev/null 2>&1; then
+  pass "R9 live wayland socket $WAYLAND_DISPLAY held by running wayfire"
+else
+  fail "R9 no live wayland socket with running wayfire"
+  leave_up_ok=0
+fi
+
+if [ "$n_p" -lt 1 ] && [ "$n_wf" -ge 1 ]; then
+  log "R9 panel missing — starting one via package launcher"
+  nohup env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" HOME="$HOME" \
+    /usr/local/libexec/wf-shell-launch panel >>"$RESTART_LOG" 2>&1 </dev/null &
+  sleep 1
+  n_p=$(count_proc wf-panel)
+fi
+if [ "$n_p" -eq 1 ]; then
+  pass "R9 exactly one wf-panel at suite end"
+else
+  fail "R9 wf-panel count=$n_p at suite end (want 1)"
+  leave_up_ok=0
+fi
+
+if [ "$(count_proc wf-background)" -gt 1 ]; then
+  fail "R9 dual wf-background at suite end"
+  leave_up_ok=0
+else
+  pass "R9 wf-background count=$(count_proc wf-background) (<=1)"
+fi
+
+# Persist session env for interactive follow-up (agent / user shell)
+if [ "$leave_up_ok" -eq 1 ] && [ -n "${WAYLAND_DISPLAY:-}" ]; then
+  {
+    echo "export XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR"
+    echo "export WAYLAND_DISPLAY=$WAYLAND_DISPLAY"
+    echo "export LIBSEAT_BACKEND=${LIBSEAT_BACKEND:-seatd}"
+    echo "export XDG_SESSION_TYPE=wayland"
+  } >/tmp/wf-shell-session.env
+  log "wrote /tmp/wf-shell-session.env for follow-up shells"
+fi
+
 # ── SUMMARY ──────────────────────────────────────────────────────────────
 section "SUMMARY"
 log "PASS=$PASS FAIL=$FAIL"
 log "full log: $LOG"
+log "wayfire=$(count_proc wayfire) panel=$(count_proc wf-panel) bg=$(count_proc wf-background)"
 if [ "$FAIL" -ne 0 ]; then
   log "REGRESSION SUITE FAILED"
   exit 1
 fi
-log "REGRESSION SUITE PASSED"
+log "REGRESSION SUITE PASSED (session left up)"
 exit 0

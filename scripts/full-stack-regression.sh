@@ -245,11 +245,31 @@ if [ -x "$ROOT/scripts/integration-present-only-available.sh" ]; then
   fi
 fi
 
+# ── 8 leave-up (must not report green with a dead desktop) ─────────────────
+section "8 LEAVE-UP"
+n_wf=$(pgrep -x wayfire 2>/dev/null | wc -l | tr -d ' ')
+n_p=$(pgrep -x wf-panel 2>/dev/null | wc -l | tr -d ' ')
+if [ "$DO_SESSION" -eq 1 ]; then
+  if [ "$n_wf" -eq 1 ] && [ "$n_p" -eq 1 ]; then
+    pass "leave-up: wayfire=1 panel=1"
+  else
+    fail "leave-up: wayfire=$n_wf panel=$n_p (suite must leave desktop up)"
+  fi
+  if [ -f /tmp/wf-shell-session.env ]; then
+    pass "leave-up: session env file present"
+  else
+    log "NOTE: no /tmp/wf-shell-session.env (regression may have been skipped)"
+  fi
+else
+  log "leave-up skipped (--no-session/--units-only)"
+fi
+
 # ── SUMMARY ────────────────────────────────────────────────────────────────
 section "SUMMARY"
 log "PASS=$PASS FAIL=$FAIL"
 log "full log: $LOG"
 log "ports root: ${PORTS_ROOT:-none} ly root: ${LY_ROOT:-none}"
+log "live: wayfire=$n_wf panel=$n_p"
 if [ "$FAIL" -ne 0 ]; then
   log "FULL STACK REGRESSION FAILED"
   exit 1
