@@ -13,31 +13,86 @@
 #if defined(WFS_PLATFORM_FREEBSD)
 
 #include <grp.h>
+#include <sys/param.h>
 
-#include <grp.h>
+#include <string>
 
-static bool in_wheel_group(void)
+/**
+ * FreeBSD privilege model for power (no password prompts in the GUI path):
+ *
+ * - /sbin/shutdown is setuid root and group **operator** (mode 4550).
+ *   Desktop users should be in operator — then shutdown/reboot work without doas.
+ * - wheel alone does NOT execute /sbin/shutdown (permission denied).
+ * - Suspend (zzz / acpiconf) often needs privilege; try bare command, then
+ *   passwordless doas -n if configured.
+ */
+static bool in_named_group(const char *name)
 {
     if (WFPowerController::is_root()) {
         return true;
     }
-    struct group *gr = getgrnam("wheel");
+    struct group *gr = getgrnam(name);
     if (!gr) {
         return false;
     }
-    gid_t wheel_gid = gr->gr_gid;
+    const gid_t want = gr->gr_gid;
 
+#ifdef NGROUPS_MAX
+    gid_t groups[NGROUPS_MAX];
+#else
     gid_t groups[64];
-    int ngroups = getgroups(64, groups);
+#endif
+    int ngroups = getgroups(static_cast<int>(sizeof(groups) / sizeof(groups[0])), groups);
     if (ngroups < 0) {
         return false;
     }
     for (int i = 0; i < ngroups; i++) {
-        if (groups[i] == wheel_gid) {
+        if (groups[i] == want) {
             return true;
         }
     }
+    /* also primary gid */
+    if (getgid() == want) {
+        return true;
+    }
     return false;
+}
+
+static bool can_exec_path(const char *path)
+{
+    return path && access(path, X_OK) == 0;
+}
+
+/** Prefer unprivileged command; fall back to passwordless doas -n only. */
+static std::string elevate_if_needed(const std::string& cmd)
+{
+    if (cmd.empty()) {
+        return {};
+    }
+    if (WFPowerController::is_root()) {
+        return cmd;
+    }
+    std::string first = cmd;
+    const auto sp = first.find(' ');
+    if (sp != std::string::npos) {
+        first = first.substr(0, sp);
+    }
+    /* Absolute path: access(X_OK) knows setuid/group bits (e.g. operator+shutdown). */
+    if (first.find('/') != std::string::npos) {
+        if (can_exec_path(first.c_str())) {
+            return cmd;
+        }
+    } else {
+        /* PATH command — try bare first (zzz is often world-executable). */
+        return cmd;
+    }
+    if (can_exec_path("/usr/local/bin/doas") || can_exec_path("/usr/bin/doas")) {
+        return "doas -n " + cmd;
+    }
+    if (can_exec_path("/usr/local/bin/sudo") || can_exec_path("/usr/bin/sudo")) {
+        return "sudo -n " + cmd;
+    }
+    return {}; /* not permitted without password hang */
 }
 
 class FreeBSDPowerController : public WFPowerController
@@ -52,29 +107,42 @@ WFPowerController::Capability FreeBSDPowerController::query(Action action)
 
     switch (action) {
     case Action::Shutdown:
-        cap.available = true;
-        cap.command = "/sbin/shutdown -p now";
-        cap.permitted = in_wheel_group();
+        cap.available = can_exec_path("/sbin/shutdown") || in_named_group("operator") ||
+            in_named_group("wheel");
+        /* operator can run setuid shutdown without doas */
+        if (can_exec_path("/sbin/shutdown") || in_named_group("operator")) {
+            cap.command = "/sbin/shutdown -p now";
+            cap.permitted = true;
+        } else if (in_named_group("wheel")) {
+            cap.command = elevate_if_needed("/sbin/shutdown -p now");
+            cap.permitted = !cap.command.empty();
+        }
         break;
 
     case Action::Reboot:
-        cap.available = true;
-        cap.command = "/sbin/shutdown -r now";
-        cap.permitted = in_wheel_group();
+        cap.available = can_exec_path("/sbin/shutdown") || in_named_group("operator") ||
+            in_named_group("wheel");
+        if (can_exec_path("/sbin/shutdown") || in_named_group("operator")) {
+            cap.command = "/sbin/shutdown -r now";
+            cap.permitted = true;
+        } else if (in_named_group("wheel")) {
+            cap.command = elevate_if_needed("/sbin/shutdown -r now");
+            cap.permitted = !cap.command.empty();
+        }
         break;
 
     case Action::Suspend:
-        /* zzz is the FreeBSD suspend utility.  acpiconf -s 3 is the low-level
-         * alternative.  Both require no special privilege on ACPI-capable
-         * hardware. */
-        cap.available = WFPowerController::check_permission("zzz") ||
-                        WFPowerController::check_permission("acpiconf -s 3");
-        if (cap.available) {
-            cap.command = WFPowerController::check_permission("zzz")
-                              ? "zzz"
-                              : "acpiconf -s 3";
+        /* Prefer unprivileged; FreeBSD often requires elevation for acpiconf. */
+        if (can_exec_path("/usr/sbin/zzz") || WFPowerController::check_permission("zzz")) {
+            cap.available = true;
+            cap.command = elevate_if_needed("zzz");
+            cap.permitted = true;
+        } else if (can_exec_path("/usr/sbin/acpiconf") ||
+                   WFPowerController::check_permission("acpiconf")) {
+            cap.available = true;
+            cap.command = elevate_if_needed("acpiconf -s 3");
+            cap.permitted = true;
         }
-        cap.permitted = cap.available;
         break;
 
     case Action::Hibernate:
