@@ -37,6 +37,7 @@ util = static_library(
         'ini-file.cpp',
         'user-config.cpp',
         'shell-json-config.cpp',
+        'wallpaper-util.cpp',
         'power-controller.cpp',
         'power-controller-linux.cpp',
         'power-controller-bsd.cpp',

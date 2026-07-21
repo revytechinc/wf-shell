@@ -232,3 +232,17 @@ test(
     suite: ['audio', 'docs'],
     workdir: join_paths(meson.current_source_dir(), '..'),
 )
+
+test_exec_wallpaper = executable(
+    'wallpaper-feed-test',
+    'wallpaper-feed-test.cpp',
+    dependencies: [gtest_dep, libutil],
+    include_directories: test_includes,
+    link_with: util,
+)
+
+test(
+    'wallpaper-feed-test',
+    test_exec_wallpaper,
+    suite: ['unit', 'feed', 'fault-tolerance'],
+)
