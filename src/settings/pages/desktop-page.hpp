@@ -53,6 +53,7 @@ class DesktopPage : public Gtk::Box
 
     void fetch_online_feed();
     void update_online_grid(const std::string& query);
+    void append_search_results_to_grid(const std::vector<OnlineImage>& list);
     void download_wallpaper(const std::string& id, const std::string& download_url);
 
     std::vector<std::string> fill_values; /* parallel to dropdown labels */

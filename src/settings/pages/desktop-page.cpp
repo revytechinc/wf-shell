@@ -16,11 +16,30 @@
 #include <thread>
 #include <sstream>
 #include <fstream>
+#include <iomanip>
 
 namespace wf_settings
 {
 namespace
 {
+std::string url_encode(const std::string& value)
+{
+    std::ostringstream escaped;
+    escaped << std::hex;
+    for (char c : value)
+    {
+        if (std::isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~')
+        {
+            escaped << c;
+        }
+        else
+        {
+            escaped << '%' << std::setw(2) << std::setfill('0') << (int)(unsigned char)c;
+        }
+    }
+    return escaped.str();
+}
+
 std::string escape_json_str(const std::string& s)
 {
     std::string res;
@@ -1112,6 +1131,145 @@ void DesktopPage::update_online_grid(const std::string& query)
         {
             online_status_lbl->set_text("Showing " + std::to_string(count) + " online wallpapers (Bing Daily + Picsum).");
         }
+    }
+
+    if (lower_query.length() >= 3)
+    {
+        std::thread([this, lower_query] () {
+            std::string encoded = url_encode(lower_query);
+            std::string url = "https://wallhaven.cc/api/v1/search?q=" + encoded + "&purity=100&sorting=views";
+            std::string cmd = "curl -s -L -m 4 \"" + url + "\"";
+            if (system("which curl >/dev/null 2>&1") != 0)
+            {
+                cmd = "fetch -T 4 -q -o - \"" + url + "\"";
+            }
+            FILE* pipe = popen(cmd.c_str(), "r");
+            if (pipe)
+            {
+                char buffer[256];
+                std::string result = "";
+                while (!feof(pipe))
+                {
+                    if (fgets(buffer, 256, pipe) != NULL)
+                        result += buffer;
+                }
+                pclose(pipe);
+                
+                wf::json_t wh_root;
+                if (!result.empty() && !wf::json_t::parse_string(result, wh_root))
+                {
+                    if (wh_root.is_object() && wh_root.has_member("data") && wh_root["data"].is_array())
+                    {
+                        auto data = wh_root["data"];
+                        std::vector<OnlineImage> searched_images;
+                        for (size_t i = 0; i < data.size(); ++i)
+                        {
+                            auto item = data[i];
+                            if (item.is_object() && item.has_member("id") && item.has_member("path") && item.has_member("thumbs"))
+                            {
+                                std::string id = item["id"].as_string();
+                                std::string path = item["path"].as_string();
+                                std::string category = item.has_member("category") ? item["category"].as_string() : "general";
+                                std::string resolution = item.has_member("resolution") ? item["resolution"].as_string() : "";
+                                
+                                auto thumbs = item["thumbs"];
+                                std::string thumb = (thumbs.is_object() && thumbs.has_member("small")) ? thumbs["small"].as_string() : path;
+                                
+                                OnlineImage img;
+                                img.id = "wallhaven_search_" + id;
+                                img.author = "Wallhaven (" + category + (resolution.empty() ? "" : " " + resolution) + ")";
+                                img.download_url = path;
+                                img.thumb_url = thumb;
+                                searched_images.push_back(img);
+                            }
+                        }
+                        
+                        Glib::signal_idle().connect_once([this, lower_query, searched_images] () {
+                            std::string active_query = wallpaper_search ? wallpaper_search->get_text() : "";
+                            std::string active_lower = active_query;
+                            std::transform(active_lower.begin(), active_lower.end(), active_lower.begin(), ::tolower);
+                            if (active_lower != lower_query) return;
+                            
+                            append_search_results_to_grid(searched_images);
+                        });
+                    }
+                }
+            }
+        }).detach();
+    }
+}
+
+void DesktopPage::append_search_results_to_grid(const std::vector<OnlineImage>& list)
+{
+    namespace fs = std::filesystem;
+    std::string home = std::getenv("HOME") ? std::getenv("HOME") : "/tmp";
+    std::string cache_dir = home + "/.cache/wf-shell/wallpapers";
+
+    int count = online_buttons.size();
+    int added = 0;
+    for (const auto& img : list)
+    {
+        if (count >= 40) break;
+
+        count++;
+        added++;
+
+        auto btn = Gtk::make_managed<Gtk::Button>();
+        btn->add_css_class("wallpaper-card");
+        btn->set_size_request(140, 110);
+
+        auto card_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 4);
+        card_box->set_margin(4);
+
+        auto pic = Gtk::make_managed<Gtk::Picture>();
+        pic->set_content_fit(Gtk::ContentFit::COVER);
+        pic->set_size_request(130, 80);
+
+        std::string thumb_path = cache_dir + "/thumb_" + img.id + ".jpg";
+        std::error_code ec;
+        if (fs::exists(thumb_path, ec))
+        {
+            pic->set_filename(thumb_path);
+        }
+        else
+        {
+            std::thread([thumb_path, img, pic] () {
+                std::string url = img.thumb_url;
+                std::string cmd = "curl -s -L -o \"" + thumb_path + "\" \"" + url + "\"";
+                if (system("which curl >/dev/null 2>&1") != 0)
+                {
+                    cmd = "fetch -q -o \"" + thumb_path + "\" \"" + url + "\"";
+                }
+                int res = system(cmd.c_str());
+                if (res == 0)
+                {
+                    Glib::signal_idle().connect_once([thumb_path, pic] () {
+                        pic->set_filename(thumb_path);
+                    });
+                }
+            }).detach();
+        }
+
+        card_box->append(*pic);
+
+        auto lbl = Gtk::make_managed<Gtk::Label>(img.author);
+        lbl->add_css_class("wallpaper-title");
+        card_box->append(*lbl);
+
+        btn->set_child(*card_box);
+
+        btn->signal_clicked().connect([this, img] () {
+            download_wallpaper(img.id, img.download_url);
+        });
+
+        online_flow->append(*btn);
+        online_buttons.push_back(btn);
+    }
+
+    if (online_status_lbl && added > 0)
+    {
+        std::string cur = online_status_lbl->get_text();
+        online_status_lbl->set_text(cur + " + " + std::to_string(added) + " global Wallhaven search matches.");
     }
 }
 
