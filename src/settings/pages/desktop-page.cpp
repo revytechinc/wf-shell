@@ -924,6 +924,58 @@ void DesktopPage::fetch_online_feed()
                 }
             }
         }
+
+        // 2e. Fetch Wallhaven collection variety
+        {
+            std::string wallhaven_url = "https://wallhaven.cc/api/v1/collections/lewdpatriot/935888?page=1";
+            std::string cmd = "curl -s -L -m 4 \"" + wallhaven_url + "\"";
+            if (system("which curl >/dev/null 2>&1") != 0)
+            {
+                cmd = "fetch -T 4 -q -o - \"" + wallhaven_url + "\"";
+            }
+            FILE* pipe = popen(cmd.c_str(), "r");
+            if (pipe)
+            {
+                char buffer[256];
+                std::string result = "";
+                while (!feof(pipe))
+                {
+                    if (fgets(buffer, 256, pipe) != NULL)
+                        result += buffer;
+                }
+                pclose(pipe);
+                
+                wf::json_t wh_root;
+                if (!result.empty() && !wf::json_t::parse_string(result, wh_root))
+                {
+                    if (wh_root.is_object() && wh_root.has_member("data") && wh_root["data"].is_array())
+                    {
+                        auto data = wh_root["data"];
+                        for (size_t i = 0; i < data.size(); ++i)
+                        {
+                            auto item = data[i];
+                            if (item.is_object() && item.has_member("id") && item.has_member("path") && item.has_member("thumbs"))
+                            {
+                                std::string id = item["id"].as_string();
+                                std::string path = item["path"].as_string();
+                                std::string category = item.has_member("category") ? item["category"].as_string() : "general";
+                                std::string resolution = item.has_member("resolution") ? item["resolution"].as_string() : "";
+                                
+                                auto thumbs = item["thumbs"];
+                                std::string thumb = (thumbs.is_object() && thumbs.has_member("small")) ? thumbs["small"].as_string() : path;
+                                
+                                OnlineImage img;
+                                img.id = "wallhaven_" + id;
+                                img.author = "Wallhaven variety (" + category + (resolution.empty() ? "" : " " + resolution) + ")";
+                                img.download_url = path;
+                                img.thumb_url = thumb;
+                                fetched.push_back(img);
+                            }
+                        }
+                    }
+                }
+            }
+        }
         
         // 3. Serialize combined feed to metadata.json in unified format
         if (!fetched.empty())

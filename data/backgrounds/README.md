@@ -56,6 +56,15 @@ The desktop page queries multiple feeds concurrently in a detached background th
   * Direct raw download URL: `https://raw.githubusercontent.com/Narmis-E/onedark-wallpapers/main/{path}`.
   * Categories and titles parsed directly from folder/file paths (e.g. `Abstract/onedark_abstract.png` ➔ title `"Onedark Abstract"`, category `"Abstract"`).
 
+### Feed 5: Wallhaven Variety Collection API
+* **URL:** `https://wallhaven.cc/api/v1/collections/lewdpatriot/935888?page=1`
+* **Format:** JSON object containing `data` array.
+* **Mapping Logic:**
+  * Maps `id` (prefixed with `wallhaven_`).
+  * Direct raw download URL: `path` string.
+  * Thumbnail URL: `thumbs.small` string.
+  * Metadata generated as `"Wallhaven variety ({category} {resolution})"`.
+
 ---
 
 ## 3. Caching & Cache Boundary Rules
