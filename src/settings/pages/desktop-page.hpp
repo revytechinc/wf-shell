@@ -3,6 +3,7 @@
 #include <gtkmm.h>
 #include <string>
 #include <vector>
+#include "wallpaper-util.hpp"
 
 namespace wf_settings
 {
@@ -43,17 +44,11 @@ class DesktopPage : public Gtk::Box
     Gtk::Label *online_status_lbl = nullptr;
     std::vector<Gtk::Button*> online_buttons;
 
-    struct OnlineImage {
-        std::string id;
-        std::string author;
-        std::string download_url;
-        std::string thumb_url;
-    };
-    std::vector<OnlineImage> online_images;
+    std::vector<wf_shell::OnlineImage> online_images;
 
     void fetch_online_feed();
     void update_online_grid(const std::string& query);
-    void append_search_results_to_grid(const std::vector<OnlineImage>& list);
+    void append_search_results_to_grid(const std::vector<wf_shell::OnlineImage>& list);
     void download_wallpaper(const std::string& id, const std::string& download_url);
 
     std::vector<std::string> fill_values; /* parallel to dropdown labels */

@@ -10,6 +10,43 @@
 namespace wf_shell
 {
 
+namespace
+{
+std::string run_curl_command(const std::string& url, bool use_user_agent = false)
+{
+    std::string user_agent_hdr = use_user_agent ? " -H \"User-Agent: wf-settings\"" : "";
+    std::string cmd = "curl -s -L" + user_agent_hdr + " -m 4 \"" + url + "\"";
+    if (system("which curl >/dev/null 2>&1") != 0)
+    {
+        std::string fetch_ua = use_user_agent ? " --user-agent=\"wf-settings\"" : "";
+        cmd = "fetch -T 4 -q -o -" + fetch_ua + " \"" + url + "\"";
+    }
+    
+    FILE* pipe = popen(cmd.c_str(), "r");
+    if (!pipe) return {};
+    
+    char buffer[256];
+    std::string result = "";
+    while (!feof(pipe))
+    {
+        if (fgets(buffer, 256, pipe) != NULL)
+            result += buffer;
+    }
+    pclose(pipe);
+    return result;
+}
+
+bool matches_query(const std::string& text, const std::string& query)
+{
+    if (query.empty()) return true;
+    std::string ltext = text;
+    std::string lquery = query;
+    std::transform(ltext.begin(), ltext.end(), ltext.begin(), ::tolower);
+    std::transform(lquery.begin(), lquery.end(), lquery.begin(), ::tolower);
+    return ltext.find(lquery) != std::string::npos;
+}
+} // namespace
+
 std::string url_encode(const std::string& value)
 {
     std::ostringstream escaped;
@@ -91,37 +128,17 @@ void enforce_cache_limit(const std::string& cache_dir, uintmax_t limit_bytes)
     }
 }
 
-bool parse_picsum_feed(const std::string& json_text, std::vector<OnlineImage>& out)
+// Bing Daily Image Feed
+std::vector<OnlineImage> BingSource::fetch(const std::string& query)
 {
-    wf::json_t root;
-    auto err = wf::json_t::parse_string(json_text, root);
-    if (err || !root.is_array())
-    {
-        return false;
-    }
-    for (size_t i = 0; i < root.size(); ++i)
-    {
-        auto item = root[i];
-        if (item.is_object() && item.has_member("id") && item.has_member("author") && item.has_member("download_url"))
-        {
-            OnlineImage img;
-            img.id = "picsum_" + item["id"].as_string();
-            img.author = item["author"].as_string();
-            img.download_url = item["download_url"].as_string();
-            img.thumb_url = "";
-            out.push_back(img);
-        }
-    }
-    return true;
-}
-
-bool parse_bing_feed(const std::string& json_text, std::vector<OnlineImage>& out)
-{
+    std::vector<OnlineImage> list;
+    std::string json_text = run_curl_command("https://www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=8&mkt=en-US");
+    
     wf::json_t root;
     auto err = wf::json_t::parse_string(json_text, root);
     if (err || !root.is_object() || !root.has_member("images") || !root["images"].is_array())
     {
-        return false;
+        return list;
     }
     auto arr = root["images"];
     for (size_t i = 0; i < arr.size(); ++i)
@@ -132,32 +149,73 @@ bool parse_bing_feed(const std::string& json_text, std::vector<OnlineImage>& out
             std::string url = item["url"].as_string();
             std::string cop = item["copyright"].as_string();
             std::string title = item.has_member("title") ? item["title"].as_string() : "";
+            std::string author = title.empty() ? cop : title + " (" + cop + ")";
 
-            OnlineImage img;
-            img.id = "bing_" + std::to_string(i);
-            img.author = title.empty() ? cop : title + " (" + cop + ")";
-            img.download_url = "https://www.bing.com" + url;
-            if (item.has_member("urlbase"))
+            if (matches_query(author, query))
             {
-                img.thumb_url = "https://www.bing.com" + item["urlbase"].as_string() + "_320x180.jpg";
+                OnlineImage img;
+                img.id = "bing_" + std::to_string(i);
+                img.author = author;
+                img.download_url = "https://www.bing.com" + url;
+                if (item.has_member("urlbase"))
+                {
+                    img.thumb_url = "https://www.bing.com" + item["urlbase"].as_string() + "_320x180.jpg";
+                }
+                else
+                {
+                    img.thumb_url = img.download_url;
+                }
+                list.push_back(img);
             }
-            else
-            {
-                img.thumb_url = img.download_url;
-            }
-            out.push_back(img);
         }
     }
-    return true;
+    return list;
 }
 
-bool parse_github_tree_feed(const std::string& json_text, const std::string& repo_name, std::vector<OnlineImage>& out)
+// Picsum Photos Feed
+std::vector<OnlineImage> PicsumSource::fetch(const std::string& query)
 {
+    std::vector<OnlineImage> list;
+    std::string json_text = run_curl_command("https://picsum.photos/v2/list?limit=60");
+    
+    wf::json_t root;
+    auto err = wf::json_t::parse_string(json_text, root);
+    if (err || !root.is_array())
+    {
+        return list;
+    }
+    for (size_t i = 0; i < root.size(); ++i)
+    {
+        auto item = root[i];
+        if (item.is_object() && item.has_member("id") && item.has_member("author") && item.has_member("download_url"))
+        {
+            std::string author = item["author"].as_string();
+            if (matches_query(author, query))
+            {
+                OnlineImage img;
+                img.id = "picsum_" + item["id"].as_string();
+                img.author = author;
+                img.download_url = item["download_url"].as_string();
+                img.thumb_url = "";
+                list.push_back(img);
+            }
+        }
+    }
+    return list;
+}
+
+// GitHub Wallpapers Tree Feed
+std::vector<OnlineImage> GithubTreeSource::fetch(const std::string& query)
+{
+    std::vector<OnlineImage> list;
+    std::string url = "https://api.github.com/repos/" + repo_owner + "/" + repo_name + "/git/trees/" + branch + "?recursive=1";
+    std::string json_text = run_curl_command(url, true);
+
     wf::json_t root;
     auto err = wf::json_t::parse_string(json_text, root);
     if (err || !root.is_object() || !root.has_member("tree") || !root["tree"].is_array())
     {
-        return false;
+        return list;
     }
     auto tree = root["tree"];
     int count = 0;
@@ -200,29 +258,79 @@ bool parse_github_tree_feed(const std::string& json_text, const std::string& rep
                     filename[0] = std::toupper(filename[0]);
                 }
 
-                OnlineImage img;
-                img.id = repo_name + "_" + std::to_string(count++);
-                img.author = filename + " — " + category;
-                img.download_url = "https://raw.githubusercontent.com/" + repo_name + "/walls/main/" + path;
-                if (repo_name == "onedark-wallpapers")
+                std::string author = filename + " — " + category;
+                if (matches_query(author, query))
                 {
-                    img.download_url = "https://raw.githubusercontent.com/Narmis-E/onedark-wallpapers/main/" + path;
+                    OnlineImage img;
+                    img.id = repo_name + "_" + std::to_string(count++);
+                    img.author = author;
+                    img.download_url = "https://raw.githubusercontent.com/" + repo_owner + "/" + repo_name + "/" + branch + "/" + path;
+                    img.thumb_url = img.download_url;
+                    list.push_back(img);
                 }
-                img.thumb_url = img.download_url;
-                out.push_back(img);
             }
         }
     }
-    return true;
+    return list;
 }
 
-bool parse_wallhaven_feed(const std::string& json_text, std::vector<OnlineImage>& out)
+// Wallhaven User Variety Collection Feed
+std::vector<OnlineImage> WallhavenVarietySource::fetch(const std::string& query)
 {
+    std::vector<OnlineImage> list;
+    std::string url = "https://wallhaven.cc/api/v1/collections/" + username + "/" + collection_id + "?page=1";
+    std::string json_text = run_curl_command(url);
+
     wf::json_t root;
     auto err = wf::json_t::parse_string(json_text, root);
     if (err || !root.is_object() || !root.has_member("data") || !root["data"].is_array())
     {
-        return false;
+        return list;
+    }
+    auto data = root["data"];
+    for (size_t i = 0; i < data.size(); ++i)
+    {
+        auto item = data[i];
+        if (item.is_object() && item.has_member("id") && item.has_member("path") && item.has_member("thumbs"))
+        {
+            std::string id = item["id"].as_string();
+            std::string path = item["path"].as_string();
+            std::string category = item.has_member("category") ? item["category"].as_string() : "general";
+            std::string resolution = item.has_member("resolution") ? item["resolution"].as_string() : "";
+            std::string author = "Wallhaven variety (" + category + (resolution.empty() ? "" : " " + resolution) + ")";
+
+            if (matches_query(author, query))
+            {
+                auto thumbs = item["thumbs"];
+                std::string thumb = (thumbs.is_object() && thumbs.has_member("small")) ? thumbs["small"].as_string() : path;
+
+                OnlineImage img;
+                img.id = "wallhaven_" + id;
+                img.author = author;
+                img.download_url = path;
+                img.thumb_url = thumb;
+                list.push_back(img);
+            }
+        }
+    }
+    return list;
+}
+
+// Wallhaven Global Dynamic Search Feed
+std::vector<OnlineImage> WallhavenSearchSource::fetch(const std::string& query)
+{
+    std::vector<OnlineImage> list;
+    if (query.length() < 3) return list;
+
+    std::string encoded = url_encode(query);
+    std::string url = "https://wallhaven.cc/api/v1/search?q=" + encoded + "&purity=100&sorting=views";
+    std::string json_text = run_curl_command(url);
+
+    wf::json_t root;
+    auto err = wf::json_t::parse_string(json_text, root);
+    if (err || !root.is_object() || !root.has_member("data") || !root["data"].is_array())
+    {
+        return list;
     }
     auto data = root["data"];
     for (size_t i = 0; i < data.size(); ++i)
@@ -239,16 +347,17 @@ bool parse_wallhaven_feed(const std::string& json_text, std::vector<OnlineImage>
             std::string thumb = (thumbs.is_object() && thumbs.has_member("small")) ? thumbs["small"].as_string() : path;
 
             OnlineImage img;
-            img.id = "wallhaven_" + id;
-            img.author = "Wallhaven variety (" + category + (resolution.empty() ? "" : " " + resolution) + ")";
+            img.id = "wallhaven_search_" + id;
+            img.author = "Wallhaven (" + category + (resolution.empty() ? "" : " " + resolution) + ")";
             img.download_url = path;
             img.thumb_url = thumb;
-            out.push_back(img);
+            list.push_back(img);
         }
     }
-    return true;
+    return list;
 }
 
+// Deserialization / Serialization unified mapping
 bool parse_unified_feed(const std::string& json_text, std::vector<OnlineImage>& out)
 {
     wf::json_t root;

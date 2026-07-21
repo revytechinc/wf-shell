@@ -17,92 +17,14 @@
 #include <sstream>
 #include <fstream>
 #include <iomanip>
+#include <mutex>
+#include <memory>
 
 namespace wf_settings
 {
 namespace
 {
-std::string url_encode(const std::string& value)
-{
-    std::ostringstream escaped;
-    escaped << std::hex;
-    for (char c : value)
-    {
-        if (std::isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~')
-        {
-            escaped << c;
-        }
-        else
-        {
-            escaped << '%' << std::setw(2) << std::setfill('0') << (int)(unsigned char)c;
-        }
-    }
-    return escaped.str();
-}
-
-std::string escape_json_str(const std::string& s)
-{
-    std::string res;
-    for (char c : s)
-    {
-        if (c == '"') res += "\\\"";
-        else if (c == '\\') res += "\\\\";
-        else if (c == '\n') res += "\\n";
-        else if (c == '\r') res += "\\r";
-        else if (c == '\t') res += "\\t";
-        else res += c;
-    }
-    return res;
-}
-
-void enforce_cache_limit(const std::string& cache_dir)
-{
-    namespace fs = std::filesystem;
-    std::error_code ec;
-    if (!fs::is_directory(cache_dir, ec)) return;
-
-    std::vector<std::pair<fs::file_time_type, fs::path>> files;
-    uintmax_t total_size = 0;
-    for (const auto& entry : fs::directory_iterator(cache_dir, ec))
-    {
-        if (entry.is_regular_file(ec))
-        {
-            auto sz = entry.file_size(ec);
-            if (!ec)
-            {
-                total_size += sz;
-                auto t = entry.last_write_time(ec);
-                if (!ec)
-                {
-                    files.push_back({t, entry.path()});
-                }
-            }
-        }
-    }
-
-    const uintmax_t limit = 2ULL * 1024 * 1024 * 1024; // 2 GB limit
-    if (total_size > limit)
-    {
-        std::sort(files.begin(), files.end(), [] (const auto& a, const auto& b) {
-            return a.first < b.first;
-        });
-
-        for (const auto& f : files)
-        {
-            if (f.second.filename() == "metadata.json") continue;
-            auto sz = fs::file_size(f.second, ec);
-            if (!ec)
-            {
-                fs::remove(f.second, ec);
-                if (!ec)
-                {
-                    total_size -= sz;
-                    if (total_size <= limit) break;
-                }
-            }
-        }
-    }
-}
+// Helper classes and anonymous variables go here
 } // namespace
 
 DesktopPage::DesktopPage() :
@@ -633,7 +555,7 @@ void DesktopPage::fetch_online_feed()
     std::error_code ec;
     fs::create_directories(cache_dir, ec);
     
-    // 1. Read cache first
+    // 1. Read cache first to load wallpapers instantly
     std::string cached_json = "";
     if (fs::exists(meta_path, ec))
     {
@@ -646,385 +568,72 @@ void DesktopPage::fetch_online_feed()
         }
     }
     
-    auto parse_and_populate = [this] (const std::string& json_text) -> bool {
-        wf::json_t root;
-        auto err = wf::json_t::parse_string(json_text, root);
-        if (err || !root.is_array())
-        {
-            return false;
-        }
-        
-        online_images.clear();
-        for (size_t i = 0; i < root.size(); ++i)
-        {
-            auto item = root[i];
-            if (item.is_object() && item.has_member("id") && item.has_member("author") && item.has_member("download_url"))
-            {
-                OnlineImage img;
-                img.id = item["id"].as_string();
-                img.author = item["author"].as_string();
-                img.download_url = item["download_url"].as_string();
-                if (item.has_member("thumb_url") && item["thumb_url"].is_string())
-                {
-                    img.thumb_url = item["thumb_url"].as_string();
-                }
-                online_images.push_back(img);
-            }
-        }
-        return true;
-    };
-    
     if (!cached_json.empty())
     {
-        if (parse_and_populate(cached_json))
+        std::vector<wf_shell::OnlineImage> cached_list;
+        if (wf_shell::parse_unified_feed(cached_json, cached_list))
         {
+            online_images = cached_list;
             update_online_grid(wallpaper_search ? wallpaper_search->get_text() : "");
         }
     }
     
-    // 2. Fetch fresh feeds asynchronously (Bing Daily + Picsum Photos)
-    std::thread([this, meta_path] () {
-        std::vector<OnlineImage> fetched;
-        
-        // 2a. Fetch Bing daily wallpapers
-        {
-            std::string bing_url = "https://www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=8&mkt=en-US";
-            std::string cmd = "curl -s -L -m 4 \"" + bing_url + "\"";
-            if (system("which curl >/dev/null 2>&1") != 0)
-            {
-                cmd = "fetch -T 4 -q -o - \"" + bing_url + "\"";
-            }
-            FILE* pipe = popen(cmd.c_str(), "r");
-            if (pipe)
-            {
-                char buffer[256];
-                std::string result = "";
-                while (!feof(pipe))
-                {
-                    if (fgets(buffer, 256, pipe) != NULL)
-                        result += buffer;
-                }
-                pclose(pipe);
-                
-                wf::json_t root;
-                if (!result.empty() && !wf::json_t::parse_string(result, root))
-                {
-                    if (root.is_object() && root.has_member("images") && root["images"].is_array())
-                    {
-                        auto arr = root["images"];
-                        for (size_t i = 0; i < arr.size(); ++i)
-                        {
-                            auto item = arr[i];
-                            if (item.is_object() && item.has_member("url") && item.has_member("copyright"))
-                            {
-                                std::string url = item["url"].as_string();
-                                std::string cop = item["copyright"].as_string();
-                                std::string title = item.has_member("title") ? item["title"].as_string() : "";
-                                
-                                OnlineImage img;
-                                img.id = "bing_" + std::to_string(i);
-                                img.author = title.empty() ? cop : title + " (" + cop + ")";
-                                img.download_url = "https://www.bing.com" + url;
-                                if (item.has_member("urlbase"))
-                                {
-                                    img.thumb_url = "https://www.bing.com" + item["urlbase"].as_string() + "_320x180.jpg";
-                                }
-                                else
-                                {
-                                    img.thumb_url = img.download_url;
-                                }
-                                fetched.push_back(img);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        
-        // 2b. Fetch Picsum list
-        {
-            std::string picsum_url = "https://picsum.photos/v2/list?limit=60";
-            std::string cmd = "curl -s -L -m 4 \"" + picsum_url + "\"";
-            if (system("which curl >/dev/null 2>&1") != 0)
-            {
-                cmd = "fetch -T 4 -q -o - \"" + picsum_url + "\"";
-            }
-            FILE* pipe = popen(cmd.c_str(), "r");
-            if (pipe)
-            {
-                char buffer[256];
-                std::string result = "";
-                while (!feof(pipe))
-                {
-                    if (fgets(buffer, 256, pipe) != NULL)
-                        result += buffer;
-                }
-                pclose(pipe);
-                
-                wf::json_t root;
-                if (!result.empty() && !wf::json_t::parse_string(result, root))
-                {
-                    if (root.is_array())
-                    {
-                        for (size_t i = 0; i < root.size(); ++i)
-                        {
-                            auto item = root[i];
-                            if (item.is_object() && item.has_member("id") && item.has_member("author") && item.has_member("download_url"))
-                            {
-                                OnlineImage img;
-                                img.id = "picsum_" + item["id"].as_string();
-                                img.author = item["author"].as_string();
-                                img.download_url = item["download_url"].as_string();
-                                img.thumb_url = "";
-                                fetched.push_back(img);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        
-        // 2c. Fetch dharmx/walls GitHub repository tree
-        {
-            std::string github_url = "https://api.github.com/repos/dharmx/walls/git/trees/main?recursive=1";
-            std::string cmd = "curl -s -L -H \"User-Agent: wf-settings\" -m 4 \"" + github_url + "\"";
-            if (system("which curl >/dev/null 2>&1") != 0)
-            {
-                cmd = "fetch -T 4 -q -o - --user-agent=\"wf-settings\" \"" + github_url + "\"";
-            }
-            FILE* pipe = popen(cmd.c_str(), "r");
-            if (pipe)
-            {
-                char buffer[256];
-                std::string result = "";
-                while (!feof(pipe))
-                {
-                    if (fgets(buffer, 256, pipe) != NULL)
-                        result += buffer;
-                }
-                pclose(pipe);
-                
-                wf::json_t gh_root;
-                if (!result.empty() && !wf::json_t::parse_string(result, gh_root))
-                {
-                    if (gh_root.is_object() && gh_root.has_member("tree") && gh_root["tree"].is_array())
-                    {
-                        auto tree = gh_root["tree"];
-                        int walls_count = 0;
-                        for (size_t i = 0; i < tree.size(); ++i)
-                        {
-                            auto node = tree[i];
-                            if (node.is_object() && node.has_member("path") && node["path"].is_string() &&
-                                node.has_member("type") && node["type"].as_string() == "blob")
-                            {
-                                std::string path = node["path"].as_string();
-                                std::string lower_path = path;
-                                std::transform(lower_path.begin(), lower_path.end(), lower_path.begin(), ::tolower);
-                                
-                                if (lower_path.find(".png") != std::string::npos || 
-                                    lower_path.find(".jpg") != std::string::npos || 
-                                    lower_path.find(".jpeg") != std::string::npos)
-                                {
-                                    std::string category = "dharmx";
-                                    size_t slash = path.find('/');
-                                    if (slash != std::string::npos)
-                                    {
-                                        category = "dharmx (" + path.substr(0, slash) + ")";
-                                    }
-                                    
-                                    std::string filename = path;
-                                    size_t last_slash = path.find_last_of('/');
-                                    if (last_slash != std::string::npos)
-                                    {
-                                        filename = path.substr(last_slash + 1);
-                                    }
-                                    size_t dot = filename.find_last_of('.');
-                                    if (dot != std::string::npos)
-                                    {
-                                        filename = filename.substr(0, dot);
-                                    }
-                                    std::replace(filename.begin(), filename.end(), '_', ' ');
-                                    std::replace(filename.begin(), filename.end(), '-', ' ');
-                                    if (!filename.empty())
-                                    {
-                                        filename[0] = std::toupper(filename[0]);
-                                    }
-                                    
-                                    OnlineImage img;
-                                    img.id = "dharmx_" + std::to_string(walls_count++);
-                                    img.author = filename + " — " + category;
-                                    img.download_url = "https://raw.githubusercontent.com/dharmx/walls/main/" + path;
-                                    img.thumb_url = img.download_url;
-                                    fetched.push_back(img);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
+    // 2. Define wallpaper sources Strategy list
+    std::vector<std::shared_ptr<wf_shell::IWallpaperSource>> sources;
+    sources.push_back(std::make_shared<wf_shell::BingSource>());
+    sources.push_back(std::make_shared<wf_shell::PicsumSource>());
+    sources.push_back(std::make_shared<wf_shell::GithubTreeSource>("dharmx", "walls"));
+    sources.push_back(std::make_shared<wf_shell::GithubTreeSource>("Narmis-E", "onedark-wallpapers"));
+    sources.push_back(std::make_shared<wf_shell::WallhavenVarietySource>("lewdpatriot", "935888"));
+    
+    // Mutex for thread-safe access to online_images vector and writing to metadata.json
+    struct SharedState {
+        std::mutex mutex;
+        std::vector<wf_shell::OnlineImage> master_list;
+    };
+    auto state = std::make_shared<SharedState>();
+    state->master_list = online_images; // pre-populate with cache
 
-        // 2d. Fetch OneDark wallpapers GitHub repository tree
-        {
-            std::string onedark_url = "https://api.github.com/repos/Narmis-E/onedark-wallpapers/git/trees/main?recursive=1";
-            std::string cmd = "curl -s -L -H \"User-Agent: wf-settings\" -m 4 \"" + onedark_url + "\"";
-            if (system("which curl >/dev/null 2>&1") != 0)
-            {
-                cmd = "fetch -T 4 -q -o - --user-agent=\"wf-settings\" \"" + onedark_url + "\"";
-            }
-            FILE* pipe = popen(cmd.c_str(), "r");
-            if (pipe)
-            {
-                char buffer[256];
-                std::string result = "";
-                while (!feof(pipe))
-                {
-                    if (fgets(buffer, 256, pipe) != NULL)
-                        result += buffer;
-                }
-                pclose(pipe);
-                
-                wf::json_t gh_root;
-                if (!result.empty() && !wf::json_t::parse_string(result, gh_root))
-                {
-                    if (gh_root.is_object() && gh_root.has_member("tree") && gh_root["tree"].is_array())
-                    {
-                        auto tree = gh_root["tree"];
-                        int walls_count = 0;
-                        for (size_t i = 0; i < tree.size(); ++i)
-                        {
-                            auto node = tree[i];
-                            if (node.is_object() && node.has_member("path") && node["path"].is_string() &&
-                                node.has_member("type") && node["type"].as_string() == "blob")
-                            {
-                                std::string path = node["path"].as_string();
-                                std::string lower_path = path;
-                                std::transform(lower_path.begin(), lower_path.end(), lower_path.begin(), ::tolower);
-                                
-                                if (lower_path.find(".png") != std::string::npos || 
-                                    lower_path.find(".jpg") != std::string::npos || 
-                                    lower_path.find(".jpeg") != std::string::npos)
-                                {
-                                    std::string category = "onedark";
-                                    size_t slash = path.find('/');
-                                    if (slash != std::string::npos)
-                                    {
-                                        category = "onedark (" + path.substr(0, slash) + ")";
-                                    }
-                                    
-                                    std::string filename = path;
-                                    size_t last_slash = path.find_last_of('/');
-                                    if (last_slash != std::string::npos)
-                                    {
-                                        filename = path.substr(last_slash + 1);
-                                    }
-                                    size_t dot = filename.find_last_of('.');
-                                    if (dot != std::string::npos)
-                                    {
-                                        filename = filename.substr(0, dot);
-                                    }
-                                    std::replace(filename.begin(), filename.end(), '_', ' ');
-                                    std::replace(filename.begin(), filename.end(), '-', ' ');
-                                    if (!filename.empty())
-                                    {
-                                        filename[0] = std::toupper(filename[0]);
-                                    }
-                                    
-                                    OnlineImage img;
-                                    img.id = "onedark_" + std::to_string(walls_count++);
-                                    img.author = filename + " — " + category;
-                                    img.download_url = "https://raw.githubusercontent.com/Narmis-E/onedark-wallpapers/main/" + path;
-                                    img.thumb_url = img.download_url;
-                                    fetched.push_back(img);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // 2e. Fetch Wallhaven collection variety
-        {
-            std::string wallhaven_url = "https://wallhaven.cc/api/v1/collections/lewdpatriot/935888?page=1";
-            std::string cmd = "curl -s -L -m 4 \"" + wallhaven_url + "\"";
-            if (system("which curl >/dev/null 2>&1") != 0)
-            {
-                cmd = "fetch -T 4 -q -o - \"" + wallhaven_url + "\"";
-            }
-            FILE* pipe = popen(cmd.c_str(), "r");
-            if (pipe)
-            {
-                char buffer[256];
-                std::string result = "";
-                while (!feof(pipe))
-                {
-                    if (fgets(buffer, 256, pipe) != NULL)
-                        result += buffer;
-                }
-                pclose(pipe);
-                
-                wf::json_t wh_root;
-                if (!result.empty() && !wf::json_t::parse_string(result, wh_root))
-                {
-                    if (wh_root.is_object() && wh_root.has_member("data") && wh_root["data"].is_array())
-                    {
-                        auto data = wh_root["data"];
-                        for (size_t i = 0; i < data.size(); ++i)
-                        {
-                            auto item = data[i];
-                            if (item.is_object() && item.has_member("id") && item.has_member("path") && item.has_member("thumbs"))
-                            {
-                                std::string id = item["id"].as_string();
-                                std::string path = item["path"].as_string();
-                                std::string category = item.has_member("category") ? item["category"].as_string() : "general";
-                                std::string resolution = item.has_member("resolution") ? item["resolution"].as_string() : "";
-                                
-                                auto thumbs = item["thumbs"];
-                                std::string thumb = (thumbs.is_object() && thumbs.has_member("small")) ? thumbs["small"].as_string() : path;
-                                
-                                OnlineImage img;
-                                img.id = "wallhaven_" + id;
-                                img.author = "Wallhaven variety (" + category + (resolution.empty() ? "" : " " + resolution) + ")";
-                                img.download_url = path;
-                                img.thumb_url = thumb;
-                                fetched.push_back(img);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        
-        // 3. Serialize combined feed to metadata.json in unified format
-        if (!fetched.empty())
-        {
-            std::ostringstream o;
-            o << "[\n";
-            for (size_t i = 0; i < fetched.size(); ++i)
-            {
-                o << "  {\n";
-                o << "    \"id\": \"" << escape_json_str(fetched[i].id) << "\",\n";
-                o << "    \"author\": \"" << escape_json_str(fetched[i].author) << "\",\n";
-                o << "    \"download_url\": \"" << escape_json_str(fetched[i].download_url) << "\",\n";
-                o << "    \"thumb_url\": \"" << escape_json_str(fetched[i].thumb_url) << "\"\n";
-                o << "  }" << (i + 1 < fetched.size() ? "," : "") << "\n";
-            }
-            o << "]";
+    // 3. Launch a separate concurrent thread for each source
+    for (auto source : sources)
+    {
+        std::thread([this, source, state, meta_path]() {
+            auto list = source->fetch("");
+            if (list.empty()) return;
             
-            std::string serialized = o.str();
-            std::ofstream out(meta_path, std::ios::trunc);
-            if (out)
             {
-                out << serialized;
+                std::lock_guard<std::mutex> lock(state->mutex);
+                
+                // Merge lists preventing duplicate IDs
+                for (const auto& img : list)
+                {
+                    auto it = std::find_if(state->master_list.begin(), state->master_list.end(),
+                        [&img](const auto& item) { return item.id == img.id; });
+                    if (it == state->master_list.end())
+                    {
+                        state->master_list.push_back(img);
+                    }
+                }
+                
+                // Write back updated master list to metadata.json cache
+                std::string serialized = wf_shell::serialize_unified_feed(state->master_list);
+                std::ofstream out(meta_path, std::ios::trunc);
+                if (out)
+                {
+                    out << serialized;
+                }
             }
             
-            Glib::signal_idle().connect_once([this, fetched] () {
-                online_images = fetched;
+            // Post event to GTK main thread to update UI incrementally
+            Glib::signal_idle().connect_once([this, state]() {
+                {
+                    std::lock_guard<std::mutex> lock(state->mutex);
+                    online_images = state->master_list;
+                }
                 update_online_grid(wallpaper_search ? wallpaper_search->get_text() : "");
             });
-        }
-    }).detach();
+        }).detach();
+    }
 }
 
 void DesktopPage::update_online_grid(const std::string& query)
@@ -1133,73 +742,26 @@ void DesktopPage::update_online_grid(const std::string& query)
         }
     }
 
+    // Launch Wallhaven global search Strategy dynamically in the background for active queries
     if (lower_query.length() >= 3)
     {
         std::thread([this, lower_query] () {
-            std::string encoded = url_encode(lower_query);
-            std::string url = "https://wallhaven.cc/api/v1/search?q=" + encoded + "&purity=100&sorting=views";
-            std::string cmd = "curl -s -L -m 4 \"" + url + "\"";
-            if (system("which curl >/dev/null 2>&1") != 0)
-            {
-                cmd = "fetch -T 4 -q -o - \"" + url + "\"";
-            }
-            FILE* pipe = popen(cmd.c_str(), "r");
-            if (pipe)
-            {
-                char buffer[256];
-                std::string result = "";
-                while (!feof(pipe))
-                {
-                    if (fgets(buffer, 256, pipe) != NULL)
-                        result += buffer;
-                }
-                pclose(pipe);
+            auto search_source = std::make_unique<wf_shell::WallhavenSearchSource>();
+            auto list = search_source->fetch(lower_query);
+            
+            Glib::signal_idle().connect_once([this, lower_query, list] () {
+                std::string active_query = wallpaper_search ? wallpaper_search->get_text() : "";
+                std::string active_lower = active_query;
+                std::transform(active_lower.begin(), active_lower.end(), active_lower.begin(), ::tolower);
+                if (active_lower != lower_query) return;
                 
-                wf::json_t wh_root;
-                if (!result.empty() && !wf::json_t::parse_string(result, wh_root))
-                {
-                    if (wh_root.is_object() && wh_root.has_member("data") && wh_root["data"].is_array())
-                    {
-                        auto data = wh_root["data"];
-                        std::vector<OnlineImage> searched_images;
-                        for (size_t i = 0; i < data.size(); ++i)
-                        {
-                            auto item = data[i];
-                            if (item.is_object() && item.has_member("id") && item.has_member("path") && item.has_member("thumbs"))
-                            {
-                                std::string id = item["id"].as_string();
-                                std::string path = item["path"].as_string();
-                                std::string category = item.has_member("category") ? item["category"].as_string() : "general";
-                                std::string resolution = item.has_member("resolution") ? item["resolution"].as_string() : "";
-                                
-                                auto thumbs = item["thumbs"];
-                                std::string thumb = (thumbs.is_object() && thumbs.has_member("small")) ? thumbs["small"].as_string() : path;
-                                
-                                OnlineImage img;
-                                img.id = "wallhaven_search_" + id;
-                                img.author = "Wallhaven (" + category + (resolution.empty() ? "" : " " + resolution) + ")";
-                                img.download_url = path;
-                                img.thumb_url = thumb;
-                                searched_images.push_back(img);
-                            }
-                        }
-                        
-                        Glib::signal_idle().connect_once([this, lower_query, searched_images] () {
-                            std::string active_query = wallpaper_search ? wallpaper_search->get_text() : "";
-                            std::string active_lower = active_query;
-                            std::transform(active_lower.begin(), active_lower.end(), active_lower.begin(), ::tolower);
-                            if (active_lower != lower_query) return;
-                            
-                            append_search_results_to_grid(searched_images);
-                        });
-                    }
-                }
-            }
+                append_search_results_to_grid(list);
+            });
         }).detach();
     }
 }
 
-void DesktopPage::append_search_results_to_grid(const std::vector<OnlineImage>& list)
+void DesktopPage::append_search_results_to_grid(const std::vector<wf_shell::OnlineImage>& list)
 {
     namespace fs = std::filesystem;
     std::string home = std::getenv("HOME") ? std::getenv("HOME") : "/tmp";
@@ -1286,7 +848,7 @@ void DesktopPage::download_wallpaper(const std::string& id, const std::string& d
     }
 
     std::thread([this, id, download_url, target_path, cache_dir] () {
-        enforce_cache_limit(cache_dir);
+        wf_shell::enforce_cache_limit(cache_dir, 2ULL * 1024 * 1024 * 1024);
 
         std::string url = download_url;
         if (id.rfind("picsum_", 0) == 0)
