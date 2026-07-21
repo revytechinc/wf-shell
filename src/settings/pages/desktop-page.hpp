@@ -47,6 +47,7 @@ class DesktopPage : public Gtk::Box
         std::string id;
         std::string author;
         std::string download_url;
+        std::string thumb_url;
     };
     std::vector<OnlineImage> online_images;
 

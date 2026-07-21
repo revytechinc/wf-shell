@@ -21,6 +21,21 @@ namespace wf_settings
 {
 namespace
 {
+std::string escape_json_str(const std::string& s)
+{
+    std::string res;
+    for (char c : s)
+    {
+        if (c == '"') res += "\\\"";
+        else if (c == '\\') res += "\\\\";
+        else if (c == '\n') res += "\\n";
+        else if (c == '\r') res += "\\r";
+        else if (c == '\t') res += "\\t";
+        else res += c;
+    }
+    return res;
+}
+
 void enforce_cache_limit(const std::string& cache_dir)
 {
     namespace fs = std::filesystem;
@@ -630,6 +645,10 @@ void DesktopPage::fetch_online_feed()
                 img.id = item["id"].as_string();
                 img.author = item["author"].as_string();
                 img.download_url = item["download_url"].as_string();
+                if (item.has_member("thumb_url") && item["thumb_url"].is_string())
+                {
+                    img.thumb_url = item["thumb_url"].as_string();
+                }
                 online_images.push_back(img);
             }
         }
@@ -644,40 +663,134 @@ void DesktopPage::fetch_online_feed()
         }
     }
     
-    // 2. Fetch fresh feed asynchronously
-    std::thread([this, meta_path, parse_and_populate] () {
-        std::string url = "https://picsum.photos/v2/list?limit=100";
-        std::string cmd = "curl -s -L -m 4 \"" + url + "\"";
-        if (system("which curl >/dev/null 2>&1") != 0)
+    // 2. Fetch fresh feeds asynchronously (Bing Daily + Picsum Photos)
+    std::thread([this, meta_path] () {
+        std::vector<OnlineImage> fetched;
+        
+        // 2a. Fetch Bing daily wallpapers
         {
-            cmd = "fetch -T 4 -q -o - \"" + url + "\"";
+            std::string bing_url = "https://www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=8&mkt=en-US";
+            std::string cmd = "curl -s -L -m 4 \"" + bing_url + "\"";
+            if (system("which curl >/dev/null 2>&1") != 0)
+            {
+                cmd = "fetch -T 4 -q -o - \"" + bing_url + "\"";
+            }
+            FILE* pipe = popen(cmd.c_str(), "r");
+            if (pipe)
+            {
+                char buffer[256];
+                std::string result = "";
+                while (!feof(pipe))
+                {
+                    if (fgets(buffer, 256, pipe) != NULL)
+                        result += buffer;
+                }
+                pclose(pipe);
+                
+                wf::json_t root;
+                if (!result.empty() && !wf::json_t::parse_string(result, root))
+                {
+                    if (root.is_object() && root.has_member("images") && root["images"].is_array())
+                    {
+                        auto arr = root["images"];
+                        for (size_t i = 0; i < arr.size(); ++i)
+                        {
+                            auto item = arr[i];
+                            if (item.is_object() && item.has_member("url") && item.has_member("copyright"))
+                            {
+                                std::string url = item["url"].as_string();
+                                std::string cop = item["copyright"].as_string();
+                                std::string title = item.has_member("title") ? item["title"].as_string() : "";
+                                
+                                OnlineImage img;
+                                img.id = "bing_" + std::to_string(i);
+                                img.author = title.empty() ? cop : title + " (" + cop + ")";
+                                img.download_url = "https://www.bing.com" + url;
+                                if (item.has_member("urlbase"))
+                                {
+                                    img.thumb_url = "https://www.bing.com" + item["urlbase"].as_string() + "_320x180.jpg";
+                                }
+                                else
+                                {
+                                    img.thumb_url = img.download_url;
+                                }
+                                fetched.push_back(img);
+                            }
+                        }
+                    }
+                }
+            }
         }
         
-        FILE* pipe = popen(cmd.c_str(), "r");
-        if (!pipe) return;
-        char buffer[256];
-        std::string result = "";
-        while (!feof(pipe))
+        // 2b. Fetch Picsum list
         {
-            if (fgets(buffer, 256, pipe) != NULL)
-                result += buffer;
+            std::string picsum_url = "https://picsum.photos/v2/list?limit=60";
+            std::string cmd = "curl -s -L -m 4 \"" + picsum_url + "\"";
+            if (system("which curl >/dev/null 2>&1") != 0)
+            {
+                cmd = "fetch -T 4 -q -o - \"" + picsum_url + "\"";
+            }
+            FILE* pipe = popen(cmd.c_str(), "r");
+            if (pipe)
+            {
+                char buffer[256];
+                std::string result = "";
+                while (!feof(pipe))
+                {
+                    if (fgets(buffer, 256, pipe) != NULL)
+                        result += buffer;
+                }
+                pclose(pipe);
+                
+                wf::json_t root;
+                if (!result.empty() && !wf::json_t::parse_string(result, root))
+                {
+                    if (root.is_array())
+                    {
+                        for (size_t i = 0; i < root.size(); ++i)
+                        {
+                            auto item = root[i];
+                            if (item.is_object() && item.has_member("id") && item.has_member("author") && item.has_member("download_url"))
+                            {
+                                OnlineImage img;
+                                img.id = "picsum_" + item["id"].as_string();
+                                img.author = item["author"].as_string();
+                                img.download_url = item["download_url"].as_string();
+                                img.thumb_url = "";
+                                fetched.push_back(img);
+                            }
+                        }
+                    }
+                }
+            }
         }
-        pclose(pipe);
         
-        if (!result.empty() && result[0] == '[')
+        // 3. Serialize combined feed to metadata.json in unified format
+        if (!fetched.empty())
         {
-            // Write to cache
+            std::ostringstream o;
+            o << "[\n";
+            for (size_t i = 0; i < fetched.size(); ++i)
+            {
+                o << "  {\n";
+                o << "    \"id\": \"" << escape_json_str(fetched[i].id) << "\",\n";
+                o << "    \"author\": \"" << escape_json_str(fetched[i].author) << "\",\n";
+                o << "    \"download_url\": \"" << escape_json_str(fetched[i].download_url) << "\",\n";
+                o << "    \"thumb_url\": \"" << escape_json_str(fetched[i].thumb_url) << "\"\n";
+                o << "  }" << (i + 1 < fetched.size() ? "," : "") << "\n";
+            }
+            o << "]";
+            
+            std::string serialized = o.str();
             std::ofstream out(meta_path, std::ios::trunc);
             if (out)
             {
-                out << result;
+                out << serialized;
             }
             
-            Glib::signal_idle().connect_once([this, result, parse_and_populate] () {
-                if (parse_and_populate(result))
-                {
-                    update_online_grid(wallpaper_search ? wallpaper_search->get_text() : "");
-                }
+            Glib::signal_idle().connect_once([this, fetched] () {
+                online_images = fetched;
+                update_online_grid(wallpaper_search ? wallpaper_search->get_text() : "");
             });
         }
     }).detach();
@@ -701,7 +814,7 @@ void DesktopPage::update_online_grid(const std::string& query)
     int count = 0;
     for (const auto& img : online_images)
     {
-        if (count >= 30) break;
+        if (count >= 40) break;
 
         std::string author_lower = img.author;
         std::transform(author_lower.begin(), author_lower.end(), author_lower.begin(), ::tolower);
@@ -733,7 +846,17 @@ void DesktopPage::update_online_grid(const std::string& query)
         else
         {
             std::thread([thumb_path, img, pic] () {
-                std::string url = "https://picsum.photos/id/" + img.id + "/200/120";
+                std::string url = img.thumb_url;
+                if (url.empty())
+                {
+                    std::string raw_id = img.id;
+                    if (raw_id.rfind("picsum_", 0) == 0)
+                    {
+                        raw_id = raw_id.substr(7);
+                    }
+                    url = "https://picsum.photos/id/" + raw_id + "/200/120";
+                }
+                
                 std::string cmd = "curl -s -L -o \"" + thumb_path + "\" \"" + url + "\"";
                 if (system("which curl >/dev/null 2>&1") != 0)
                 {
@@ -775,7 +898,7 @@ void DesktopPage::update_online_grid(const std::string& query)
         }
         else
         {
-            online_status_lbl->set_text("Showing " + std::to_string(count) + " online wallpapers. Click to download.");
+            online_status_lbl->set_text("Showing " + std::to_string(count) + " online wallpapers (Bing Daily + Picsum).");
         }
     }
 }
@@ -795,7 +918,13 @@ void DesktopPage::download_wallpaper(const std::string& id, const std::string& d
     std::thread([this, id, download_url, target_path, cache_dir] () {
         enforce_cache_limit(cache_dir);
 
-        std::string url = "https://picsum.photos/id/" + id + "/1920/1080";
+        std::string url = download_url;
+        if (id.rfind("picsum_", 0) == 0)
+        {
+            std::string raw_id = id.substr(7);
+            url = "https://picsum.photos/id/" + raw_id + "/1920/1080";
+        }
+        
         std::string cmd = "curl -s -L -o \"" + target_path + "\" \"" + url + "\"";
         if (system("which curl >/dev/null 2>&1") != 0)
         {
