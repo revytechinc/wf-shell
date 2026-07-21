@@ -765,6 +765,166 @@ void DesktopPage::fetch_online_feed()
             }
         }
         
+        // 2c. Fetch dharmx/walls GitHub repository tree
+        {
+            std::string github_url = "https://api.github.com/repos/dharmx/walls/git/trees/main?recursive=1";
+            std::string cmd = "curl -s -L -H \"User-Agent: wf-settings\" -m 4 \"" + github_url + "\"";
+            if (system("which curl >/dev/null 2>&1") != 0)
+            {
+                cmd = "fetch -T 4 -q -o - --user-agent=\"wf-settings\" \"" + github_url + "\"";
+            }
+            FILE* pipe = popen(cmd.c_str(), "r");
+            if (pipe)
+            {
+                char buffer[256];
+                std::string result = "";
+                while (!feof(pipe))
+                {
+                    if (fgets(buffer, 256, pipe) != NULL)
+                        result += buffer;
+                }
+                pclose(pipe);
+                
+                wf::json_t gh_root;
+                if (!result.empty() && !wf::json_t::parse_string(result, gh_root))
+                {
+                    if (gh_root.is_object() && gh_root.has_member("tree") && gh_root["tree"].is_array())
+                    {
+                        auto tree = gh_root["tree"];
+                        int walls_count = 0;
+                        for (size_t i = 0; i < tree.size(); ++i)
+                        {
+                            auto node = tree[i];
+                            if (node.is_object() && node.has_member("path") && node["path"].is_string() &&
+                                node.has_member("type") && node["type"].as_string() == "blob")
+                            {
+                                std::string path = node["path"].as_string();
+                                std::string lower_path = path;
+                                std::transform(lower_path.begin(), lower_path.end(), lower_path.begin(), ::tolower);
+                                
+                                if (lower_path.find(".png") != std::string::npos || 
+                                    lower_path.find(".jpg") != std::string::npos || 
+                                    lower_path.find(".jpeg") != std::string::npos)
+                                {
+                                    std::string category = "dharmx";
+                                    size_t slash = path.find('/');
+                                    if (slash != std::string::npos)
+                                    {
+                                        category = "dharmx (" + path.substr(0, slash) + ")";
+                                    }
+                                    
+                                    std::string filename = path;
+                                    size_t last_slash = path.find_last_of('/');
+                                    if (last_slash != std::string::npos)
+                                    {
+                                        filename = path.substr(last_slash + 1);
+                                    }
+                                    size_t dot = filename.find_last_of('.');
+                                    if (dot != std::string::npos)
+                                    {
+                                        filename = filename.substr(0, dot);
+                                    }
+                                    std::replace(filename.begin(), filename.end(), '_', ' ');
+                                    std::replace(filename.begin(), filename.end(), '-', ' ');
+                                    if (!filename.empty())
+                                    {
+                                        filename[0] = std::toupper(filename[0]);
+                                    }
+                                    
+                                    OnlineImage img;
+                                    img.id = "dharmx_" + std::to_string(walls_count++);
+                                    img.author = filename + " — " + category;
+                                    img.download_url = "https://raw.githubusercontent.com/dharmx/walls/main/" + path;
+                                    img.thumb_url = img.download_url;
+                                    fetched.push_back(img);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2d. Fetch OneDark wallpapers GitHub repository tree
+        {
+            std::string onedark_url = "https://api.github.com/repos/Narmis-E/onedark-wallpapers/git/trees/main?recursive=1";
+            std::string cmd = "curl -s -L -H \"User-Agent: wf-settings\" -m 4 \"" + onedark_url + "\"";
+            if (system("which curl >/dev/null 2>&1") != 0)
+            {
+                cmd = "fetch -T 4 -q -o - --user-agent=\"wf-settings\" \"" + onedark_url + "\"";
+            }
+            FILE* pipe = popen(cmd.c_str(), "r");
+            if (pipe)
+            {
+                char buffer[256];
+                std::string result = "";
+                while (!feof(pipe))
+                {
+                    if (fgets(buffer, 256, pipe) != NULL)
+                        result += buffer;
+                }
+                pclose(pipe);
+                
+                wf::json_t gh_root;
+                if (!result.empty() && !wf::json_t::parse_string(result, gh_root))
+                {
+                    if (gh_root.is_object() && gh_root.has_member("tree") && gh_root["tree"].is_array())
+                    {
+                        auto tree = gh_root["tree"];
+                        int walls_count = 0;
+                        for (size_t i = 0; i < tree.size(); ++i)
+                        {
+                            auto node = tree[i];
+                            if (node.is_object() && node.has_member("path") && node["path"].is_string() &&
+                                node.has_member("type") && node["type"].as_string() == "blob")
+                            {
+                                std::string path = node["path"].as_string();
+                                std::string lower_path = path;
+                                std::transform(lower_path.begin(), lower_path.end(), lower_path.begin(), ::tolower);
+                                
+                                if (lower_path.find(".png") != std::string::npos || 
+                                    lower_path.find(".jpg") != std::string::npos || 
+                                    lower_path.find(".jpeg") != std::string::npos)
+                                {
+                                    std::string category = "onedark";
+                                    size_t slash = path.find('/');
+                                    if (slash != std::string::npos)
+                                    {
+                                        category = "onedark (" + path.substr(0, slash) + ")";
+                                    }
+                                    
+                                    std::string filename = path;
+                                    size_t last_slash = path.find_last_of('/');
+                                    if (last_slash != std::string::npos)
+                                    {
+                                        filename = path.substr(last_slash + 1);
+                                    }
+                                    size_t dot = filename.find_last_of('.');
+                                    if (dot != std::string::npos)
+                                    {
+                                        filename = filename.substr(0, dot);
+                                    }
+                                    std::replace(filename.begin(), filename.end(), '_', ' ');
+                                    std::replace(filename.begin(), filename.end(), '-', ' ');
+                                    if (!filename.empty())
+                                    {
+                                        filename[0] = std::toupper(filename[0]);
+                                    }
+                                    
+                                    OnlineImage img;
+                                    img.id = "onedark_" + std::to_string(walls_count++);
+                                    img.author = filename + " — " + category;
+                                    img.download_url = "https://raw.githubusercontent.com/Narmis-E/onedark-wallpapers/main/" + path;
+                                    img.thumb_url = img.download_url;
+                                    fetched.push_back(img);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
         // 3. Serialize combined feed to metadata.json in unified format
         if (!fetched.empty())
         {

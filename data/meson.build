@@ -13,6 +13,13 @@ install_data(join_paths('backgrounds','simple-2.png'), install_dir: background_d
 install_data(join_paths('backgrounds','snow.png'), install_dir: background_dir)
 install_data(join_paths('backgrounds','wallpaper.jpg'), install_dir: background_dir)
 
+install_data(join_paths('backgrounds','dharmx-bird-statue.jpg'), install_dir: background_dir)
+install_data(join_paths('backgrounds','dharmx-bird-statue.README'), install_dir: background_dir)
+install_data(join_paths('backgrounds','dharmx-man-robot.jpg'), install_dir: background_dir)
+install_data(join_paths('backgrounds','dharmx-man-robot.README'), install_dir: background_dir)
+install_data(join_paths('backgrounds','dharmx-snow-machines.jpg'), install_dir: background_dir)
+install_data(join_paths('backgrounds','dharmx-snow-machines.README'), install_dir: background_dir)
+
 install_data('wayfire.png', install_dir: icon_dir)
 install_data('wf-locker-pin.desktop', install_dir: join_paths(get_option('prefix'), 'share', 'applications'))
 
