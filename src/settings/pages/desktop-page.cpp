@@ -5,15 +5,71 @@
 #include "shell-json-config.hpp"
 #include "ux-labels.hpp"
 
+#include <wayfire/nonstd/json.hpp>
+
 #include <cstdlib>
 #include <map>
 #include <string>
 #include <filesystem>
 #include <algorithm>
 #include <iostream>
+#include <thread>
+#include <sstream>
+#include <fstream>
 
 namespace wf_settings
 {
+namespace
+{
+void enforce_cache_limit(const std::string& cache_dir)
+{
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    if (!fs::is_directory(cache_dir, ec)) return;
+
+    std::vector<std::pair<fs::file_time_type, fs::path>> files;
+    uintmax_t total_size = 0;
+    for (const auto& entry : fs::directory_iterator(cache_dir, ec))
+    {
+        if (entry.is_regular_file(ec))
+        {
+            auto sz = entry.file_size(ec);
+            if (!ec)
+            {
+                total_size += sz;
+                auto t = entry.last_write_time(ec);
+                if (!ec)
+                {
+                    files.push_back({t, entry.path()});
+                }
+            }
+        }
+    }
+
+    const uintmax_t limit = 2ULL * 1024 * 1024 * 1024; // 2 GB limit
+    if (total_size > limit)
+    {
+        std::sort(files.begin(), files.end(), [] (const auto& a, const auto& b) {
+            return a.first < b.first;
+        });
+
+        for (const auto& f : files)
+        {
+            if (f.second.filename() == "metadata.json") continue;
+            auto sz = fs::file_size(f.second, ec);
+            if (!ec)
+            {
+                fs::remove(f.second, ec);
+                if (!ec)
+                {
+                    total_size -= sz;
+                    if (total_size <= limit) break;
+                }
+            }
+        }
+    }
+}
+} // namespace
 
 DesktopPage::DesktopPage() :
     Gtk::Box(Gtk::Orientation::VERTICAL, 12)
@@ -91,6 +147,20 @@ DesktopPage::DesktopPage() :
     bg_t->set_halign(Gtk::Align::START);
     bg_box->append(*bg_t);
 
+    /* Search bar for both local and online wallpapers */
+    auto search_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 8);
+    search_box->set_margin_bottom(8);
+    wallpaper_search = Gtk::make_managed<Gtk::SearchEntry>();
+    wallpaper_search->set_hexpand(true);
+    wallpaper_search->set_placeholder_text("Search local and online wallpapers (e.g. by author)...");
+    search_box->append(*wallpaper_search);
+    bg_box->append(*search_box);
+
+    auto local_lbl = Gtk::make_managed<Gtk::Label>();
+    local_lbl->set_markup("<span size='small' weight='bold'>Local Wallpapers</span>");
+    local_lbl->set_halign(Gtk::Align::START);
+    bg_box->append(*local_lbl);
+
     /* Wallpaper visual flowbox */
     auto flow_scroll = Gtk::make_managed<Gtk::ScrolledWindow>();
     flow_scroll->set_policy(Gtk::PolicyType::NEVER, Gtk::PolicyType::AUTOMATIC);
@@ -103,6 +173,35 @@ DesktopPage::DesktopPage() :
     wallpaper_flow->set_selection_mode(Gtk::SelectionMode::NONE);
     flow_scroll->set_child(*wallpaper_flow);
     bg_box->append(*flow_scroll);
+
+    /* Discover Online Wallpapers section */
+    online_section = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 8);
+    online_section->set_margin_top(12);
+    
+    auto online_lbl = Gtk::make_managed<Gtk::Label>();
+    online_lbl->set_markup("<span size='small' weight='bold'>Discover Online Wallpapers</span>");
+    online_lbl->set_halign(Gtk::Align::START);
+    online_section->append(*online_lbl);
+    
+    auto online_scroll = Gtk::make_managed<Gtk::ScrolledWindow>();
+    online_scroll->set_policy(Gtk::PolicyType::NEVER, Gtk::PolicyType::AUTOMATIC);
+    online_scroll->set_min_content_height(170);
+    online_scroll->add_css_class("wallpaper-scroll-container");
+    
+    online_flow = Gtk::make_managed<Gtk::FlowBox>();
+    online_flow->set_valign(Gtk::Align::START);
+    online_flow->set_column_spacing(10);
+    online_flow->set_row_spacing(10);
+    online_flow->set_selection_mode(Gtk::SelectionMode::NONE);
+    online_scroll->set_child(*online_flow);
+    online_section->append(*online_scroll);
+    
+    online_status_lbl = Gtk::make_managed<Gtk::Label>("Loading feed...");
+    online_status_lbl->set_halign(Gtk::Align::START);
+    online_status_lbl->add_css_class("dim-label");
+    online_section->append(*online_status_lbl);
+    
+    bg_box->append(*online_section);
 
     auto bg_grid = Gtk::make_managed<Gtk::Grid>();
     bg_grid->set_column_spacing(12);
@@ -177,6 +276,28 @@ DesktopPage::DesktopPage() :
             refresh_wallpaper_previews();
         }
     });
+
+    wallpaper_search->signal_search_changed().connect([this] () {
+        std::string query = wallpaper_search->get_text();
+        std::string lower_query = query;
+        std::transform(lower_query.begin(), lower_query.end(), lower_query.begin(), ::tolower);
+        
+        for (size_t i = 0; i < discovered_wallpapers.size(); ++i)
+        {
+            std::string path = discovered_wallpapers[i];
+            std::string lower_path = path;
+            std::transform(lower_path.begin(), lower_path.end(), lower_path.begin(), ::tolower);
+            
+            bool match = lower_path.find(lower_query) != std::string::npos;
+            if (i < wallpaper_buttons.size() && wallpaper_buttons[i])
+            {
+                wallpaper_buttons[i]->set_visible(match);
+            }
+        }
+        
+        update_online_grid(query);
+    });
+
     refresh();
     update_ws();
 }
@@ -259,6 +380,10 @@ void DesktopPage::refresh()
     bg_fill->set_selected(fi);
     update_preview_hint();
     refresh_wallpaper_previews();
+    if (online_images.empty())
+    {
+        fetch_online_feed();
+    }
     filling = false;
     if (status)
     {
@@ -462,6 +587,242 @@ void DesktopPage::refresh_wallpaper_previews()
 
     wallpaper_flow->append(*custom_btn);
     wallpaper_buttons.push_back(custom_btn);
+}
+
+void DesktopPage::fetch_online_feed()
+{
+    namespace fs = std::filesystem;
+    std::string home = std::getenv("HOME") ? std::getenv("HOME") : "/tmp";
+    std::string cache_dir = home + "/.cache/wf-shell/wallpapers";
+    std::string meta_path = cache_dir + "/metadata.json";
+    
+    std::error_code ec;
+    fs::create_directories(cache_dir, ec);
+    
+    // 1. Read cache first
+    std::string cached_json = "";
+    if (fs::exists(meta_path, ec))
+    {
+        std::ifstream in(meta_path);
+        if (in)
+        {
+            std::ostringstream oss;
+            oss << in.rdbuf();
+            cached_json = oss.str();
+        }
+    }
+    
+    auto parse_and_populate = [this] (const std::string& json_text) -> bool {
+        wf::json_t root;
+        auto err = wf::json_t::parse_string(json_text, root);
+        if (err || !root.is_array())
+        {
+            return false;
+        }
+        
+        online_images.clear();
+        for (size_t i = 0; i < root.size(); ++i)
+        {
+            auto item = root[i];
+            if (item.is_object() && item.has_member("id") && item.has_member("author") && item.has_member("download_url"))
+            {
+                OnlineImage img;
+                img.id = item["id"].as_string();
+                img.author = item["author"].as_string();
+                img.download_url = item["download_url"].as_string();
+                online_images.push_back(img);
+            }
+        }
+        return true;
+    };
+    
+    if (!cached_json.empty())
+    {
+        if (parse_and_populate(cached_json))
+        {
+            update_online_grid(wallpaper_search ? wallpaper_search->get_text() : "");
+        }
+    }
+    
+    // 2. Fetch fresh feed asynchronously
+    std::thread([this, meta_path, parse_and_populate] () {
+        std::string url = "https://picsum.photos/v2/list?limit=100";
+        std::string cmd = "curl -s -L -m 4 \"" + url + "\"";
+        if (system("which curl >/dev/null 2>&1") != 0)
+        {
+            cmd = "fetch -T 4 -q -o - \"" + url + "\"";
+        }
+        
+        FILE* pipe = popen(cmd.c_str(), "r");
+        if (!pipe) return;
+        char buffer[256];
+        std::string result = "";
+        while (!feof(pipe))
+        {
+            if (fgets(buffer, 256, pipe) != NULL)
+                result += buffer;
+        }
+        pclose(pipe);
+        
+        if (!result.empty() && result[0] == '[')
+        {
+            // Write to cache
+            std::ofstream out(meta_path, std::ios::trunc);
+            if (out)
+            {
+                out << result;
+            }
+            
+            Glib::signal_idle().connect_once([this, result, parse_and_populate] () {
+                if (parse_and_populate(result))
+                {
+                    update_online_grid(wallpaper_search ? wallpaper_search->get_text() : "");
+                }
+            });
+        }
+    }).detach();
+}
+
+void DesktopPage::update_online_grid(const std::string& query)
+{
+    namespace fs = std::filesystem;
+    std::string home = std::getenv("HOME") ? std::getenv("HOME") : "/tmp";
+    std::string cache_dir = home + "/.cache/wf-shell/wallpapers";
+
+    for (auto btn : online_buttons)
+    {
+        online_flow->remove(*btn);
+    }
+    online_buttons.clear();
+
+    std::string lower_query = query;
+    std::transform(lower_query.begin(), lower_query.end(), lower_query.begin(), ::tolower);
+
+    int count = 0;
+    for (const auto& img : online_images)
+    {
+        if (count >= 30) break;
+
+        std::string author_lower = img.author;
+        std::transform(author_lower.begin(), author_lower.end(), author_lower.begin(), ::tolower);
+
+        if (!lower_query.empty() && author_lower.find(lower_query) == std::string::npos)
+        {
+            continue;
+        }
+
+        count++;
+
+        auto btn = Gtk::make_managed<Gtk::Button>();
+        btn->add_css_class("wallpaper-card");
+        btn->set_size_request(140, 110);
+
+        auto card_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 4);
+        card_box->set_margin(4);
+
+        auto pic = Gtk::make_managed<Gtk::Picture>();
+        pic->set_content_fit(Gtk::ContentFit::COVER);
+        pic->set_size_request(130, 80);
+
+        std::string thumb_path = cache_dir + "/thumb_" + img.id + ".jpg";
+        std::error_code ec;
+        if (fs::exists(thumb_path, ec))
+        {
+            pic->set_filename(thumb_path);
+        }
+        else
+        {
+            std::thread([thumb_path, img, pic] () {
+                std::string url = "https://picsum.photos/id/" + img.id + "/200/120";
+                std::string cmd = "curl -s -L -o \"" + thumb_path + "\" \"" + url + "\"";
+                if (system("which curl >/dev/null 2>&1") != 0)
+                {
+                    cmd = "fetch -q -o \"" + thumb_path + "\" \"" + url + "\"";
+                }
+                int res = system(cmd.c_str());
+                if (res == 0)
+                {
+                    Glib::signal_idle().connect_once([thumb_path, pic] () {
+                        pic->set_filename(thumb_path);
+                    });
+                }
+            }).detach();
+        }
+
+        card_box->append(*pic);
+
+        auto lbl = Gtk::make_managed<Gtk::Label>(img.author);
+        lbl->add_css_class("wallpaper-title");
+        card_box->append(*lbl);
+
+        btn->set_child(*card_box);
+
+        btn->signal_clicked().connect([this, img] () {
+            download_wallpaper(img.id, img.download_url);
+        });
+
+        online_flow->append(*btn);
+        online_buttons.push_back(btn);
+    }
+
+    if (online_status_lbl)
+    {
+        if (count == 0)
+        {
+            online_status_lbl->set_text(online_images.empty()
+                ? "Feed offline. Showing local wallpapers."
+                : "No matching online wallpapers found.");
+        }
+        else
+        {
+            online_status_lbl->set_text("Showing " + std::to_string(count) + " online wallpapers. Click to download.");
+        }
+    }
+}
+
+void DesktopPage::download_wallpaper(const std::string& id, const std::string& download_url)
+{
+    namespace fs = std::filesystem;
+    std::string home = std::getenv("HOME") ? std::getenv("HOME") : "/tmp";
+    std::string cache_dir = home + "/.cache/wf-shell/wallpapers";
+    std::string target_path = cache_dir + "/wallpaper_" + id + ".jpg";
+
+    if (status)
+    {
+        status->set_text("Downloading wallpaper in background...");
+    }
+
+    std::thread([this, id, download_url, target_path, cache_dir] () {
+        enforce_cache_limit(cache_dir);
+
+        std::string url = "https://picsum.photos/id/" + id + "/1920/1080";
+        std::string cmd = "curl -s -L -o \"" + target_path + "\" \"" + url + "\"";
+        if (system("which curl >/dev/null 2>&1") != 0)
+        {
+            cmd = "fetch -q -o \"" + target_path + "\" \"" + url + "\"";
+        }
+        int res = system(cmd.c_str());
+
+        Glib::signal_idle().connect_once([this, res, target_path] () {
+            if (res == 0)
+            {
+                bg_image->set_text(target_path);
+                save(nullptr);
+                refresh_wallpaper_previews();
+                if (status)
+                {
+                    status->set_text("✨ Online wallpaper applied successfully!");
+                }
+            }
+            else
+            {
+                if (status)
+                {
+                    status->set_text("We couldn't download this wallpaper. Please check your internet connection.");
+                }
+            }
+        });
+    }).detach();
 }
 
 } // namespace wf_settings

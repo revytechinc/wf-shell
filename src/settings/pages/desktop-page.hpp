@@ -37,6 +37,23 @@ class DesktopPage : public Gtk::Box
     std::vector<std::string> discovered_wallpapers;
     std::vector<Gtk::Button*> wallpaper_buttons;
 
+    Gtk::SearchEntry *wallpaper_search = nullptr;
+    Gtk::FlowBox *online_flow = nullptr;
+    Gtk::Box *online_section = nullptr;
+    Gtk::Label *online_status_lbl = nullptr;
+    std::vector<Gtk::Button*> online_buttons;
+
+    struct OnlineImage {
+        std::string id;
+        std::string author;
+        std::string download_url;
+    };
+    std::vector<OnlineImage> online_images;
+
+    void fetch_online_feed();
+    void update_online_grid(const std::string& query);
+    void download_wallpaper(const std::string& id, const std::string& download_url);
+
     std::vector<std::string> fill_values; /* parallel to dropdown labels */
     bool filling = false;
 };

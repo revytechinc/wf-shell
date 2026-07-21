@@ -16,6 +16,7 @@ settings_sources = [
 ]
 
 libxml2 = dependency('libxml-2.0')
+threads = dependency('threads')
 
 wf_settings = executable(
   'wf-settings',
@@ -26,6 +27,7 @@ wf_settings = executable(
     json,
     wfconfig,
     libxml2,
+    threads,
   ],
   include_directories: [util_includes],
   cpp_args: platform_cpp_args + [
